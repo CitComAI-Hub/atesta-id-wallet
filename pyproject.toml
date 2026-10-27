@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oid4vc-wallet"
+version = "0.6.0"
+description = "Desktop wallet for verifiable credentials: OpenID4VCI 1.0 + OpenID4VP 1.0 (SD-JWT VC), no smartphone needed."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.28",
+    "cryptography>=45",
+    "zxing-cpp>=2.2",
+    "Pillow>=10",
+]
+
+[project.optional-dependencies]
+gui = ["PySide6-Essentials>=6.6"]
+
+[project.scripts]
+oid4vc-wallet = "oid4vc_wallet.cli:main"
+
+[project.gui-scripts]
+oid4vc-wallet-gui = "oid4vc_wallet.gui:main"
+
+[tool.setuptools]
+packages = ["oid4vc_wallet", "oid4vc_wallet.gui", "oid4vc_wallet.i18n"]
+
+[tool.setuptools.package-data]
+"oid4vc_wallet.gui" = ["icons/*.svg", "icons/*.png", "icons/LICENSE"]
+"oid4vc_wallet.i18n" = ["*.json"]

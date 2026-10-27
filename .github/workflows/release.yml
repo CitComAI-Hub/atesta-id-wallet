@@ -1,0 +1,172 @@
+# Versiones publicables: AppImage y .deb (Linux), instalador y zip (Windows), SHA256SUMS.
+#   git tag v0.6.0 && git push origin v0.6.0   -> construye, prueba y publica la release
+#   Actions -> Release -> Run workflow         -> construye y prueba; los ficheros quedan como artefactos
+# Ver docs/RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  PYINSTALLER_VERSION: "6.22.3"
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Qt libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: pip install ".[gui]"
+      - name: Version matches the tag
+        shell: bash
+        run: |
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          python -c "import sys, oid4vc_wallet.common as c; sys.exit(c.__version__ != '$version')" \
+            || { echo "pyproject.toml ($version) and common.__version__ differ"; exit 1; }
+          if [[ "$GITHUB_REF_TYPE" == tag && "${GITHUB_REF_NAME#v}" != "$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $version"; exit 1
+          fi
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests
+
+  linux:
+    needs: test
+    # La más antigua con soporte: el AppImage y el .deb exigen glibc >= 2.35.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Qt libraries (bundled into the AppImage)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-render-util0 libxcb-shape0
+      - run: pip install ".[gui]" "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
+      - run: pyinstaller --noconfirm packaging/oid4vc-wallet.spec
+      - name: Smoke test (bundle)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          OID4VC_WALLET_HOME: ${{ runner.temp }}/wallet-bundle
+        run: |
+          dist/oid4vc-wallet/oid4vc-wallet --version
+          dist/oid4vc-wallet/oid4vc-wallet-gui --smoke-test
+      - run: packaging/build_linux.sh dist/oid4vc-wallet dist/release
+      - name: Smoke test (AppImage and .deb)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          appimage=$(ls dist/release/*.AppImage)
+          OID4VC_WALLET_HOME="$RUNNER_TEMP/wallet-appimage" "$appimage" --smoke-test
+          OID4VC_WALLET_HOME="$RUNNER_TEMP/wallet-appimage" "$appimage" cli --version
+          sudo apt-get install -y ./dist/release/*.deb
+          OID4VC_WALLET_HOME="$RUNNER_TEMP/wallet-deb" oid4vc-wallet-gui --smoke-test
+          OID4VC_WALLET_HOME="$RUNNER_TEMP/wallet-deb" oid4vc-wallet --version
+          sudo apt-get remove -y oid4vc-wallet
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/release/*
+          if-no-files-found: error
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install ".[gui]" "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
+      - run: pyinstaller --noconfirm packaging/oid4vc-wallet.spec
+      - name: Smoke test (bundle)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          OID4VC_WALLET_HOME: ${{ runner.temp }}\wallet-bundle
+        run: |
+          dist\oid4vc-wallet\oid4vc-wallet.exe --version
+          if ($LASTEXITCODE -ne 0) { throw "CLI failed" }
+          # La GUI no tiene consola: se espera a que termine y se mira el código de salida.
+          $p = Start-Process dist\oid4vc-wallet\oid4vc-wallet-gui.exe -ArgumentList "--smoke-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "GUI smoke test failed ($($p.ExitCode))" }
+      - name: Installer and zip
+        run: |
+          choco install innosetup -y --no-progress
+          $version = (dist\oid4vc-wallet\oid4vc-wallet.exe --version).Split(" ")[1]
+          New-Item -ItemType Directory -Force dist\release | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Qp "/DAppVersion=$version" `
+            "/DSourceDir=$PWD\dist\oid4vc-wallet" "/DOutputDir=$PWD\dist\release" packaging\oid4vc-wallet.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Compress-Archive -Path dist\oid4vc-wallet -DestinationPath "dist\release\OID4VC_Wallet-$version-windows-x64.zip"
+      - name: Install, run and uninstall
+        env:
+          QT_QPA_PLATFORM: offscreen
+          OID4VC_WALLET_HOME: ${{ runner.temp }}\wallet-installed
+        run: |
+          $setup = (Get-ChildItem dist\release\*-setup.exe).FullName
+          Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          $app = "$env:LOCALAPPDATA\Programs\OID4VC Wallet"
+          if (-not (Test-Path "$app\oid4vc-wallet-gui.exe")) { throw "Not installed in $app" }
+          foreach ($scheme in "openid4vp", "openid-credential-offer") {
+            $command = (Get-ItemProperty "HKCU:\Software\Classes\$scheme\shell\open\command").'(default)'
+            if ($command -ne "`"$app\oid4vc-wallet-gui.exe`" `"%1`"") { throw "Wrong $scheme handler: $command" }
+          }
+          $p = Start-Process "$app\oid4vc-wallet-gui.exe" -ArgumentList "--smoke-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installed GUI smoke test failed ($($p.ExitCode))" }
+          Start-Process "$app\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
+          # El desinstalador se relanza desde %TEMP%: -Wait vuelve antes de que acabe.
+          for ($i = 0; $i -lt 60 -and (Test-Path "HKCU:\Software\Classes\openid4vp"); $i++) { Start-Sleep 1 }
+          if (Test-Path "HKCU:\Software\Classes\openid4vp") { throw "Link handler left after uninstalling" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/release/*
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+      # Procedencia firmada (Sigstore): 'gh attestation verify FICHERO --repo CitComAI-Hub/oid4vc-wallet'.
+      # GitHub solo la ofrece en repositorios públicos (o privados con Enterprise Cloud).
+      - uses: actions/attest-build-provenance@v2
+        if: ${{ !github.event.repository.private }}
+        with:
+          subject-path: release/*
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
+            --title "OID4VC Wallet ${GITHUB_REF_NAME#v}" --generate-notes

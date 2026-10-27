@@ -1,0 +1,10 @@
+# Personal wallet data: NEVER distribute it (private key and credentials)
+wallet_data/
+*.pem
+
+venv/
+.venv/
+__pycache__/
+*.egg-info/
+build/
+dist/
