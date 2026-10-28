@@ -16,8 +16,8 @@ from atesta_id_wallet import cli, common, desktop, i18n, storage, updates  # noq
 
 
 class FakeResponse:
-    def __init__(self, status, data):
-        self.status_code, self.data, self.text = status, data, str(data)
+    def __init__(self, status, data, headers=None):
+        self.status_code, self.data, self.text, self.headers = status, data, str(data), headers or {}
 
     def json(self):
         return self.data
@@ -63,6 +63,14 @@ class UpdateTests(unittest.TestCase):
     def test_no_release_published(self):
         fake_github(self, status=404, message="Not Found")
         with self.assertRaisesRegex(common.WalletError, "ninguna versión publicada"):
+            updates.newer_release()
+
+    def test_rate_limit_is_explained(self):
+        saved = updates.requests.get
+        self.addCleanup(setattr, updates.requests, "get", saved)
+        updates.requests.get = lambda url, **kwargs: FakeResponse(403, {"message": "API rate limit exceeded"},
+                                                                   {"X-RateLimit-Remaining": "0"})
+        with self.assertRaisesRegex(common.WalletError, "limitando las peticiones"):
             updates.newer_release()
 
     def test_automatic_check_is_off_by_default_and_daily(self):

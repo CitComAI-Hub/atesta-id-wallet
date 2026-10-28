@@ -43,6 +43,9 @@ def latest_release(timeout: float = 10) -> Release:
         "Accept": "application/vnd.github+json", "User-Agent": f"atesta-id-wallet/{__version__}"})
     if response.status_code == 404:  # no published versions, or a private repository
         raise WalletError(tr("No published version was found at {url}", url=RELEASES_PAGE))
+    if response.status_code in (403, 429) and response.headers.get("X-RateLimit-Remaining") == "0":
+        # GitHub allows 60 anonymous requests per hour per IP address (shared behind a NAT)
+        raise WalletError(tr("GitHub is limiting requests from this network; try again in an hour."))
     data = _json(response, "GET", LATEST_API)
     tag = str(data.get("tag_name") or "")
     url = str(data.get("html_url") or "")
