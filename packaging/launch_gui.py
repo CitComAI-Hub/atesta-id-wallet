@@ -2,6 +2,6 @@
 
 import sys
 
-from oid4vc_wallet.gui import main
+from atesta_id_wallet.gui import main
 
 sys.exit(main())

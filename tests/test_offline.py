@@ -1,4 +1,4 @@
-"""Pruebas sin red de oid4vc_wallet.  Ejecutar:  python -m unittest discover -s tests"""
+"""Pruebas sin red de atesta_id_wallet.  Ejecutar:  python -m unittest discover -s tests"""
 
 import base64
 import datetime
@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-os.environ["OID4VC_WALLET_HOME"] = tempfile.mkdtemp(prefix="oid4vc-wallet-test-")
+os.environ["ATESTA_ID_WALLET_HOME"] = tempfile.mkdtemp(prefix="atesta-id-wallet-test-")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests  # noqa: E402
@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: E402
 from cryptography.x509.oid import NameOID  # noqa: E402
 
-from oid4vc_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, trust, ui, vci, vp  # noqa: E402
+from atesta_id_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, trust, ui, vci, vp  # noqa: E402
 
 # Las aserciones sobre mensajes están en español: así se ejercita también su catálogo.
 i18n.set_language("es")
@@ -263,7 +263,7 @@ class ClipboardTests(unittest.TestCase):
 
 def isolated_home(test: unittest.TestCase) -> Path:
     """Directorio de datos propio para el test; restaura el perfil al terminar."""
-    home = Path(tempfile.mkdtemp(prefix="oid4vc-wallet-test-"))
+    home = Path(tempfile.mkdtemp(prefix="atesta-id-wallet-test-"))
     saved = storage.BASE_DIR, storage.PROFILES_DIR
     storage.BASE_DIR, storage.PROFILES_DIR = home, home / "profiles"
     storage.set_profile("default")
@@ -613,7 +613,7 @@ def qr_png(text: str, path: Path | None = None) -> bytes:
 
 
 class I18nTests(unittest.TestCase):
-    PACKAGE = Path(__file__).resolve().parent.parent / "oid4vc_wallet"
+    PACKAGE = Path(__file__).resolve().parent.parent / "atesta_id_wallet"
 
     def tearDown(self):
         i18n.set_language("es")
@@ -700,7 +700,7 @@ class QrTests(unittest.TestCase):
     def setUp(self):
         self._clipboard_bytes = desktop._clipboard_bytes
         self.addCleanup(setattr, desktop, "_clipboard_bytes", self._clipboard_bytes)
-        self.dir = Path(tempfile.mkdtemp(prefix="oid4vc-qr-"))
+        self.dir = Path(tempfile.mkdtemp(prefix="atesta-qr-"))
 
     def test_screenshot_and_newest_in_folder(self):
         old, new = self.dir / "a.png", self.dir / "b.png"
@@ -767,7 +767,7 @@ class WindowsHandlerTests(unittest.TestCase):
         sys.platform = "win32"
         self._launcher = desktop._launcher
         self.addCleanup(setattr, desktop, "_launcher", self._launcher)
-        desktop._launcher = lambda gui=False: [rf"C:\Program Files\Wallet\oid4vc-wallet{'-gui' if gui else ''}.exe"]
+        desktop._launcher = lambda gui=False: [rf"C:\Program Files\Wallet\atesta-id-wallet{'-gui' if gui else ''}.exe"]
         self._gui_available = desktop.gui_available
         self.addCleanup(setattr, desktop, "gui_available", self._gui_available)
         desktop.gui_available = lambda: False
@@ -776,14 +776,14 @@ class WindowsHandlerTests(unittest.TestCase):
         desktop.gui_available = lambda: True
         desktop.cmd_install_handler(None)
         command = self.reg.keys[r"Software\Classes\openid4vp\shell\open\command"][""]
-        self.assertEqual(command, r'"C:\Program Files\Wallet\oid4vc-wallet-gui.exe" "%1"')
+        self.assertEqual(command, r'"C:\Program Files\Wallet\atesta-id-wallet-gui.exe" "%1"')
 
     def test_install_and_uninstall(self):
         desktop.cmd_install_handler(None)
         key = self.reg.keys[r"Software\Classes\openid4vp"]
         self.assertEqual(key, {"": "URL:openid4vp", "URL Protocol": ""})
         command = self.reg.keys[r"Software\Classes\openid4vp\shell\open\command"][""]
-        self.assertEqual(command, r'"C:\Program Files\Wallet\oid4vc-wallet.exe" --pause "%1"')
+        self.assertEqual(command, r'"C:\Program Files\Wallet\atesta-id-wallet.exe" --pause "%1"')
         self.assertIn(r"Software\Classes\openid-credential-offer", self.reg.keys)
         desktop.cmd_uninstall_handler(None)
         self.assertFalse(any("openid" in k for k in self.reg.keys))
@@ -928,7 +928,7 @@ try:
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtWidgets import QApplication
 
-    from oid4vc_wallet.gui import app as gui
+    from atesta_id_wallet.gui import app as gui
 except ImportError:  # la GUI es opcional
     gui = None
 
@@ -1040,7 +1040,7 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(seen, ["openid4vp://?request_uri=https://v/otro"])
 
     def test_scan_waits_for_new_screenshot(self):
-        shots = Path(tempfile.mkdtemp(prefix="oid4vc-shots-"))
+        shots = Path(tempfile.mkdtemp(prefix="atesta-shots-"))
         old = shots / "old.png"
         qr_png("openid4vp://?request_uri=https://v/old", old)
         os.utime(old, (time.time() - 3600, time.time() - 3600))  # anterior: no debe usarse

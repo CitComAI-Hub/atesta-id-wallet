@@ -1,16 +1,16 @@
 # -*- mode: python -*-
 # PyInstaller: una carpeta con dos ejecutables que comparten las bibliotecas:
-#   oid4vc-wallet-gui   interfaz gráfica (sin consola en Windows)
-#   oid4vc-wallet       terminal
-# Uso (desde la raíz del repositorio):  pyinstaller --noconfirm packaging/oid4vc-wallet.spec
+#   atesta-id-wallet-gui   interfaz gráfica (sin consola en Windows)
+#   atesta-id-wallet       terminal
+# Uso (desde la raíz del repositorio):  pyinstaller --noconfirm packaging/atesta-id-wallet.spec
 import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(SPECPATH).parent
-ICON = str(ROOT / "packaging" / "oid4vc-wallet.ico") if sys.platform == "win32" else None
-DATAS = collect_data_files("oid4vc_wallet")  # catálogos de idiomas e iconos
+ICON = str(ROOT / "packaging" / "atesta-id-wallet.ico") if sys.platform == "win32" else None
+DATAS = collect_data_files("atesta_id_wallet")  # catálogos de idiomas e iconos
 # Partes de Qt que el wallet no usa (ahorran espacio; QtNetwork sí: ventana única).
 EXCLUDES = ["tkinter", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtPdf", "PySide6.QtOpenGL",
             "PySide6.QtSql", "PySide6.QtTest", "PySide6.QtDBus", "PySide6.QtConcurrent"]
@@ -25,10 +25,10 @@ cli = Analysis([str(ROOT / "packaging" / "launch_cli.py")], pathex=[str(ROOT)], 
 gui.binaries = [b for b in gui.binaries
                 if not any(part in b[0] for part in ("libqgtk3", "libgtk-3", "libgdk-3"))]
 
-gui_exe = EXE(PYZ(gui.pure), gui.scripts, [], exclude_binaries=True, name="oid4vc-wallet-gui",
+gui_exe = EXE(PYZ(gui.pure), gui.scripts, [], exclude_binaries=True, name="atesta-id-wallet-gui",
               console=False, icon=ICON, upx=False)
-cli_exe = EXE(PYZ(cli.pure), cli.scripts, [], exclude_binaries=True, name="oid4vc-wallet",
+cli_exe = EXE(PYZ(cli.pure), cli.scripts, [], exclude_binaries=True, name="atesta-id-wallet",
               console=True, icon=ICON, upx=False)
 
 COLLECT(gui_exe, gui.binaries, gui.datas, cli_exe, cli.binaries, cli.datas,
-        name="oid4vc-wallet", upx=False)
+        name="atesta-id-wallet", upx=False)

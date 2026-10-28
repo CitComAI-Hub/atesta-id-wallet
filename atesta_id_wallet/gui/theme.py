@@ -71,7 +71,7 @@ CARD_GRADIENTS = (
 
 
 def system_is_dark() -> bool:
-    forced = os.environ.get("OID4VC_WALLET_THEME", "").lower()
+    forced = os.environ.get("ATESTA_ID_WALLET_THEME", "").lower()
     if forced in ("light", "dark"):
         return forced == "dark"
     hints = QGuiApplication.styleHints()
@@ -147,7 +147,7 @@ def _private_tmp() -> Path:
     import shutil
     import tempfile
 
-    path = Path(tempfile.mkdtemp(prefix="oid4vc-wallet-"))
+    path = Path(tempfile.mkdtemp(prefix="atesta-id-wallet-"))
     atexit.register(shutil.rmtree, path, True)
     return path
 

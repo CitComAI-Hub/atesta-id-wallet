@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
         self._page_name = "wallet"
         self.available_release: updates.Release | None = None
 
-        self.setWindowTitle("OID4VC Wallet")
+        self.setWindowTitle("Atesta ID Wallet")
         self.setMinimumSize(920, 640)
         self.resize(1100, 740)
         QGuiApplication.clipboard().dataChanged.connect(self._watch_tick)
@@ -242,7 +242,7 @@ class MainWindow(QMainWindow):
         brand.addWidget(IconBubble("wallet", t.on_accent, t.accent, 38))
         names = QVBoxLayout()
         names.setSpacing(0)
-        names.addWidget(label("OID4VC Wallet", "appName"))
+        names.addWidget(label("Atesta ID Wallet", "appName"))
         names.addWidget(label(tr("Verifiable credentials"), "appTagline", wrap=True))
         brand.addLayout(names, 1)
         column.addLayout(brand)
@@ -662,7 +662,7 @@ class MainWindow(QMainWindow):
             return self._result(False, tr("Nothing to back up"), tr("This profile has no credentials yet."),
                                 icon="info", tone="accent")
         path, _ = QFileDialog.getSaveFileName(self, tr("Save encrypted backup"),
-                                              str(Path.home() / f"oid4vc-wallet-{storage.PROFILE}.bak"))
+                                              str(Path.home() / f"atesta-id-wallet-{storage.PROFILE}.bak"))
         if not path:
             return
 
@@ -808,7 +808,7 @@ def _remember_profile(name: str) -> None:
 
 def _choose_startup_profile(requested: str | None) -> str:
     profiles = list_profiles()
-    requested = requested or os.environ.get("OID4VC_WALLET_PROFILE")
+    requested = requested or os.environ.get("ATESTA_ID_WALLET_PROFILE")
     if requested and requested not in profiles:
         raise WalletError(tr("The profile '{name}' does not exist.", name=requested))
     remembered = load_settings().get("profile")
@@ -836,16 +836,16 @@ def _instance_name() -> str:
         if not re.fullmatch(r"[0-9a-f]{32}", token):
             token = secrets.token_hex(16)
             storage.write_private(token_file, token)
-        return f"oid4vc-wallet-{token}"
+        return f"atesta-id-wallet-{token}"
     runtime = os.environ.get("XDG_RUNTIME_DIR")
-    candidates = [Path(runtime) / "oid4vc-wallet-gui.sock"] if runtime and Path(runtime).is_dir() else []
+    candidates = [Path(runtime) / "atesta-id-wallet-gui.sock"] if runtime and Path(runtime).is_dir() else []
     candidates.append(storage.BASE_DIR / "gui.sock")
     for path in candidates:
         if len(str(path).encode()) < 100:  # límite de longitud de los sockets Unix (sun_path)
             if path.parent == storage.BASE_DIR:
                 storage.ensure_data_dir(storage.BASE_DIR)
             return str(path)
-    return f"oid4vc-wallet-{os.getuid()}"  # en el directorio temporal; Qt lo crea solo para este usuario
+    return f"atesta-id-wallet-{os.getuid()}"  # en el directorio temporal; Qt lo crea solo para este usuario
 
 
 def forward_to_running_instance(entry: str | None, name: str | None = None) -> bool:
@@ -899,15 +899,15 @@ def listen_for_instances(window: MainWindow, name: str | None = None) -> QLocalS
 
 def main(argv: list[str] | None = None) -> int:
     i18n.set_language(i18n.resolve(load_settings().get("language"), QLocale.system().name()))
-    parser = argparse.ArgumentParser(prog="oid4vc-wallet-gui", description=tr("OpenID4VC wallet (graphical interface)."))
+    parser = argparse.ArgumentParser(prog="atesta-id-wallet-gui", description=tr("Atesta ID Wallet (graphical interface)."))
     parser.add_argument("entry", nargs="?", help=tr("openid4vp:// or openid-credential-offer:// link, or an image"))
     parser.add_argument("--profile", help=tr("Profile to use"))
     parser.add_argument("--verbose", action="store_true", help=tr("Log the protocol details"))
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
-    QGuiApplication.setApplicationDisplayName("OID4VC Wallet")
-    QGuiApplication.setDesktopFileName("oid4vc-wallet")
+    QGuiApplication.setApplicationDisplayName("Atesta ID Wallet")
+    QGuiApplication.setDesktopFileName("atesta-id-wallet")
     app = QApplication.instance() or QApplication(sys.argv[:1])
     if args.smoke_test:
         return smoke_test()
@@ -939,7 +939,7 @@ def main(argv: list[str] | None = None) -> int:
 def smoke_test() -> int:
     """
     Comprueba que un ejecutable empaquetado trae lo necesario (lo usa la CI): Qt con SVG, iconos,
-    catálogos, zxing-cpp, Pillow y cryptography. Usa $OID4VC_WALLET_HOME si se le da uno vacío y
+    catálogos, zxing-cpp, Pillow y cryptography. Usa $ATESTA_ID_WALLET_HOME si se le da uno vacío y
     devuelve 0 o 1, sin diálogos (en Windows la GUI no tiene consola donde escribir).
     """
     try:

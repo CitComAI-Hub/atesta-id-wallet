@@ -156,7 +156,7 @@ def _resolve_credentials(selectors: list[str], records: list[dict[str, Any]]) ->
             continue
         hits = [r for r in records if Path(r["_path"]).stem.startswith(selector)]
         if len(hits) != 1:
-            raise WalletError(tr("'{selector}' does not identify a single credential (see 'oid4vc-wallet list').",
+            raise WalletError(tr("'{selector}' does not identify a single credential (see 'atesta-id-wallet list').",
                                  selector=selector))
         out.append(hits[0])
     return out
@@ -179,7 +179,7 @@ def cmd_reset(args: argparse.Namespace) -> int:
     print(tr_n("The wallet key, {n} credential and the settings of the profile '{profile}' ({path}) will be "
                "deleted.", "The wallet key, {n} credentials and the settings of the profile '{profile}' ({path}) "
                "will be deleted.", count, profile=storage.PROFILE, path=storage.DATA_DIR))
-    print(tr("Deleted credentials cannot be recovered without a backup ('oid4vc-wallet backup')."))
+    print(tr("Deleted credentials cannot be recovered without a backup ('atesta-id-wallet backup')."))
     if not args.yes:
         if not sys.stdin.isatty():
             raise WalletError(tr("reset needs interactive confirmation (or --yes)."))
@@ -208,8 +208,8 @@ def cmd_backup(args: argparse.Namespace) -> int:
 def cmd_restore(args: argparse.Namespace) -> int:
     if not profile_is_empty():
         raise WalletError(tr(
-            "The profile '{profile}' already has data. Restore into a new profile (oid4vc-wallet profiles add NAME; "
-            "oid4vc-wallet --profile NAME restore ...) or empty it with reset.", profile=storage.PROFILE
+            "The profile '{profile}' already has data. Restore into a new profile (atesta-id-wallet profiles add NAME; "
+            "atesta-id-wallet --profile NAME restore ...) or empty it with reset.", profile=storage.PROFILE
         ))
     count = restore_backup(Path(args.file).expanduser(), getpass.getpass(tr("Backup password: ")))
     print(tr_n("✔ Restored into the profile '{profile}': {n} credential.",
@@ -220,7 +220,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
 def cmd_profiles(args: argparse.Namespace) -> int:
     if args.action == "add":
         create_profile(args.name)
-        print(tr("✔ Profile '{name}' created. Use it with: oid4vc-wallet --profile {name} ...", name=args.name))
+        print(tr("✔ Profile '{name}' created. Use it with: atesta-id-wallet --profile {name} ...", name=args.name))
         return 0
     if args.action == "remove":
         profile_dir(args.name)  # valida el nombre antes de preguntar
@@ -293,10 +293,10 @@ def cmd_check_update() -> int:
 def cmd_update(args: argparse.Namespace) -> int:
     if args.check or FROZEN:  # los paquetes (AppImage, .deb, instalador) se actualizan descargando el nuevo
         return cmd_check_update()
-    marker = Path(sys.prefix) / "oid4vc-wallet-source"
+    marker = Path(sys.prefix) / "atesta-id-wallet-source"
     if not marker.exists():
         raise WalletError(tr("This installation was not made with install.sh. Update with 'git pull' and "
-                             "'./install.sh', or with 'pipx upgrade oid4vc-wallet'."))
+                             "'./install.sh', or with 'pipx upgrade atesta-id-wallet'."))
     source = Path(marker.read_text(encoding="utf-8").strip())
     if not (source / ".git").exists():
         raise WalletError(tr("{path} is not a git repository; it cannot be updated.", path=source))
@@ -308,14 +308,14 @@ def cmd_update(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="oid4vc-wallet",
+        prog="atesta-id-wallet",
         description=tr("Desktop OpenID4VCI/OpenID4VP wallet."),
-        epilog=tr("Without a subcommand, 'oid4vc-wallet [LINK|IMAGE]' detects whether it is an offer or a login "
+        epilog=tr("Without a subcommand, 'atesta-id-wallet [LINK|IMAGE]' detects whether it is an offer or a login "
                   "request. Without arguments it uses the clipboard or the latest screenshot with a QR code."),
     )
     parser.add_argument("--verbose", action="store_true", help=tr("Show protocol details."))
     parser.add_argument("--profile", metavar=tr("NAME"),
-                        help=tr("Profile (identity) to use; also $OID4VC_WALLET_PROFILE. Default: default."))
+                        help=tr("Profile (identity) to use; also $ATESTA_ID_WALLET_PROFILE. Default: default."))
     parser.add_argument("--pause", action="store_true",
                         help=tr("Wait for Enter at the end (when launched from the desktop)."))
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -432,7 +432,7 @@ def _pop_profile(argv: list[str]) -> str | None:
 
 
 def _select_profile(requested: str | None, command: str) -> None:
-    name = requested or os.environ.get("OID4VC_WALLET_PROFILE")
+    name = requested or os.environ.get("ATESTA_ID_WALLET_PROFILE")
     profiles = list_profiles()
     if name is None and command in ("issue", "present") and len(profiles) > 1 and sys.stdin.isatty():
         print(tr("Profiles: {list}", list=", ".join(f"{i}. {p}" for i, p in enumerate(profiles, 1))))
@@ -443,7 +443,7 @@ def _select_profile(requested: str | None, command: str) -> None:
             name = answer
     name = name or DEFAULT_PROFILE
     if name not in profiles and command != "profiles":
-        raise WalletError(tr("The profile '{name}' does not exist. Create it with: oid4vc-wallet profiles add {name}",
+        raise WalletError(tr("The profile '{name}' does not exist. Create it with: atesta-id-wallet profiles add {name}",
                              name=name))
     set_profile(name)
     if name != DEFAULT_PROFILE:

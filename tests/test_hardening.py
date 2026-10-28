@@ -12,10 +12,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_offline as base  # noqa: E402  (fija OID4VC_WALLET_HOME y el idioma de las pruebas)
+import test_offline as base  # noqa: E402  (fija ATESTA_ID_WALLET_HOME y el idioma de las pruebas)
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 
-from oid4vc_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, vci, vp  # noqa: E402
+from atesta_id_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, vci, vp  # noqa: E402
 
 
 POSIX_ONLY = unittest.skipIf(os.name != "posix", "Windows: los datos los protege la ACL del perfil, no los bits de modo")
@@ -358,7 +358,7 @@ class GuiSafetyTests(unittest.TestCase):
     def test_external_text_is_never_html(self):
         from PySide6.QtCore import Qt
 
-        from oid4vc_wallet.gui import sheets, widgets
+        from atesta_id_wallet.gui import sheets, widgets
 
         self.assertEqual(widgets.label("<b>x</b>").textFormat(), Qt.PlainText)
         self.assertEqual(widgets.esc("<b>a & b</b>\nc"), "&lt;b&gt;a &amp; b&lt;/b&gt;<br>c")
@@ -398,7 +398,7 @@ class GuiSafetyTests(unittest.TestCase):
         self.addCleanup(window.close)
         received = []
         window.process = received.append
-        name = f"oid4vc-wallet-test-{os.getpid()}-{time.time_ns()}"
+        name = f"atesta-id-wallet-test-{os.getpid()}-{time.time_ns()}"
         server = base.gui.listen_for_instances(window, name)
         self.addCleanup(server.close)
         self.assertFalse(base.gui.forward_to_running_instance("x", name + "-nobody"))

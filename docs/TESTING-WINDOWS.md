@@ -16,7 +16,7 @@ enabled and the log copied).
       for the pilot instructions.
 - [ ] The installer does not ask for administrator rights; its language follows Windows
       (English, Spanish or Danish).
-- [ ] Installed in `%LOCALAPPDATA%\Programs\OID4VC Wallet`; Start menu entry *OID4VC Wallet* with the icon.
+- [ ] Installed in `%LOCALAPPDATA%\Programs\Atesta ID Wallet`; Start menu entry *Atesta ID Wallet* with the icon.
 - [ ] The window opens from the Start menu, with the app icon in the taskbar and in Alt+Tab.
 - [ ] The interface language follows Windows; changing it in *Settings → General* works.
 
@@ -48,18 +48,18 @@ Firefox if pilot users have it).
 
 ## 5. Data and permissions
 
-- [ ] Data is in `%APPDATA%\oid4vc-wallet` (`holder_key.pem`, `credentials\`, `config.json`, `settings.json`).
+- [ ] Data is in `%APPDATA%\atesta-id-wallet` (`holder_key.pem`, `credentials\`, `config.json`, `settings.json`).
 - [ ] Another (non-admin) Windows user on the same PC cannot open that folder
       (*Properties → Security* only lists the user, SYSTEM and Administrators).
 - [ ] Antivirus (Defender) does not quarantine or block the executables; note any warning.
 
 ## 6. Command line
 
-From PowerShell, in the install folder (`cd "$env:LOCALAPPDATA\Programs\OID4VC Wallet"`):
+From PowerShell, in the install folder (`cd "$env:LOCALAPPDATA\Programs\Atesta ID Wallet"`):
 
-- [ ] `.\oid4vc-wallet.exe --version`, `.\oid4vc-wallet.exe list` and `.\oid4vc-wallet.exe history`
+- [ ] `.\atesta-id-wallet.exe --version`, `.\atesta-id-wallet.exe list` and `.\atesta-id-wallet.exe history`
       print correctly, including `✔` and accented characters.
-- [ ] `.\oid4vc-wallet.exe update` reports the latest version (or that none is published).
+- [ ] `.\atesta-id-wallet.exe update` reports the latest version (or that none is published).
 
 ## 7. Update and uninstall
 
@@ -67,11 +67,11 @@ From PowerShell, in the install folder (`cd "$env:LOCALAPPDATA\Programs\OID4VC W
 - [ ] Same with the wallet open: the installer asks to close it.
 - [ ] *Settings → About → New versions → Check now* reports the right result.
 - [ ] Uninstall from *Settings → Apps*: the program, Start menu entry and links are gone
-      (a link click no longer opens the wallet), and `%APPDATA%\oid4vc-wallet` is still there.
+      (a link click no longer opens the wallet), and `%APPDATA%\atesta-id-wallet` is still there.
 
 ## 8. Portable zip
 
-- [ ] Unzip, run `oid4vc-wallet-gui.exe`, *Settings → General → Wallet links → Register*:
+- [ ] Unzip, run `atesta-id-wallet-gui.exe`, *Settings → General → Wallet links → Register*:
       links open this copy.
 
 ## Decision: macOS

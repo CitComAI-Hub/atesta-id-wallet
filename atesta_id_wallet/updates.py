@@ -2,7 +2,7 @@
 """
 Aviso de versiones nuevas (GitHub Releases).
 
-Solo se consulta GitHub si el usuario lo pide (Ajustes / `oid4vc-wallet update`) o activa la
+Solo se consulta GitHub si el usuario lo pide (Ajustes / `atesta-id-wallet update`) o activa la
 comprobación automática (una vez al día como mucho). La petición no lleva datos del wallet:
 GitHub solo ve la dirección IP y la versión en el User-Agent. No se descarga ni instala nada.
 """
@@ -19,7 +19,7 @@ from .common import WalletError, __version__, _json
 from .i18n import tr
 from .storage import load_settings, save_settings
 
-REPOSITORY = "CitComAI-Hub/oid4vc-wallet"
+REPOSITORY = "CitComAI-Hub/atesta-id-wallet"
 RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases"
 LATEST_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 CHECK_INTERVAL = 24 * 3600
@@ -40,7 +40,7 @@ def parse_version(text: str) -> tuple[int, ...]:
 def latest_release(timeout: float = 10) -> Release:
     """Última versión publicada (/releases/latest ya excluye borradores y versiones previas)."""
     response = requests.get(LATEST_API, timeout=timeout, headers={
-        "Accept": "application/vnd.github+json", "User-Agent": f"oid4vc-wallet/{__version__}"})
+        "Accept": "application/vnd.github+json", "User-Agent": f"atesta-id-wallet/{__version__}"})
     if response.status_code == 404:  # sin versiones publicadas, o repositorio privado
         raise WalletError(tr("No published version was found at {url}", url=RELEASES_PAGE))
     data = _json(response, "GET", LATEST_API)

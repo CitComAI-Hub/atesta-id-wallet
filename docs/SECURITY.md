@@ -44,7 +44,7 @@ domain, so the wallet also decides how far it can **trust** that certificate:
 
 | Trust level | Meaning | Shown as |
 |---|---|---|
-| `trusted` | The chain validates up to a CA in `trusted_cas/` (*Settings → Trust* or `oid4vc-wallet trust add-ca`). | green |
+| `trusted` | The chain validates up to a CA in `trusted_cas/` (*Settings → Trust* or `atesta-id-wallet trust add-ca`). | green |
 | `pinned` | Not CA-backed, but it is the same certificate as last time (trust on first use, like SSH). | green |
 | `new` | Signed and consistent, but never seen before. | amber |
 | `changed` | A different certificate for a client_id seen before. Possible impersonation. | red + risk checkbox |
@@ -109,17 +109,17 @@ name to look like a trusted one or inject links.
   global, so the pipe name carries a random suffix stored in the user's data folder: another user
   cannot guess it and create the pipe first.
 - Temporary files of the window (themed icons) go to a private, per-process temporary directory.
-- `harden_permissions()` only touches the wallet's own files, even if `$OID4VC_WALLET_HOME` points
+- `harden_permissions()` only touches the wallet's own files, even if `$ATESTA_ID_WALLET_HOME` points
   to a folder that contains other things.
 
 ## Releases and updates
 
 - Releases are built by GitHub Actions from a tag (`.github/workflows/release.yml`), not on a
   developer's machine. Each release has a `SHA256SUMS` file and, on a public repository, a signed
-  build provenance attestation (`gh attestation verify FILE --repo CitComAI-Hub/oid4vc-wallet`).
+  build provenance attestation (`gh attestation verify FILE --repo CitComAI-Hub/atesta-id-wallet`).
   Windows builds are not Authenticode-signed yet.
 - The wallet never downloads or installs anything by itself. *Settings → About → New versions*
-  (off by default) or `oid4vc-wallet update` asks the GitHub API for the latest release. The
+  (off by default) or `atesta-id-wallet update` asks the GitHub API for the latest release. The
   request carries no wallet data: GitHub sees the IP address and the version in the User-Agent.
   The download page that is opened must be under the project's releases page.
 

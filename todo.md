@@ -7,7 +7,7 @@
 - **Platforms**: Linux (any distro) + Windows; macOS later (needs a signed .app bundle).
 - **UI**: PySide6 (Qt) on top of the protocol code; the CLI stays for debugging and automation.
 - **Language**: documentation in English; the app in English (source and fallback), Spanish and
-  Danish, chosen automatically from the system or by hand (Settings / `oid4vc-wallet language`).
+  Danish, chosen automatically from the system or by hand (Settings / `atesta-id-wallet language`).
 
 ## Status (0.6.0, October 2026)
 
@@ -48,7 +48,7 @@ app lock, the CITCOM verifier trust list, and a decision on the second login.
         longer crash. JWE: only ECDH-ES keys of supported curves are used.
   - [x] Storage: `config.json` and other files written atomically (a crash could empty it and
         drop the verifier pins); two credentials received in the same second no longer overwrite
-        each other; `harden_permissions` no longer chmods every file under `$OID4VC_WALLET_HOME`;
+        each other; `harden_permissions` no longer chmods every file under `$ATESTA_ID_WALLET_HOME`;
         adding a CA with an existing file name no longer replaces the other CA.
   - [x] GUI: single window (links go to the running window through a private local socket);
         remembers the last profile; profile switch is ignored during a flow; temporary icon files
@@ -64,7 +64,7 @@ app lock, the CITCOM verifier trust list, and a decision on the second login.
   - [x] App aware of being packaged: link handler points to the executable or the AppImage,
         `update` only checks; *Settings → General → Wallet links → Register*.
   - [x] New-version notice: *Settings → About* (automatic daily check, off by default) and
-        `oid4vc-wallet update [--check]`; the app never downloads anything by itself.
+        `atesta-id-wallet update [--check]`; the app never downloads anything by itself.
   - [x] Provisional app icon (`packaging/app-icon.svg`), also used by `install-handler`.
   - [x] Windows fixes found on review: random single-instance pipe name (other users could
         take a guessable one), CLI output that does not crash on non-UTF-8 consoles.
@@ -88,7 +88,7 @@ app lock, the CITCOM verifier trust list, and a decision on the second login.
 7. [ ] **Pilot plan**: who (number of users, roles), scenarios (receive, sign in, backup/restore,
        second device), what is measured (success rate, time, support requests), feedback form.
 8. [ ] **First-run guide** in the GUI: what the wallet is, why a backup matters, where the data lives.
-9. [ ] Product name, final app icon (replace `packaging/app-icon.svg`, run `make_icons.py`) and
+9. [ ] Final app icon for *Atesta ID Wallet* (replace `packaging/app-icon.svg`, run `make_icons.py`) and
        issuer logo (`display.logo`) on the cards; see open questions.
 10. [ ] Danish reviewed by a native speaker.
 
@@ -125,6 +125,4 @@ even if the browser already has one. Options (decide with whoever administers Ke
 - Can the repository be public (downloads and new-version check), or where will builds be hosted?
 - Who buys and keeps the Windows code-signing certificate?
 - Who administers the CITCOM Keycloak (for options A/B of the second login)?
-- Product name and app icon: "OID4VC Wallet" describes the protocol, not the product. Pick a
-  name first (it decides the icon), check it is free, and keep `oid4vc-wallet` as the package
-  and command name.
+- App icon for the name *Atesta ID Wallet* (the current one is a placeholder).

@@ -27,13 +27,13 @@ from .sdjwt import SdJwt, parse_sd_jwt
 
 def _default_base_dir() -> Path:
     if sys.platform == "win32":
-        return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "oid4vc-wallet"
+        return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "atesta-id-wallet"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "oid4vc-wallet"
-    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "oid4vc-wallet"
+        return Path.home() / "Library" / "Application Support" / "atesta-id-wallet"
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "atesta-id-wallet"
 
 
-BASE_DIR = Path(os.environ.get("OID4VC_WALLET_HOME") or _default_base_dir())
+BASE_DIR = Path(os.environ.get("ATESTA_ID_WALLET_HOME") or _default_base_dir())
 PROFILES_DIR = BASE_DIR / "profiles"
 DEFAULT_PROFILE = "default"
 LEGACY_DATA_DIR = Path(__file__).resolve().parent.parent / "wallet_data"  # versiones de un solo script
@@ -163,7 +163,7 @@ def write_private(path: Path, text: str) -> None:
 def harden_permissions() -> None:
     """
     Corrige permisos de datos creados por la 0.1 (con el umask por defecto). Solo toca lo que
-    es del wallet: $OID4VC_WALLET_HOME puede apuntar a una carpeta con otras cosas.
+    es del wallet: $ATESTA_ID_WALLET_HOME puede apuntar a una carpeta con otras cosas.
     """
     if not BASE_DIR.is_dir():
         return
@@ -187,12 +187,25 @@ def harden_permissions() -> None:
             os.chmod(target, 0o600)
 
 
+def previous_name_dir() -> Path:
+    """Default data folder of versions before 0.6, when the wallet was called oid4vc-wallet."""
+    return _default_base_dir().with_name("oid4vc-wallet")
+
+
 def migrate_legacy_data() -> None:
-    """Copia ./wallet_data (versiones anteriores del script) al directorio de datos."""
-    if BASE_DIR.exists() or not LEGACY_DATA_DIR.is_dir():
+    """
+    Moves the data folder of versions before 0.6 (oid4vc-wallet) to the new one, or copies
+    ./wallet_data (the single-script versions) into it. Never overwrites existing data.
+    """
+    if BASE_DIR.exists():
         return
-    shutil.copytree(LEGACY_DATA_DIR, BASE_DIR)
-    log(tr("Data copied from {old} to {new}", old=LEGACY_DATA_DIR, new=BASE_DIR))
+    previous = previous_name_dir()
+    if "ATESTA_ID_WALLET_HOME" not in os.environ and previous.is_dir() and not previous.is_symlink():
+        shutil.move(str(previous), str(BASE_DIR))
+        log(tr("Data moved from {old} to {new}", old=previous, new=BASE_DIR))
+    elif LEGACY_DATA_DIR.is_dir():
+        shutil.copytree(LEGACY_DATA_DIR, BASE_DIR)
+        log(tr("Data copied from {old} to {new}", old=LEGACY_DATA_DIR, new=BASE_DIR))
 
 
 def load_config() -> dict[str, Any]:
@@ -341,7 +354,7 @@ def _wipe_profile(path: Path) -> None:
             target.unlink()
 
 
-BACKUP_MAGIC = b"OID4VCW1"
+BACKUP_MAGIC = b"OID4VCW1"  # from the previous name; kept so that older backups can still be restored
 
 
 def _backup_key(password: str, salt: bytes) -> bytes:
@@ -379,7 +392,7 @@ def restore_backup(path: Path, password: str) -> int:
                              profile=PROFILE))
     data = path.read_bytes()
     if not data.startswith(BACKUP_MAGIC):
-        raise WalletError(tr("The file is not an oid4vc-wallet backup."))
+        raise WalletError(tr("The file is not an atesta-id-wallet backup."))
     salt, nonce, sealed = data[8:24], data[24:36], data[36:]
     try:
         plain = AESGCM(_backup_key(password, salt)).decrypt(nonce, sealed, BACKUP_MAGIC)
@@ -435,7 +448,7 @@ def create_profile(name: str) -> None:
 
 def remove_profile(name: str) -> None:
     if name == DEFAULT_PROFILE:
-        raise WalletError(tr("The 'default' profile cannot be removed; empty it with 'oid4vc-wallet reset'."))
+        raise WalletError(tr("The 'default' profile cannot be removed; empty it with 'atesta-id-wallet reset'."))
     path = profile_dir(name)
     if not path.is_dir():
         raise WalletError(tr("The profile '{name}' does not exist.", name=name))

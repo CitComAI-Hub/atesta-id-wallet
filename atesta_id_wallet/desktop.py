@@ -18,11 +18,11 @@ from .i18n import tr
 
 DESKTOP_FILE = (
     Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
-    / "applications" / "oid4vc-wallet.desktop"
+    / "applications" / "atesta-id-wallet.desktop"
 )
 ICON_THEME_FILE = (
     Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
-    / "icons" / "hicolor" / "256x256" / "apps" / "oid4vc-wallet.png"
+    / "icons" / "hicolor" / "256x256" / "apps" / "atesta-id-wallet.png"
 )
 APP_ICON = Path(__file__).resolve().parent / "gui" / "icons" / "app-icon.png"
 # Ejecutable de PyInstaller (AppImage, .deb o instalador de Windows) en vez de un paquete de Python.
@@ -268,7 +268,7 @@ def gui_available() -> bool:
 
 def _frozen_executable(gui: bool) -> Path:
     """Los dos ejecutables empaquetados están en la misma carpeta."""
-    name = "oid4vc-wallet-gui" if gui else "oid4vc-wallet"
+    name = "atesta-id-wallet-gui" if gui else "atesta-id-wallet"
     return Path(sys.executable).with_name(name + (".exe" if sys.platform == "win32" else ""))
 
 
@@ -279,10 +279,10 @@ def _launcher(gui: bool = False) -> list[str]:
     if FROZEN:
         return [str(_frozen_executable(gui))]
     if gui:
-        installed = shutil.which("oid4vc-wallet-gui")
-        return [installed] if installed else [sys.executable, "-m", "oid4vc_wallet.gui"]
-    installed = shutil.which("oid4vc-wallet")
-    return [installed] if installed else [sys.executable, "-m", "oid4vc_wallet"]
+        installed = shutil.which("atesta-id-wallet-gui")
+        return [installed] if installed else [sys.executable, "-m", "atesta_id_wallet.gui"]
+    installed = shutil.which("atesta-id-wallet")
+    return [installed] if installed else [sys.executable, "-m", "atesta_id_wallet"]
 
 
 def _desktop_exec(gui: bool = False) -> str:
@@ -300,7 +300,7 @@ def _install_icon() -> str:
         return "dialog-password"
     ICON_THEME_FILE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(APP_ICON, ICON_THEME_FILE)
-    return "oid4vc-wallet"
+    return "atesta-id-wallet"
 
 
 def _install_linux(gui: bool) -> None:
@@ -310,7 +310,7 @@ def _install_linux(gui: bool) -> None:
     DESKTOP_FILE.write_text(
         "[Desktop Entry]\n"
         "Type=Application\n"
-        "Name=OID4VC Wallet\n"
+        "Name=Atesta ID Wallet\n"
         "Comment=Verifiable credentials wallet (OpenID4VCI / OpenID4VP)\n"
         "Comment[es]=Wallet de credenciales verificables (OpenID4VCI / OpenID4VP)\n"
         "Comment[da]=Wallet til verificerbare legitimationer (OpenID4VCI / OpenID4VP)\n"
@@ -326,8 +326,8 @@ def _install_linux(gui: bool) -> None:
     subprocess.run(["update-desktop-database", str(DESKTOP_FILE.parent)], check=False,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(tr("✔ Installed {file}", file=DESKTOP_FILE))
-    print(tr("  · 'OID4VC Wallet' appears in the applications menu (graphical interface).") if gui else
-          tr("  · 'OID4VC Wallet' appears in the applications menu: it reads the clipboard or the latest screenshot."))
+    print(tr("  · 'Atesta ID Wallet' appears in the applications menu (graphical interface).") if gui else
+          tr("  · 'Atesta ID Wallet' appears in the applications menu: it reads the clipboard or the latest screenshot."))
 
 
 def _install_windows(gui: bool) -> None:
@@ -365,7 +365,7 @@ def cmd_install_handler(args: argparse.Namespace | None) -> int:
         _install_windows(gui)
     elif sys.platform == "darwin":
         raise WalletError(tr("On macOS, openid4vp:// links need a packaged application (.app), which is not "
-                             "available yet. Use 'oid4vc-wallet' with the link, the clipboard or a screenshot."))
+                             "available yet. Use 'atesta-id-wallet' with the link, the clipboard or a screenshot."))
     else:
         _install_linux(gui)
     print(tr("  · openid4vp:// and openid-credential-offer:// links will open with the wallet."))

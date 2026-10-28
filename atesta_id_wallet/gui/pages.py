@@ -405,7 +405,7 @@ class SettingsPage(Page):
         auto_update.setChecked(updates.automatic_check_enabled())
         auto_update.toggled.connect(w.set_update_check)
         about = [
-            _setting(f"OID4VC Wallet {__version__}", "OpenID4VCI 1.0 + OpenID4VP · SD-JWT VC\n"
+            _setting(f"Atesta ID Wallet {__version__}", "OpenID4VCI 1.0 + OpenID4VP · SD-JWT VC\n"
                      + tr("Data: {path}", path=storage.DATA_DIR)),
             _setting(tr("New versions"), tr("Check once a day whether a newer version has been published on GitHub. "
                                             "Nothing about your wallet is sent."),

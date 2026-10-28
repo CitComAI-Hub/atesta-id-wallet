@@ -1,4 +1,4 @@
-# oid4vc-wallet
+# Atesta ID Wallet
 
 A desktop wallet for **verifiable credentials**. It receives credentials with
 OpenID4VCI 1.0 and uses them to sign in with OpenID4VP 1.0, in SD-JWT VC format
@@ -12,23 +12,23 @@ Keycloak and log in to verifiers (e.g. the CITCOM/VRAIN marketplace) from your l
 
 ## Install
 
-Ready-made builds are on the [releases page](https://github.com/CitComAI-Hub/oid4vc-wallet/releases),
+Ready-made builds are on the [releases page](https://github.com/CitComAI-Hub/atesta-id-wallet/releases),
 each with a `SHA256SUMS` file. They need no Python and no administrator rights (except the `.deb`).
 
 | System | File | How |
 |---|---|---|
-| Windows 10/11 (x64) | `OID4VC_Wallet-X.Y.Z-windows-x64-setup.exe` | Run it. Installs for your user, adds a Start menu entry and opens the wallet links. |
-| Windows, portable | `OID4VC_Wallet-X.Y.Z-windows-x64.zip` | Unzip and run `oid4vc-wallet-gui.exe`; register the links in *Settings → General*. |
-| Debian, Ubuntu (22.04+) | `oid4vc-wallet_X.Y.Z_amd64.deb` | `sudo apt install ./oid4vc-wallet_X.Y.Z_amd64.deb` |
-| Any Linux (glibc 2.35+) | `OID4VC_Wallet-X.Y.Z-x86_64.AppImage` | `chmod +x` it and run it; register the links in *Settings → General*. `./OID4VC_Wallet-….AppImage cli …` runs the command line. |
+| Windows 10/11 (x64) | `Atesta_ID_Wallet-X.Y.Z-windows-x64-setup.exe` | Run it. Installs for your user, adds a Start menu entry and opens the wallet links. |
+| Windows, portable | `Atesta_ID_Wallet-X.Y.Z-windows-x64.zip` | Unzip and run `atesta-id-wallet-gui.exe`; register the links in *Settings → General*. |
+| Debian, Ubuntu (22.04+) | `atesta-id-wallet_X.Y.Z_amd64.deb` | `sudo apt install ./atesta-id-wallet_X.Y.Z_amd64.deb` |
+| Any Linux (glibc 2.35+) | `Atesta_ID_Wallet-X.Y.Z-x86_64.AppImage` | `chmod +x` it and run it; register the links in *Settings → General*. `./Atesta_ID_Wallet-….AppImage cli …` runs the command line. |
 
 To check a download: `sha256sum -c SHA256SUMS --ignore-missing` (Linux) or
 `Get-FileHash FILE` (PowerShell) and compare with `SHA256SUMS`. The Windows builds are not
 code-signed yet, so SmartScreen shows a warning (*More info → Run anyway*).
 
 Updating: install the new version over the old one; your data is kept. *Settings → About*
-can check for new versions (off by default) and `oid4vc-wallet update` does it from the terminal.
-Uninstall: Windows *Settings → Apps*; `sudo apt remove oid4vc-wallet`; delete the AppImage. The
+can check for new versions (off by default) and `atesta-id-wallet update` does it from the terminal.
+Uninstall: Windows *Settings → Apps*; `sudo apt remove atesta-id-wallet`; delete the AppImage. The
 wallet data (see [Data](#data)) is never deleted by uninstalling.
 
 ### From source: Linux
@@ -38,18 +38,18 @@ sudo apt install python3-venv wl-clipboard   # wl-clipboard (or xclip): read lin
 ./install.sh
 ```
 
-This installs the **OID4VC Wallet** application (menu entry and `oid4vc-wallet-gui`) and the
-`oid4vc-wallet` command in `~/.local/bin`, without sudo. It also registers the wallet as the
+This installs the **Atesta ID Wallet** application (menu entry and `atesta-id-wallet-gui`) and the
+`atesta-id-wallet` command in `~/.local/bin`, without sudo. It also registers the wallet as the
 handler for `openid-credential-offer://` and `openid4vp://` links. Use `./install.sh --no-gui`
 for the command line only (saves ~250 MB of Qt); links then open in a terminal.
 
 | Task | Command |
 |---|---|
-| Update (git pull + reinstall) | `oid4vc-wallet update` or `./install.sh --update` |
+| Update (git pull + reinstall) | `atesta-id-wallet update` or `./install.sh --update` |
 | Uninstall, keep your data | `./install.sh --uninstall` |
 | Uninstall and delete all data | `./install.sh --uninstall --purge` |
 
-`pipx install ".[gui]"` also works; run `oid4vc-wallet install-handler` afterwards.
+`pipx install ".[gui]"` also works; run `atesta-id-wallet install-handler` afterwards.
 
 ### From source: Windows
 
@@ -58,10 +58,10 @@ Install Python 3.10+ from python.org, then in a terminal:
 ```powershell
 py -m pip install --user pipx; py -m pipx ensurepath   # once; open a new terminal afterwards
 pipx install ".[gui]"
-oid4vc-wallet install-handler    # registers the links for your user (HKCU), no admin rights
+atesta-id-wallet install-handler    # registers the links for your user (HKCU), no admin rights
 ```
 
-Data lives in `%APPDATA%\oid4vc-wallet` unless `OID4VC_WALLET_HOME` is set.
+Data lives in `%APPDATA%\atesta-id-wallet` unless `ATESTA_ID_WALLET_HOME` is set.
 Screenshots are looked up in `Pictures\Screenshots` (also under OneDrive), and the clipboard is
 read for both links and images (Win+Shift+S).
 
@@ -74,16 +74,16 @@ Desktop. Opening `openid4vp://` links directly needs a packaged `.app`, which is
 
 | You… | What opens |
 |---|---|
-| open **OID4VC Wallet** from the applications menu | the window |
+| open **Atesta ID Wallet** from the applications menu | the window |
 | click an `openid4vp://` or `openid-credential-offer://` link | the window (the terminal with `--no-gui` installs) |
-| run `oid4vc-wallet-gui` | the window |
-| run `oid4vc-wallet` | the terminal version |
+| run `atesta-id-wallet-gui` | the window |
+| run `atesta-id-wallet` | the terminal version |
 
 Only one window runs at a time: a link clicked while the wallet is open goes to that window.
 
 ## Usage
 
-Open **OID4VC Wallet** from the applications menu. Your credentials appear as cards in
+Open **Atesta ID Wallet** from the applications menu. Your credentials appear as cards in
 **Wallet**. **Activity** shows what you received and what you shared with whom, and
 **Settings** holds the language, profiles, backups and verifier trust.
 
@@ -114,13 +114,13 @@ nothing, it keeps watching until a QR appears. **Open image…** and **Paste lin
 
 ### Command line
 
-Everything is also available from the terminal. With no arguments, `oid4vc-wallet` looks for
+Everything is also available from the terminal. With no arguments, `atesta-id-wallet` looks for
 input like the **Scan QR** button does, and then asks you to paste a link:
 
 ```bash
-oid4vc-wallet 'openid4vp://?client_id=...&request_uri=...'
-oid4vc-wallet ~/Pictures/Screenshots/screenshot.png
-oid4vc-wallet --verbose present --dry-run --qr-image screenshot.png   # debug without sending
+atesta-id-wallet 'openid4vp://?client_id=...&request_uri=...'
+atesta-id-wallet ~/Pictures/Screenshots/screenshot.png
+atesta-id-wallet --verbose present --dry-run --qr-image screenshot.png   # debug without sending
 ```
 
 In the terminal, consent is a `[y/N]` question showing the same information.
@@ -132,37 +132,37 @@ system language and falls back to English. To choose one by hand, go to *Setting
 Language* in the window, or use the command line:
 
 ```bash
-oid4vc-wallet language        # show the current language and setting
-oid4vc-wallet language da     # auto | en | es | da
+atesta-id-wallet language        # show the current language and setting
+atesta-id-wallet language da     # auto | en | es | da
 ```
 
 The choice is shared by all profiles (`settings.json` in the data folder). Issuer names and
 credential names are shown in the interface language when the issuer publishes them in it.
 
-Translations live in `oid4vc_wallet/i18n/<code>.json`. The English text in the code is the
+Translations live in `atesta_id_wallet/i18n/<code>.json`. The English text in the code is the
 source and the fallback. A test checks that every catalog has all the strings, with the same
 `{placeholders}`. To add a language, copy `es.json`, translate the values and add the code to
-`LANGUAGES` in `oid4vc_wallet/i18n/__init__.py`.
+`LANGUAGES` in `atesta_id_wallet/i18n/__init__.py`.
 
 ## Managing credentials and identities
 
 ```bash
-oid4vc-wallet list [-d]              # stored credentials (-d: all claims)
-oid4vc-wallet history                # what was received, shared or declined, and with whom
-oid4vc-wallet remove 2               # delete by number or id from 'list'
-oid4vc-wallet backup ~/wallet.bak    # encrypted backup of the profile, holder key included
-oid4vc-wallet restore ~/wallet.bak   # into an empty profile
-oid4vc-wallet reset                  # delete key, credentials and settings of the profile
+atesta-id-wallet list [-d]              # stored credentials (-d: all claims)
+atesta-id-wallet history                # what was received, shared or declined, and with whom
+atesta-id-wallet remove 2               # delete by number or id from 'list'
+atesta-id-wallet backup ~/wallet.bak    # encrypted backup of the profile, holder key included
+atesta-id-wallet restore ~/wallet.bak   # into an empty profile
+atesta-id-wallet reset                  # delete key, credentials and settings of the profile
 ```
 
 **Profiles** keep separate identities, for example personal, work or testing. Each profile has
 its own holder key, credentials, history and settings:
 
 ```bash
-oid4vc-wallet profiles add work
-oid4vc-wallet --profile work issue      # or OID4VC_WALLET_PROFILE=work
-oid4vc-wallet profiles                  # list
-oid4vc-wallet profiles remove work
+atesta-id-wallet profiles add work
+atesta-id-wallet --profile work issue      # or ATESTA_ID_WALLET_PROFILE=work
+atesta-id-wallet profiles                  # list
+atesta-id-wallet profiles remove work
 ```
 
 In the window, the active profile is chosen at the bottom of the sidebar or in *Settings →
@@ -172,9 +172,9 @@ profile exists and none is given, `issue` and `present` ask which one to use.
 ## Verifier trust
 
 ```bash
-oid4vc-wallet trust                     # trusted CAs and remembered verifiers
-oid4vc-wallet trust add-ca ca.pem       # trust verifiers whose certificate chains to this CA
-oid4vc-wallet trust forget x509_san_dns:verifier.example
+atesta-id-wallet trust                     # trusted CAs and remembered verifiers
+atesta-id-wallet trust add-ca ca.pem       # trust verifiers whose certificate chains to this CA
+atesta-id-wallet trust forget x509_san_dns:verifier.example
 ```
 
 Without a trusted CA, the wallet works like SSH and trusts a verifier on first use. It pins the
@@ -195,8 +195,8 @@ changes. See [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Data
 
-Stored in `~/.local/share/oid4vc-wallet/` on Linux, `%APPDATA%\oid4vc-wallet` on Windows and
-`~/Library/Application Support/oid4vc-wallet` on macOS (or `$OID4VC_WALLET_HOME`).
+Stored in `~/.local/share/atesta-id-wallet/` on Linux, `%APPDATA%\atesta-id-wallet` on Windows and
+`~/Library/Application Support/atesta-id-wallet` on macOS (or `$ATESTA_ID_WALLET_HOME`).
 Other profiles live in `profiles/<name>/`. Directories are `0700` and files `0600`.
 
 | File | Contents |
@@ -264,4 +264,4 @@ translated through the catalogs; documentation is in English.
 
 ## Credits
 
-Icons from [Lucide](https://lucide.dev) (ISC license, see `oid4vc_wallet/gui/icons/LICENSE`).
+Icons from [Lucide](https://lucide.dev) (ISC license, see `atesta_id_wallet/gui/icons/LICENSE`).

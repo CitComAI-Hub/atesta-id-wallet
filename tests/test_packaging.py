@@ -10,9 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_offline as base  # noqa: E402  (fija OID4VC_WALLET_HOME y el idioma de las pruebas)
+import test_offline as base  # noqa: E402  (fija ATESTA_ID_WALLET_HOME y el idioma de las pruebas)
 
-from oid4vc_wallet import cli, common, desktop, storage, updates  # noqa: E402
+from atesta_id_wallet import cli, common, desktop, i18n, storage, updates  # noqa: E402
 
 
 class FakeResponse:
@@ -40,6 +40,8 @@ def fake_github(test, status=200, **data):
 class UpdateTests(unittest.TestCase):
     def setUp(self):
         base.isolated_home(self)
+        i18n.set_language("es")  # cli.main() switches to the system language
+        self.addCleanup(i18n.set_language, "es")
 
     def test_parse_version(self):
         self.assertEqual(updates.parse_version("v0.10.2"), (0, 10, 2))
@@ -90,6 +92,31 @@ class UpdateTests(unittest.TestCase):
         self.assertIn(common.__version__, out.getvalue())
 
 
+class RenameMigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.home = base.isolated_home(self)
+        saved = os.environ.pop("ATESTA_ID_WALLET_HOME")
+        self.addCleanup(os.environ.__setitem__, "ATESTA_ID_WALLET_HOME", saved)
+        self.addCleanup(setattr, storage, "previous_name_dir", storage.previous_name_dir)
+        self.old = self.home / "oid4vc-wallet"
+        storage.previous_name_dir = lambda: self.old
+        storage.BASE_DIR = self.home / "atesta-id-wallet"
+
+    def test_data_of_the_previous_name_is_moved(self):
+        (self.old / "credentials").mkdir(parents=True)
+        (self.old / "holder_key.pem").write_text("key")
+        storage.migrate_legacy_data()
+        self.assertEqual((storage.BASE_DIR / "holder_key.pem").read_text(), "key")
+        self.assertTrue((storage.BASE_DIR / "credentials").is_dir())
+        self.assertFalse(self.old.exists())
+
+    def test_existing_data_is_never_replaced(self):
+        self.old.mkdir()
+        storage.BASE_DIR.mkdir()
+        storage.migrate_legacy_data()
+        self.assertTrue(self.old.exists())
+
+
 class FrozenLauncherTests(unittest.TestCase):
     def setUp(self):
         self.addCleanup(setattr, desktop, "FROZEN", desktop.FROZEN)
@@ -101,8 +128,8 @@ class FrozenLauncherTests(unittest.TestCase):
         self.folder = base.isolated_home(self) / "bundle"
         self.folder.mkdir()
         suffix = ".exe" if sys.platform == "win32" else ""
-        sys.executable = str(self.folder / f"oid4vc-wallet{suffix}")
-        self.gui_exe = self.folder / f"oid4vc-wallet-gui{suffix}"
+        sys.executable = str(self.folder / f"atesta-id-wallet{suffix}")
+        self.gui_exe = self.folder / f"atesta-id-wallet-gui{suffix}"
 
     def test_both_executables_live_together(self):
         self.assertEqual(desktop._launcher(), [sys.executable])
@@ -112,17 +139,17 @@ class FrozenLauncherTests(unittest.TestCase):
         self.assertTrue(desktop.gui_available())
 
     def test_appimage_links_point_to_the_appimage(self):
-        os.environ["APPIMAGE"] = "/home/u/Apps/OID4VC_Wallet.AppImage"
-        self.assertEqual(desktop._launcher(gui=True), ["/home/u/Apps/OID4VC_Wallet.AppImage"])
-        self.assertEqual(desktop._launcher(), ["/home/u/Apps/OID4VC_Wallet.AppImage", "cli"])
+        os.environ["APPIMAGE"] = "/home/u/Apps/Atesta_ID_Wallet.AppImage"
+        self.assertEqual(desktop._launcher(gui=True), ["/home/u/Apps/Atesta_ID_Wallet.AppImage"])
+        self.assertEqual(desktop._launcher(), ["/home/u/Apps/Atesta_ID_Wallet.AppImage", "cli"])
 
 
 class LinuxHandlerTests(unittest.TestCase):
     def setUp(self):
         home = base.isolated_home(self)
-        for name, value in (("DESKTOP_FILE", home / "applications" / "oid4vc-wallet.desktop"),
-                            ("ICON_THEME_FILE", home / "icons" / "oid4vc-wallet.png"),
-                            ("_launcher", lambda gui=False: ["/opt/oid4vc-wallet/oid4vc-wallet-gui"]),
+        for name, value in (("DESKTOP_FILE", home / "applications" / "atesta-id-wallet.desktop"),
+                            ("ICON_THEME_FILE", home / "icons" / "atesta-id-wallet.png"),
+                            ("_launcher", lambda gui=False: ["/opt/atesta-id-wallet/atesta-id-wallet-gui"]),
                             ("gui_available", lambda: True)):
             self.addCleanup(setattr, desktop, name, getattr(desktop, name))
             setattr(desktop, name, value)
@@ -136,10 +163,10 @@ class LinuxHandlerTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             desktop.cmd_install_handler(None)
         entry = desktop.DESKTOP_FILE.read_text()
-        self.assertIn("Exec=/opt/oid4vc-wallet/oid4vc-wallet-gui %u\n", entry)
-        self.assertIn("Icon=oid4vc-wallet\n", entry)
+        self.assertIn("Exec=/opt/atesta-id-wallet/atesta-id-wallet-gui %u\n", entry)
+        self.assertIn("Icon=atesta-id-wallet\n", entry)
         self.assertEqual(desktop.ICON_THEME_FILE.read_bytes(), desktop.APP_ICON.read_bytes())
-        self.assertIn(["xdg-mime", "default", "oid4vc-wallet.desktop", "x-scheme-handler/openid4vp"], self.commands)
+        self.assertIn(["xdg-mime", "default", "atesta-id-wallet.desktop", "x-scheme-handler/openid4vp"], self.commands)
         with redirect_stdout(io.StringIO()):
             desktop.cmd_uninstall_handler(None)
         self.assertFalse(desktop.DESKTOP_FILE.exists())
@@ -162,7 +189,7 @@ class GuiPackagingTests(unittest.TestCase):
         self.addCleanup(setattr, sys, "platform", sys.platform)
         sys.platform = "win32"
         name = base.gui._instance_name()
-        self.assertRegex(name, r"^oid4vc-wallet-[0-9a-f]{32}$")
+        self.assertRegex(name, r"^atesta-id-wallet-[0-9a-f]{32}$")
         self.assertEqual(base.gui._instance_name(), name)
         self.assertNotIn(os.environ.get("USERNAME", "user"), name)
 
