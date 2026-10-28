@@ -109,8 +109,6 @@ name to look like a trusted one or inject links.
   global, so the pipe name carries a random suffix stored in the user's data folder: another user
   cannot guess it and create the pipe first.
 - Temporary files of the window (themed icons) go to a private, per-process temporary directory.
-- `harden_permissions()` only touches the wallet's own files, even if `$ATESTA_ID_WALLET_HOME` points
-  to a folder that contains other things.
 
 ## Releases and updates
 

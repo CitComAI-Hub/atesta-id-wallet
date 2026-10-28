@@ -5,7 +5,7 @@ OpenID4VCI 1.0 and uses them to sign in with OpenID4VP 1.0, in SD-JWT VC format
 (`dc+sd-jwt`). It replaces a phone wallet such as Lissi: you get credentials from
 Keycloak and log in to verifiers (e.g. the CITCOM/VRAIN marketplace) from your laptop.
 
-> **Status: prototype (TRL 5), version 0.6.1.** Tested against Keycloak and the CITCOM
+> **Status: prototype (TRL 5), version 0.7.0.** Tested against Keycloak and the CITCOM
 > marketplace. Desktop window (Qt) and command line, in English, Spanish and Danish. Linux is the
 > tested platform; the Windows builds are new and not yet tested by hand on real machines;
 > macOS is untested. Read [docs/SECURITY.md](docs/SECURITY.md) before using it with real data.
@@ -197,16 +197,17 @@ changes. See [docs/SECURITY.md](docs/SECURITY.md).
 
 Stored in `~/.local/share/atesta-id-wallet/` on Linux, `%APPDATA%\atesta-id-wallet` on Windows and
 `~/Library/Application Support/atesta-id-wallet` on macOS (or `$ATESTA_ID_WALLET_HOME`).
-Other profiles live in `profiles/<name>/`. Directories are `0700` and files `0600`.
+Each profile (`default` and the ones you create) is a folder `profiles/<name>/` with the files
+below; `settings.json` is in the root. Directories are `0700` and files `0600`.
 
-| File | Contents |
+| File in `profiles/<name>/` | Contents |
 |---|---|
 | `holder_key.pem` | Wallet private key (P-256). Your credentials are bound to it: **back it up** (`backup`) and never share it. |
 | `credentials/*.json` | Received SD-JWT credentials, with the issuer's display name and colours. |
 | `config.json` | Per issuer: username, `client_id` and `redirect_uri` that worked. Pinned verifier certificates. |
 | `history.jsonl` | Activity: credentials received, data shared or declined, and with whom. |
 | `trusted_cas/*.pem` | CAs whose verifiers are trusted. |
-| `settings.json` | Application settings shared by all profiles (language, last profile, new-version check). Only in the data folder root. |
+| `settings.json` (root) | Application settings shared by all profiles (language, last profile, new-version check). |
 
 ## Limitations
 

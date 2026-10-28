@@ -22,7 +22,8 @@ Usage:
     atesta-id-wallet install-handler   # open openid4vp:// and openid-credential-offer:// links
 
 Local data (holder key, credentials, config.json; files 0600) lives in $ATESTA_ID_WALLET_HOME or
-the platform data folder (~/.local/share/atesta-id-wallet on Linux); other profiles in profiles/NAME/.
+the platform data folder (~/.local/share/atesta-id-wallet on Linux), one folder per profile in
+profiles/NAME/.
 
 Nothing is presented without showing who asks for which data and where it goes, and asking
 for confirmation. See docs/SECURITY.md for the trust model.

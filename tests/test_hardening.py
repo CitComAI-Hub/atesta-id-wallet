@@ -19,9 +19,6 @@ from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 from atesta_id_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, vci, vp  # noqa: E402
 
 
-POSIX_ONLY = unittest.skipIf(os.name != "posix", "Windows: the data is protected by the profile ACL, not by mode bits")
-
-
 def disclosure(*items):
     encoded = common.b64u(json.dumps(list(items)).encode())
     return encoded, sdjwt._sd_digest(encoded)
@@ -180,16 +177,14 @@ class StorageRobustnessTests(unittest.TestCase):
         self.assertEqual(len(paths), 3)
         self.assertEqual(sorted(r["credential"] for r in storage.load_credentials()), ["c0", "c1", "c2"])
 
-    @POSIX_ONLY
-    def test_harden_permissions_only_touches_wallet_files(self):
-        other = self.home / "notes.txt"
-        other.write_text("x")
-        os.chmod(other, 0o644)
-        storage.write_private(storage.CONFIG_FILE, "{}")
-        os.chmod(storage.CONFIG_FILE, 0o644)
-        storage.harden_permissions()
-        self.assertEqual(stat.S_IMODE(other.stat().st_mode), 0o644)
-        self.assertEqual(stat.S_IMODE(storage.CONFIG_FILE.stat().st_mode), 0o600)
+    def test_every_profile_lives_in_profiles(self):
+        storage.HolderKey.load_or_create()
+        storage.create_profile("work")
+        self.assertEqual(storage.KEY_FILE, self.home / "profiles" / "default" / "holder_key.pem")
+        self.assertEqual(storage.list_profiles(), ["default", "work"])
+        if os.name == "posix":
+            for folder in (self.home, self.home / "profiles", self.home / "profiles" / "default"):
+                self.assertEqual(stat.S_IMODE(folder.stat().st_mode), 0o700, folder)
 
     def test_add_ca_does_not_replace_another_ca_with_the_same_file_name(self):
         folder_a, folder_b = self.home / "a", self.home / "b"

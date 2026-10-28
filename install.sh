@@ -47,15 +47,6 @@ fi
 command -v wl-paste >/dev/null || command -v xclip >/dev/null || \
     echo "Note: to read links from the clipboard, install wl-clipboard:  sudo apt install wl-clipboard"
 
-# Versions before 0.6 were called oid4vc-wallet: remove that installation. Its data is moved to
-# the new folder the first time the wallet starts.
-if [[ -d "$DATA_HOME/oid4vc-wallet-venv" ]]; then
-    echo "Removing the previous installation (oid4vc-wallet) ..."
-    rm -rf "$DATA_HOME/oid4vc-wallet-venv"
-    rm -f "$BIN_DIR/oid4vc-wallet" "$BIN_DIR/oid4vc-wallet-gui" "$DATA_HOME/applications/oid4vc-wallet.desktop" \
-          "$DATA_HOME/icons/hicolor/256x256/apps/oid4vc-wallet.png"
-fi
-
 echo "Installing into $VENV ..."
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install --quiet --upgrade pip

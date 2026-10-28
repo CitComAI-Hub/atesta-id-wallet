@@ -37,13 +37,11 @@ from .storage import (
     create_profile,
     credential_label,
     delete_credential,
-    harden_permissions,
     list_profiles,
     load_config,
     load_credentials,
     load_history,
     load_settings,
-    migrate_legacy_data,
     profile_dir,
     profile_is_empty,
     read_ca_file,
@@ -507,8 +505,6 @@ def main(argv: list[str] | None = None) -> int:
     _tolerant_output()
     i18n.set_language(i18n.resolve(load_settings().get("language")))
     try:
-        migrate_legacy_data()
-        harden_permissions()
         code = _run(argv)
     except WalletError as exc:
         print("\n" + tr("ERROR: {error}", error=exc), file=sys.stderr)

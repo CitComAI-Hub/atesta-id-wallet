@@ -36,11 +36,10 @@ def _default_base_dir() -> Path:
 BASE_DIR = Path(os.environ.get("ATESTA_ID_WALLET_HOME") or _default_base_dir())
 PROFILES_DIR = BASE_DIR / "profiles"
 DEFAULT_PROFILE = "default"
-LEGACY_DATA_DIR = Path(__file__).resolve().parent.parent / "wallet_data"  # single-script versions
 
 # Paths of the active profile; set_profile() changes them.
 PROFILE = DEFAULT_PROFILE
-DATA_DIR = BASE_DIR
+DATA_DIR = PROFILES_DIR / DEFAULT_PROFILE
 KEY_FILE = DATA_DIR / "holder_key.pem"
 CRED_DIR = DATA_DIR / "credentials"
 CONFIG_FILE = DATA_DIR / "config.json"
@@ -93,9 +92,7 @@ class HolderKey:
 
 
 def profile_dir(name: str) -> Path:
-    """The 'default' profile lives in the root (compatibility with 0.1); the others in profiles/."""
-    if name == DEFAULT_PROFILE:
-        return BASE_DIR
+    """Every profile lives in profiles/NAME; the root only holds settings.json."""
     if not PROFILE_NAME_RE.match(name):
         raise WalletError(tr("Invalid profile name: '{name}' (letters, digits, '_', '.', '-').", name=name))
     return PROFILES_DIR / name
@@ -130,14 +127,20 @@ def save_settings(settings: dict[str, Any]) -> None:
 def list_profiles() -> list[str]:
     names = [DEFAULT_PROFILE]
     if PROFILES_DIR.is_dir():
-        names += sorted(p.name for p in PROFILES_DIR.iterdir() if p.is_dir() and PROFILE_NAME_RE.match(p.name))
+        names += sorted(p.name for p in PROFILES_DIR.iterdir()
+                        if p.is_dir() and p.name != DEFAULT_PROFILE and PROFILE_NAME_RE.match(p.name))
     return names
 
 
 def ensure_data_dir(path: Path | None = None) -> None:
+    """Creates the folder 0700, and also its parents up to the data folder (profiles/, the root)."""
     path = path or DATA_DIR
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    os.chmod(path, 0o700)
+    folders = [path]
+    while BASE_DIR in folders[-1].parents:
+        folders.append(folders[-1].parent)
+    for folder in reversed(folders):
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(folder, 0o700)
 
 
 def write_private(path: Path, text: str) -> None:
@@ -158,54 +161,6 @@ def write_private(path: Path, text: str) -> None:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
-
-
-def harden_permissions() -> None:
-    """
-    Fixes the permissions of data created by 0.1 (with the default umask). Only touches what
-    belongs to the wallet: $ATESTA_ID_WALLET_HOME may point to a folder with other things.
-    """
-    if not BASE_DIR.is_dir():
-        return
-    profiles = [BASE_DIR]
-    if PROFILES_DIR.is_dir() and not PROFILES_DIR.is_symlink():
-        os.chmod(PROFILES_DIR, 0o700)
-        profiles += [p for p in PROFILES_DIR.iterdir() if p.is_dir() and not p.is_symlink()]
-    targets = [BASE_DIR / "settings.json"]
-    for profile in profiles:
-        os.chmod(profile, 0o700)
-        targets += [profile / item for item in PROFILE_ITEMS]
-    for target in targets:
-        if target.is_symlink() or not target.exists():
-            continue
-        if target.is_dir():
-            os.chmod(target, 0o700)
-            for child in target.iterdir():
-                if child.is_file() and not child.is_symlink():
-                    os.chmod(child, 0o600)
-        else:
-            os.chmod(target, 0o600)
-
-
-def previous_name_dir() -> Path:
-    """Default data folder of versions before 0.6, when the wallet was called oid4vc-wallet."""
-    return _default_base_dir().with_name("oid4vc-wallet")
-
-
-def migrate_legacy_data() -> None:
-    """
-    Moves the data folder of versions before 0.6 (oid4vc-wallet) to the new one, or copies
-    ./wallet_data (the single-script versions) into it. Never overwrites existing data.
-    """
-    if BASE_DIR.exists():
-        return
-    previous = previous_name_dir()
-    if "ATESTA_ID_WALLET_HOME" not in os.environ and previous.is_dir() and not previous.is_symlink():
-        shutil.move(str(previous), str(BASE_DIR))
-        log(tr("Data moved from {old} to {new}", old=previous, new=BASE_DIR))
-    elif LEGACY_DATA_DIR.is_dir():
-        shutil.copytree(LEGACY_DATA_DIR, BASE_DIR)
-        log(tr("Data copied from {old} to {new}", old=LEGACY_DATA_DIR, new=BASE_DIR))
 
 
 def load_config() -> dict[str, Any]:
@@ -312,7 +267,7 @@ def is_expired(record: dict[str, Any]) -> bool:
     return isinstance(exp, (int, float)) and exp < time.time()
 
 
-# What makes up a profile (the 'default' profile shares its folder with profiles/).
+# What makes up a profile.
 PROFILE_ITEMS = ("holder_key.pem", "credentials", "config.json", "trusted_cas", "history.jsonl")
 
 
@@ -354,7 +309,7 @@ def _wipe_profile(path: Path) -> None:
             target.unlink()
 
 
-BACKUP_MAGIC = b"OID4VCW1"  # from the previous name; kept so that older backups can still be restored
+BACKUP_MAGIC = b"ATESTAB1"  # Atesta backup, format 1
 
 
 def _backup_key(password: str, salt: bytes) -> bytes:

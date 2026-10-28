@@ -59,12 +59,10 @@ from ..storage import (
     create_profile,
     credential_name,
     delete_credential,
-    harden_permissions,
     list_profiles,
     load_config,
     load_credentials,
     load_settings,
-    migrate_legacy_data,
     profile_is_empty,
     read_ca_file,
     remove_profile,
@@ -921,8 +919,6 @@ def main(argv: list[str] | None = None) -> int:
     app.setStyle("Fusion")
     app.setWindowIcon(QIcon(str(APP_ICON)) if APP_ICON.exists() else
                       QIcon(theme.icon_pixmap("wallet", theme.current().accent, 64)))
-    migrate_legacy_data()
-    harden_permissions()
     common.VERBOSE = args.verbose
     try:
         set_profile(_choose_startup_profile(args.profile))

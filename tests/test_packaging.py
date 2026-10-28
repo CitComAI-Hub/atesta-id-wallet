@@ -100,31 +100,6 @@ class UpdateTests(unittest.TestCase):
         self.assertIn(common.__version__, out.getvalue())
 
 
-class RenameMigrationTests(unittest.TestCase):
-    def setUp(self):
-        self.home = base.isolated_home(self)
-        saved = os.environ.pop("ATESTA_ID_WALLET_HOME")
-        self.addCleanup(os.environ.__setitem__, "ATESTA_ID_WALLET_HOME", saved)
-        self.addCleanup(setattr, storage, "previous_name_dir", storage.previous_name_dir)
-        self.old = self.home / "oid4vc-wallet"
-        storage.previous_name_dir = lambda: self.old
-        storage.BASE_DIR = self.home / "atesta-id-wallet"
-
-    def test_data_of_the_previous_name_is_moved(self):
-        (self.old / "credentials").mkdir(parents=True)
-        (self.old / "holder_key.pem").write_text("key")
-        storage.migrate_legacy_data()
-        self.assertEqual((storage.BASE_DIR / "holder_key.pem").read_text(), "key")
-        self.assertTrue((storage.BASE_DIR / "credentials").is_dir())
-        self.assertFalse(self.old.exists())
-
-    def test_existing_data_is_never_replaced(self):
-        self.old.mkdir()
-        storage.BASE_DIR.mkdir()
-        storage.migrate_legacy_data()
-        self.assertTrue(self.old.exists())
-
-
 class FrozenLauncherTests(unittest.TestCase):
     def setUp(self):
         self.addCleanup(setattr, desktop, "FROZEN", desktop.FROZEN)
