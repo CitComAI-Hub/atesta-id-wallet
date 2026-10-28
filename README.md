@@ -5,7 +5,7 @@ OpenID4VCI 1.0 and uses them to sign in with OpenID4VP 1.0, in SD-JWT VC format
 (`dc+sd-jwt`). It replaces a phone wallet such as Lissi: you get credentials from
 Keycloak and log in to verifiers (e.g. the CITCOM/VRAIN marketplace) from your laptop.
 
-> **Status: prototype (TRL 5), version 0.6.0.** Tested against Keycloak and the CITCOM
+> **Status: prototype (TRL 5), version 0.6.1.** Tested against Keycloak and the CITCOM
 > marketplace. Desktop window (Qt) and command line, in English, Spanish and Danish. Linux is the
 > tested platform; the Windows builds are new and not yet tested by hand on real machines;
 > macOS is untested. Read [docs/SECURITY.md](docs/SECURITY.md) before using it with real data.

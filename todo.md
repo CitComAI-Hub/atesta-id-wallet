@@ -10,7 +10,7 @@
   fallback), Spanish and Danish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
-## Status (0.6.0, October 2026)
+## Status (0.6.1, October 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, with a GUI, a CLI, three languages and an offline test suite (100+ tests, GUI included).
@@ -70,6 +70,9 @@ app lock, the CITCOM verifier trust list, and a decision on the second login.
   - [x] Provisional app icon (`packaging/app-icon.svg`), also used by `install-handler`.
   - [x] Windows fixes found on review: random single-instance pipe name (other users could
         take a guessable one), CLI output that does not crash on non-UTF-8 consoles.
+
+- **0.6.1**: the .deb only depends on libc6 and libegl1 (the X11 libraries are bundled; `dpkg -i`
+  failed without libxcb-cursor0); readable message when GitHub's rate limit is hit.
 
 ## Next: roadmap to the pilot (TRL 6)
 
