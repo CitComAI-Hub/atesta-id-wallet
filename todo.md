@@ -105,7 +105,16 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 
 ## Later (after the pilot)
 
-- [ ] One key per credential, batch issuance (less correlation between verifiers)
+- [ ] **Hardware-backed holder keys** (WSCD-like), together with one key per credential and
+      batch issuance (less correlation between verifiers):
+      - Windows: TPM 2.0 through CNG (*Microsoft Platform Crypto Provider*), optional Windows
+        Hello. Guaranteed on Windows 11, so the first target.
+      - Linux: TPM 2.0 through `tpm2-pkcs11` as an option (often needs the `tss` group and extra
+        packages: support cost with pilot users). macOS: Secure Enclave, if macOS is supported.
+      - Smart cards / USB tokens (PKCS#11) as an alternative.
+      - Key attestation from the TPM: the first real step towards wallet attestation.
+      - Decide first: a hardware key cannot be exported, so backups cannot restore credentials
+        on another computer; a new or broken laptop means asking the issuers again.
 - [ ] Token Status List (revocation)
 - [ ] Make "issuer key not found" an error once the pilot issuers are known
 - [ ] Issuer trust list / allow-list; validate issuer `x5c` chains
@@ -131,6 +140,10 @@ even if the browser already has one. Options (decide with whoever administers Ke
 
 ## Open questions
 
+- Hardware-backed keys: is it acceptable that credentials do not survive a change of computer
+  (re-issuance instead of restore)? Decides whether and when to use the TPM.
+- Becoming an official EUDI Wallet (provider, notifying Member State, certification budget) is a
+  project decision, not a development task; today the wallet only uses the EUDI protocols.
 - Is there a CA or trust list for the CITCOM verifiers that we can ship by default?
 - Is macOS needed for the pilot?
 - Who buys and keeps the Windows code-signing certificate?

@@ -5,6 +5,11 @@ OpenID4VCI 1.0 and uses them to sign in with OpenID4VP 1.0, in SD-JWT VC format
 (`dc+sd-jwt`). It replaces a phone wallet such as Lissi: you get credentials from
 Keycloak and log in to verifiers (e.g. the CITCOM/VRAIN marketplace) from your laptop.
 
+It uses the protocols of the European Digital Identity (EUDI) wallets: OpenID4VCI, OpenID4VP and
+SD-JWT VC. It is **not** a certified EUDI Wallet under eIDAS 2.0: that needs a provider notified
+by a Member State, certification at assurance level high (with a secure hardware key store,
+WSCD) and wallet attestations, which are out of scope for this prototype.
+
 > **Status: prototype (TRL 5), version 0.8.0.** Tested against Keycloak and the CITCOM
 > marketplace. Desktop window (Qt) and command line, in English, Spanish and Danish. Linux is the
 > tested platform; the Windows builds are new and not yet tested by hand on real machines;
