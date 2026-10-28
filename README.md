@@ -259,8 +259,8 @@ the Spanish catalog is exercised too.
 Builds and releases: [docs/RELEASING.md](docs/RELEASING.md). Manual checks on Windows:
 [docs/TESTING-WINDOWS.md](docs/TESTING-WINDOWS.md).
 
-Code comments and most docstrings are in Spanish; user-facing text is English in the code and
-translated through the catalogs; documentation is in English.
+Code, comments and documentation are in English; user-facing text is English in the code and
+translated through the catalogs (Spanish, Danish).
 
 ## Credits
 

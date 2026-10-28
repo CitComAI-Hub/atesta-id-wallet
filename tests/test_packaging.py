@@ -1,4 +1,4 @@
-"""Aplicación empaquetada y aviso de versiones nuevas (0.6).  Ejecutar:  python -m unittest discover -s tests"""
+"""Packaged application and new-version notice (0.6).  Run:  python -m unittest discover -s tests"""
 
 import io
 import os
@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_offline as base  # noqa: E402  (fija ATESTA_ID_WALLET_HOME y el idioma de las pruebas)
+import test_offline as base  # noqa: E402  (sets ATESTA_ID_WALLET_HOME and the test language)
 
 from atesta_id_wallet import cli, common, desktop, i18n, storage, updates  # noqa: E402
 
@@ -24,7 +24,7 @@ class FakeResponse:
 
 
 def fake_github(test, status=200, **data):
-    """requests.get de updates devuelve 'data' y anota las peticiones."""
+    """updates' requests.get returns 'data' and records the requests."""
     calls = []
     saved = updates.requests.get
     test.addCleanup(setattr, updates.requests, "get", saved)
@@ -82,7 +82,7 @@ class UpdateTests(unittest.TestCase):
         self.assertIn(updates.RELEASES_PAGE + "/tag/v9.0.0", out.getvalue())
 
     def test_packaged_update_only_checks(self):
-        """En un ejecutable empaquetado 'update' no intenta git pull ni install.sh."""
+        """In a packaged executable 'update' does not try git pull or install.sh."""
         fake_github(self, tag_name="v0.0.1", html_url=updates.RELEASES_PAGE + "/tag/v0.0.1")
         self.addCleanup(setattr, cli, "FROZEN", cli.FROZEN)
         cli.FROZEN = True
@@ -173,7 +173,7 @@ class LinuxHandlerTests(unittest.TestCase):
         self.assertFalse(desktop.ICON_THEME_FILE.exists())
 
 
-@unittest.skipIf(base.gui is None, "PySide6 no instalado")
+@unittest.skipIf(base.gui is None, "PySide6 not installed")
 class GuiPackagingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Integración con el escritorio: portapapeles, capturas con QR y enlaces (Linux, Windows, macOS)."""
+"""Desktop integration: clipboard, screenshots with QR codes and links (Linux, Windows, macOS)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ ICON_THEME_FILE = (
     / "icons" / "hicolor" / "256x256" / "apps" / "atesta-id-wallet.png"
 )
 APP_ICON = Path(__file__).resolve().parent / "gui" / "icons" / "app-icon.png"
-# Ejecutable de PyInstaller (AppImage, .deb o instalador de Windows) en vez de un paquete de Python.
+# PyInstaller executable (AppImage, .deb or Windows installer) instead of a Python package.
 FROZEN = bool(getattr(sys, "frozen", False))
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 QR_PREFIXES = ("openid4vp:", "openid-credential-offer:", "https://")
@@ -37,14 +37,14 @@ QR_PREFIXES = ("openid4vp:", "openid-credential-offer:", "https://")
 
 
 def decode_qr(image: Any) -> list[str]:
-    """Textos de los códigos QR de una imagen de Pillow (zxing-cpp)."""
+    """Texts of the QR codes in a Pillow image (zxing-cpp)."""
     import zxingcpp
 
     return [result.text for result in zxingcpp.read_barcodes(image) if result.text]
 
 
 def _decode_qr_zbar(path: Path) -> list[str]:
-    """Reserva si zxing-cpp no está disponible (instalaciones antiguas)."""
+    """Fallback when zxing-cpp is not available (old installations)."""
     try:
         result = subprocess.run(["zbarimg", "-q", "--raw", str(path)], capture_output=True, text=True, timeout=20)
     except FileNotFoundError as exc:
@@ -56,12 +56,12 @@ def _wallet_qr(codes: list[str], source: str) -> str:
     links = [c for c in codes if c.startswith(QR_PREFIXES)]
     if not links:
         raise WalletError(tr("No OpenID QR code was found in {source}.", source=source))
-    # Si en la imagen hay también un QR con una web cualquiera, se prefiere el del wallet.
+    # If the image also has a QR code with some web address, the wallet one is preferred.
     return next((c for c in links if _is_wallet_link(c)), links[0])
 
 
 def decode_qr_image(path_text: str, *, quiet: bool = False) -> str:
-    """Decodifica el QR de una imagen. Si se pasa una carpeta, usa la imagen más reciente."""
+    """Decodes the QR code of an image. Given a folder, it uses the newest image."""
     path = Path(path_text).expanduser()
     if path.is_dir():
         images = [p for p in path.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES]
@@ -83,7 +83,7 @@ def decode_qr_image(path_text: str, *, quiet: bool = False) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Portapapeles
+# Clipboard
 # ---------------------------------------------------------------------------
 
 
@@ -97,7 +97,7 @@ def _clipboard_commands() -> list[list[str]]:
 
 
 def _clipboard_bytes() -> bytes | None:
-    """Contenido crudo del portapapeles: texto, o en Linux también la imagen (PNG)."""
+    """Raw clipboard content: text, or on Linux also the image (PNG)."""
     for command in _clipboard_commands():
         try:
             result = subprocess.run(command, capture_output=True, timeout=5)
@@ -109,14 +109,14 @@ def _clipboard_bytes() -> bytes | None:
 
 
 def _clipboard_image() -> Any:
-    """Imagen del portapapeles en Windows/macOS (en Linux llega por _clipboard_bytes)."""
+    """Clipboard image on Windows/macOS (on Linux it comes through _clipboard_bytes)."""
     if sys.platform not in ("win32", "darwin"):
         return None
     try:
         from PIL import Image, ImageGrab
 
         content = ImageGrab.grabclipboard()
-    except Exception as exc:  # sin Pillow o portapapeles no accesible
+    except Exception as exc:  # no Pillow, or the clipboard cannot be read
         debug(f"Could not read an image from the clipboard: {exc}")
         return None
     return content if isinstance(content, Image.Image) else None
@@ -133,7 +133,7 @@ def _qr_from_bytes(data: bytes) -> str | None:
 
 
 def clipboard_link() -> str | None:
-    """Enlace del portapapeles, ya sea texto o una imagen con QR (Impr Pant la copia)."""
+    """Link in the clipboard, either as text or as an image with a QR code (Print Screen copies one)."""
     data = _clipboard_bytes()
     if data and data.startswith((b"\x89PNG", b"\xff\xd8\xff")):  # PNG / JPEG
         link = _qr_from_bytes(data)
@@ -157,7 +157,7 @@ def clipboard_link() -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Capturas de pantalla recientes
+# Recent screenshots
 # ---------------------------------------------------------------------------
 
 
@@ -199,12 +199,12 @@ def _is_wallet_link(text: str) -> bool:
 
 
 def auto_detect_input(max_age: int = 300) -> str | None:
-    """Enlace del portapapeles o QR de una captura de los últimos max_age segundos."""
+    """Link in the clipboard, or QR code of a screenshot from the last max_age seconds."""
     return clipboard_link() or screenshot_link(max_age)
 
 
 def screenshot_link(max_age: float = 300) -> str | None:
-    """QR de la captura de pantalla más reciente de los últimos max_age segundos."""
+    """QR code of the newest screenshot from the last max_age seconds."""
     now = time.time()
     recent: list[tuple[float, Path]] = []
     for directory in _screenshot_dirs():
@@ -214,7 +214,7 @@ def screenshot_link(max_age: float = 300) -> str | None:
                     mtime = path.stat().st_mtime
                     if now - mtime < max_age:
                         recent.append((mtime, path))
-        except OSError:  # carpeta sin permiso o fichero borrado mientras se lista
+        except OSError:  # folder without permission, or file deleted while listing
             continue
     for _, image in sorted(recent, reverse=True):
         try:
@@ -225,7 +225,7 @@ def screenshot_link(max_age: float = 300) -> str | None:
 
 
 def detect_input(max_age: int = 300) -> str:
-    """Enlace del portapapeles, o QR de una captura reciente, o lo que se pegue."""
+    """Link in the clipboard, or QR code of a recent screenshot, or whatever is pasted."""
     while True:
         found = auto_detect_input(max_age)
         if found:
@@ -238,7 +238,7 @@ def detect_input(max_age: int = 300) -> str:
 
 
 def route_input(entry: str) -> tuple[str, list[str]]:
-    """Decide el subcomando según el contenido: oferta -> issue, petición -> present."""
+    """Picks the subcommand from the content: offer -> issue, request -> present."""
     entry = entry.strip().strip("'\"")
     if not _is_wallet_link(entry) and not entry.startswith(("http://", "https://")):
         path = Path(entry).expanduser()
@@ -254,12 +254,12 @@ def route_input(entry: str) -> tuple[str, list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Manejador de enlaces openid4vp:// y openid-credential-offer://
+# Handler for openid4vp:// and openid-credential-offer:// links
 # ---------------------------------------------------------------------------
 
 
 def gui_available() -> bool:
-    if FROZEN:  # cada ejecutable lleva solo sus módulos: la GUI es el otro ejecutable
+    if FROZEN:  # each executable only has its own modules: the GUI is the other executable
         return _frozen_executable(True).exists()
     import importlib.util
 
@@ -267,13 +267,13 @@ def gui_available() -> bool:
 
 
 def _frozen_executable(gui: bool) -> Path:
-    """Los dos ejecutables empaquetados están en la misma carpeta."""
+    """Both packaged executables are in the same folder."""
     name = "atesta-id-wallet-gui" if gui else "atesta-id-wallet"
     return Path(sys.executable).with_name(name + (".exe" if sys.platform == "win32" else ""))
 
 
 def _launcher(gui: bool = False) -> list[str]:
-    appimage = os.environ.get("APPIMAGE")  # ruta del .AppImage; su AppRun abre la GUI o, con 'cli', la terminal
+    appimage = os.environ.get("APPIMAGE")  # path of the .AppImage; its AppRun opens the GUI or, with 'cli', the terminal
     if FROZEN and appimage:
         return [appimage] if gui else [appimage, "cli"]
     if FROZEN:
@@ -290,12 +290,12 @@ def _desktop_exec(gui: bool = False) -> str:
 
 
 def _windows_command(gui: bool = False) -> str:
-    # La GUI no necesita --pause: el resultado se ve en la ventana.
+    # The GUI needs no --pause: the result is shown in the window.
     return " ".join(f'"{p}"' for p in _launcher(gui)) + (' "%1"' if gui else ' --pause "%1"')
 
 
 def _install_icon() -> str:
-    """Copia el icono de la aplicación al tema de iconos del usuario; si no hay, uno genérico."""
+    """Copies the app icon into the user's icon theme; without one, a generic icon is used."""
     if not APP_ICON.exists():
         return "dialog-password"
     ICON_THEME_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -331,7 +331,7 @@ def _install_linux(gui: bool) -> None:
 
 
 def _install_windows(gui: bool) -> None:
-    """HKCU\\Software\\Classes\\<esquema>: no necesita permisos de administrador."""
+    """HKCU\\Software\\Classes\\<scheme>: needs no administrator rights."""
     import winreg
 
     command = _windows_command(gui)

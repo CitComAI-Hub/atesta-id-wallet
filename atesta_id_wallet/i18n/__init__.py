@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Traducción de los textos de la interfaz.
+Translation of the interface texts.
 
-El texto fuente (en inglés) está en el código y es el fallback: tr("Wallet") devuelve la
-traducción del idioma activo si existe y, si no, el propio texto. Los catálogos son JSON
-junto a este módulo ({"messages": {fuente: traducción}, "plurals": {singular: [uno, varios]}}).
+The source text (English) is in the code and is the fallback: tr("Wallet") returns the
+translation for the active language if there is one and the text itself otherwise. Catalogs are
+JSON files next to this module ({"messages": {source: translation}, "plurals": {singular: [one, many]}}).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-LANGUAGES = {"en": "English", "es": "Español", "da": "Dansk"}  # el nombre de cada idioma en sí mismo
+LANGUAGES = {"en": "English", "es": "Español", "da": "Dansk"}  # each language's name in that language
 DEFAULT = "en"
 AUTO = "auto"
 
@@ -32,7 +32,7 @@ def load_catalog(code: str) -> dict[str, Any]:
 
 
 def set_language(code: str) -> str:
-    """Activa un idioma (o el inglés si no está soportado) y devuelve el código activo."""
+    """Activates a language (English if it is not supported) and returns the active code."""
     global _messages, _plurals, _current
     code = code if code in LANGUAGES else DEFAULT
     catalog = load_catalog(code)
@@ -45,7 +45,7 @@ def current() -> str:
 
 
 def system_language(hint: str | None = None) -> str:
-    """Idioma del sistema entre los soportados (hint: p. ej. QLocale.system().name() en la GUI)."""
+    """System language among the supported ones (hint: e.g. QLocale.system().name() in the GUI)."""
     candidates = [hint] if hint else []
     candidates += [os.environ.get(var) for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG")]
     try:
@@ -54,7 +54,7 @@ def system_language(hint: str | None = None) -> str:
         pass
     names = {"spanish": "es", "español": "es", "danish": "da", "dansk": "da", "english": "en"}
     for candidate in candidates:
-        for part in (candidate or "").split(":"):  # LANGUAGE admite una lista: "da:en"
+        for part in (candidate or "").split(":"):  # LANGUAGE may be a list: "da:en"
             code = part.strip().lower().replace("-", "_")
             if not code or code in ("c", "posix"):
                 continue
@@ -65,7 +65,7 @@ def system_language(hint: str | None = None) -> str:
 
 
 def resolve(preference: str | None, hint: str | None = None) -> str:
-    """'auto' (o nada) usa el idioma del sistema; un código soportado se usa tal cual."""
+    """'auto' (or nothing) uses the system language; a supported code is used as is."""
     if preference and preference != AUTO and preference in LANGUAGES:
         return preference
     return system_language(hint)
@@ -77,12 +77,12 @@ def tr(text: str, **values: Any) -> str:
 
 
 def tr_n(singular: str, plural: str, n: int, **values: Any) -> str:
-    """Singular o plural según n; {n} está disponible en el texto."""
+    """Singular or plural depending on n; {n} is available in the text."""
     forms = _plurals.get(singular)
     text = (forms[0] if n == 1 else forms[1]) if forms else (singular if n == 1 else plural)
     return text.format(n=n, **values)
 
 
 def N_(text: str) -> str:  # noqa: N802
-    """Marca un texto para traducir más tarde (constantes de módulo); se traduce al usarlo con tr()."""
+    """Marks a text for translation later (module constants); it is translated when used with tr()."""
     return text

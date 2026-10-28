@@ -1,4 +1,4 @@
-"""Punto de entrada del ejecutable gráfico (PyInstaller)."""
+"""Entry point of the graphical executable (PyInstaller)."""
 
 import sys
 

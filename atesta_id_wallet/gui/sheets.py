@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Paneles superpuestos ("sheets") con los que se recorren los flujos dentro de la ventana:
-oferta, inicio de sesión, consentimiento, progreso, resultado, esperar un QR...
+Overlay panels ("sheets") that walk through the flows inside the window:
+offer, login, consent, progress, result, waiting for a QR code...
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from ..ui import OfferSummary, consent_items
 from . import theme
 from .widgets import IconBubble, Spinner, button, esc, fade_in, label
 
-# (icono, estilo, título, explicación) por nivel de confianza del verificador.
+# (icon, style, title, explanation) per verifier trust level.
 TRUST_COPY = {
     "trusted": ("shield-check", "ok", N_("Trusted verifier"),
                 N_("Its certificate is issued by an authority you trust.")),
@@ -48,7 +48,7 @@ TRUST_COPY = {
 
 
 class Overlay(QWidget):
-    """Fondo oscurecido que cubre la ventana y muestra un panel centrado."""
+    """Dimmed backdrop that covers the window and shows a centred panel."""
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -66,7 +66,7 @@ class Overlay(QWidget):
         return False
 
     def _discard(self) -> None:
-        # deleteLater no actúa hasta volver al bucle de eventos: se oculta ya para que no se vea debajo.
+        # deleteLater only acts back in the event loop: hide it now so it is not seen underneath.
         old = self.sheet
         self._layout.removeWidget(old)
         old.hide()
@@ -101,7 +101,7 @@ class Overlay(QWidget):
 
 
 class Sheet(QFrame):
-    """Panel con icono, título, texto, contenido y botones."""
+    """Panel with icon, title, text, content and buttons."""
 
     def __init__(self, *, width: int = 460, icon: str | None = None, tone: str = "accent",
                  title: str = "", body: str = ""):
@@ -125,13 +125,13 @@ class Sheet(QFrame):
         if title:
             self.title = label(title, "sheetTitle", wrap=True)
             self.layout_.addWidget(self.title)
-        if body:  # texto enriquecido: quien lo construye escapa los valores externos con esc()
+        if body:  # rich text: whoever builds it escapes external values with esc()
             self.body = label(body, "sheetBody", wrap=True, rich=True)
             self.layout_.addWidget(self.body)
 
     def _height(self) -> int:
-        # Con varias líneas de texto la altura depende del ancho; el sizeHint por defecto de Qt
-        # la calcula con otro ancho y recortaba el texto.
+        # With several lines of text the height depends on the width; Qt's default sizeHint
+        # computes it with another width and cut the text.
         layout = self.layout_
         if layout.hasHeightForWidth():
             return layout.totalHeightForWidth(self.width())
@@ -162,7 +162,7 @@ class Sheet(QFrame):
 
 
 # ---------------------------------------------------------------------------
-# Paneles de estado
+# Status panels
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +209,7 @@ class ResultSheet(Sheet):
 
 
 # ---------------------------------------------------------------------------
-# Preguntas del flujo
+# Questions from the flow
 # ---------------------------------------------------------------------------
 
 
@@ -329,7 +329,7 @@ class ChooseSheet(Sheet):
             details = " · ".join(p for p in (credential_holder(record), credential_issuer_name(record)) if p)
             text.addWidget(label(details, "caption"))
             layout.addLayout(text, 1)
-            box.mousePressEvent = lambda _e, r=radio: r.setChecked(True)  # toda la fila es clicable
+            box.mousePressEvent = lambda _e, r=radio: r.setChecked(True)  # the whole row is clickable
             self.add(box)
         cancel = button(tr("Cancel"))
         cancel.clicked.connect(lambda: on_answer(None))
@@ -341,7 +341,7 @@ class ChooseSheet(Sheet):
 
 
 class ConsentSheet(Sheet):
-    """Quién pide qué datos y a dónde van. Rechazar es la opción por defecto."""
+    """Who asks for which data and where it goes. Declining is the default."""
 
     def __init__(self, prepared: Any, on_answer: Callable[[bool], None]):
         identity = prepared.identity
@@ -404,7 +404,7 @@ class ConsentSheet(Sheet):
 
 
 class ScanSheet(Sheet):
-    """Espera a que aparezca un QR (captura o portapapeles); la ventana lo detecta sola."""
+    """Waits for a QR code to appear (screenshot or clipboard); the window detects it by itself."""
 
     def __init__(self, on_image: Callable[[], None], on_paste: Callable[[], None], on_cancel: Callable[[], None]):
         super().__init__(icon="scan-line", title=tr("Waiting for a QR code"))
@@ -434,7 +434,7 @@ class ScanSheet(Sheet):
 
 
 def _notice(tone: str, icon: str, title: str, text: str) -> QWidget:
-    """Aviso en color (verde, ámbar o rojo) con icono, título y explicación."""
+    """Coloured notice (green, amber or red) with icon, title and explanation."""
     t = theme.current()
     color = {"ok": t.success, "warn": t.warning, "danger": t.danger, "accent": t.accent}[tone]
     box = QFrame()

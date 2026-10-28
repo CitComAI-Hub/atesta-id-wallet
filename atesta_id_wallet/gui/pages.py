@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Páginas de la ventana: Cartera, detalle de credencial, Actividad y Ajustes."""
+"""Window pages: Wallet, credential details, Activity and Settings."""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ class Page(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# Cartera
+# Wallet
 # ---------------------------------------------------------------------------
 
 
@@ -99,7 +99,7 @@ class WalletPage(Page):
     def __init__(self, window: MainWindow):
         super().__init__(window)
         self.header, row = _header(tr("Wallet"))
-        row.setContentsMargins(18, 0, 18, 0)  # alineada con las tarjetas (que dejan sitio a su sombra)
+        row.setContentsMargins(18, 0, 18, 0)  # aligned with the cards (which leave room for their shadow)
         self.search = QLineEdit()
         self.search.setPlaceholderText(tr("Search"))
         self.search.setClearButtonEnabled(True)
@@ -117,7 +117,7 @@ class WalletPage(Page):
 
         self.grid_host = QWidget()
         self.grid = FlowLayout(self.grid_host, spacing=24)
-        self.grid.setContentsMargins(18, 14, 18, 36)  # sitio para la sombra de las tarjetas
+        self.grid.setContentsMargins(18, 14, 18, 36)  # room for the cards' shadow
         self.scroll = _scroll_page(self.grid_host)
         self.root.addWidget(self.scroll, 1)
 
@@ -156,12 +156,12 @@ class WalletPage(Page):
 
 
 # ---------------------------------------------------------------------------
-# Detalle de una credencial
+# Credential details
 # ---------------------------------------------------------------------------
 
 
 def _flatten(value: Any, prefix: str = "") -> list[tuple[str, str]]:
-    """Claims anidados como filas 'Dirección › Calle'."""
+    """Nested claims as 'Address › Street' rows."""
     if isinstance(value, dict):
         rows = []
         for key, item in value.items():
@@ -252,10 +252,10 @@ class CredentialPage(Page):
 
 
 # ---------------------------------------------------------------------------
-# Actividad
+# Activity
 # ---------------------------------------------------------------------------
 
-EVENT_STYLE = {  # icono, tono, plantilla del título
+EVENT_STYLE = {  # icon, tone, title template
     "issued": ("download", "accent", N_("You received {credentials} from {party}")),
     "presented": ("send", "ok", N_("You shared data with {party}")),
     "declined": ("ban", "danger", N_("You declined the request from {party}")),
@@ -321,7 +321,7 @@ class ActivityPage(Page):
 
 
 # ---------------------------------------------------------------------------
-# Ajustes
+# Settings
 # ---------------------------------------------------------------------------
 
 
@@ -357,7 +357,7 @@ class SettingsPage(Page):
         w = self.window_
 
         general = [_setting(tr("Language"), tr("Automatic uses the language of your system."), self._language_combo())]
-        if sys.platform != "darwin":  # en macOS hace falta un .app (ver desktop.cmd_install_handler)
+        if sys.platform != "darwin":  # macOS needs a .app (see desktop.cmd_install_handler)
             general.append(_setting(tr("Wallet links"), tr("Open openid4vp:// and openid-credential-offer:// links "
                                                            "(QR codes on web pages) with this application."),
                                     self._action(tr("Register"), w.register_links, "link")))

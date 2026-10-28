@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Utilidades comunes: errores, mensajes, base64url/JWT y HTTP."""
+"""Common helpers: errors, messages, base64url/JWT and HTTP."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ __version__ = "0.6.0"
 URI_SCHEMES = ("openid4vp", "openid-credential-offer")
 SD_JWT_FORMATS = ("dc+sd-jwt", "vc+sd-jwt")
 VERBOSE = False
-# Destino de log()/debug(): None = consola; la GUI pone una función (mensaje, es_debug).
+# Where log()/debug() go: None = console; the GUI sets a function (message, is_debug).
 LOG_HANDLER: Callable[[str, bool], None] | None = None
 
 
@@ -28,7 +28,7 @@ class WalletError(Exception):
 
 
 class Cancelled(WalletError):
-    """El usuario decidió no continuar (no es un error: no se muestra como tal)."""
+    """The user chose not to go on (not an error: it is not shown as one)."""
 
     def __init__(self, message: str | None = None):
         super().__init__(message or tr("Cancelled by the user."))
@@ -51,7 +51,7 @@ def debug(message: str) -> None:
 
 
 def confirm(question: str, *, default: bool = False, assume_yes: bool = False) -> bool:
-    """Pregunta s/n. Sin terminal no se puede consentir: se responde 'no' salvo --yes."""
+    """Asks y/n. Without a terminal there is no consent: the answer is 'no' unless --yes."""
     if assume_yes:
         return True
     if not sys.stdin or not sys.stdin.isatty():
@@ -68,7 +68,7 @@ def host_of(url: str) -> str:
 
 
 def require_https(url: str, what: str) -> None:
-    """HTTPS obligatorio salvo en localhost (pruebas)."""
+    """HTTPS is required except on localhost (tests)."""
     parts = urlsplit(url)
     if parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in ("localhost", "127.0.0.1")):
         return
@@ -93,7 +93,7 @@ def jwt_decode_unverified(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
         raise WalletError(tr("The value is not a compact JWS (header.payload.signature)."))
     try:
         header, payload = json.loads(b64u_decode(parts[0])), json.loads(b64u_decode(parts[1]))
-    except ValueError as exc:  # base64 o JSON inválidos (binascii.Error y UnicodeDecodeError son ValueError)
+    except ValueError as exc:  # invalid base64 or JSON (binascii.Error and UnicodeDecodeError are ValueError)
         raise WalletError(tr("The value is not a compact JWS (header.payload.signature).")) from exc
     if not isinstance(header, dict) or not isinstance(payload, dict):
         raise WalletError(tr("The value is not a compact JWS (header.payload.signature)."))
@@ -101,7 +101,7 @@ def jwt_decode_unverified(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def parse_json(text: str, what: str) -> Any:
-    """json.loads con un WalletError legible si el contenido recibido no es JSON."""
+    """json.loads with a readable WalletError if the received content is not JSON."""
     try:
         return json.loads(text)
     except ValueError as exc:
@@ -129,7 +129,7 @@ def _json(response: requests.Response, method: str, url: str) -> dict[str, Any]:
 
 
 def _last_deep_link(raw: str, scheme: str) -> str:
-    """Tolera pegados duplicados y espacios/saltos de línea intercalados."""
+    """Tolerates duplicated pastes and spaces/line breaks in the middle."""
     raw = re.sub(r"\s+", "", raw.strip().strip("'\""))
     if raw.lower().startswith(quote(scheme, safe="").lower()):
         raw = unquote(raw)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""OpenID4VCI: ofertas, login en el servidor de autorización y emisión."""
+"""OpenID4VCI: offers, login at the authorization server, and issuance."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ PRE_AUTH_GRANT = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
 
 
 def _well_known(base: str, suffix: str) -> list[str]:
-    """Forma RFC 8414 (insertada tras el host) y forma 'append' de Keycloak."""
+    """RFC 8414 form (inserted after the host) and Keycloak's 'append' form."""
     parts = urlsplit(base.rstrip("/"))
     inserted = f"{parts.scheme}://{parts.netloc}/.well-known/{suffix}{parts.path}"
     appended = f"{base.rstrip('/')}/.well-known/{suffix}"
@@ -100,7 +100,7 @@ def _pkce_pair() -> tuple[str, str]:
 
 
 def _wait_local_callback(redirect_uri: str, timeout: int = 300) -> str:
-    """Servidor HTTP efímero para redirect_uri http://localhost:PUERTO/..."""
+    """Short-lived HTTP server for redirect_uri http://localhost:PORT/..."""
     parts = urlsplit(redirect_uri)
     result: dict[str, str] = {}
 
@@ -131,7 +131,7 @@ def _wait_local_callback(redirect_uri: str, timeout: int = 300) -> str:
 
 
 def _open_browser_quietly(url: str) -> None:
-    """webbrowser hereda stdout/stderr y el navegador escribe sobre el prompt."""
+    """webbrowser inherits stdout/stderr and the browser writes over the prompt."""
     sys.stdout.flush()
     sys.stderr.flush()
     saved = os.dup(1), os.dup(2)
@@ -140,7 +140,7 @@ def _open_browser_quietly(url: str) -> None:
         os.dup2(devnull, 1)
         os.dup2(devnull, 2)
         webbrowser.open(url)
-        time.sleep(1.5)  # el lanzador del navegador escribe con retraso
+        time.sleep(1.5)  # the browser launcher writes with a delay
     finally:
         os.dup2(saved[0], 1)
         os.dup2(saved[1], 2)
@@ -149,7 +149,7 @@ def _open_browser_quietly(url: str) -> None:
 
 
 def _parse_forms(page: str) -> list[dict[str, Any]]:
-    """Formularios HTML mínimos: action, inputs (name -> value) y botones."""
+    """Minimal HTML forms: action, inputs (name -> value) and buttons."""
     forms = []
     for match in re.finditer(r"<form\b([^>]*)>(.*?)</form>", page, re.S | re.I):
         attrs, inner = match.groups()
@@ -192,11 +192,11 @@ def headless_login(session: requests.Session, auth_url: str, redirect_uri: str,
                    username: str | None, ui: Prompter | None = None, *,
                    suggested_username: str | None = None) -> tuple[str, str | None]:
     """
-    Recorre el login de Keycloak sin navegador (usuario/contraseña, OTP y
-    pantalla de consentimiento) y devuelve la URL de redirect con el code,
-    sin llegar a cargarla, y el usuario con el que se entró.
+    Goes through the Keycloak login without a browser (username/password, OTP and
+    consent screen) and returns the redirect URL with the code, without loading it,
+    and the username that was used.
 
-    username fija el usuario (no se pregunta); suggested_username solo se propone.
+    username fixes the user (it is not asked); suggested_username is only offered.
     """
     ui = ui or TerminalPrompter()
     url, method, data = auth_url, "GET", None
@@ -231,7 +231,7 @@ def headless_login(session: requests.Session, auth_url: str, redirect_uri: str,
                     "The login form would send the password to {target}, not to {host}. Aborting; if it is a "
                     "legitimate external identity provider, use --browser-login.", target=host_of(target), host=auth_host
                 ))
-            require_https(target, tr("The login form"))  # nunca la contraseña en claro
+            require_https(target, tr("The login form"))  # never the password in clear text
             if password_sent:
                 raise WalletError(tr("Login rejected: {error}", error=_page_error(page) or tr("wrong credentials")))
             ask_username = "username" in fields and not username
@@ -273,7 +273,7 @@ def authorization_code_flow(
     ui: Prompter | None = None,
     suggested_username: str | None = None,
 ) -> tuple[dict[str, Any], str | None]:
-    """Devuelve el token y el usuario con el que se inició sesión (si se hizo desde el wallet)."""
+    """Returns the token and the username used to log in (if the login was done by the wallet)."""
     ui = ui or TerminalPrompter()
     verifier, challenge = _pkce_pair()
     state = b64u(secrets.token_bytes(16))
@@ -328,10 +328,10 @@ def authorization_code_flow(
         if "error" in cb:
             raise WalletError(tr("The authorization server returned an error: {error} {description}",
                                  error=cb["error"][0], description=cb.get("error_description", [""])[0]))
-        # Sin state no se puede saber que la respuesta es la de esta petición (CSRF / code injection).
+        # Without state there is no way to know the response belongs to this request (CSRF / code injection).
         if cb.get("state", [""])[0] != state:
             raise WalletError(tr("The state parameter does not match; aborting for safety."))
-        # RFC 9207: si el servidor dice quién responde, debe ser el mismo al que se pidió.
+        # RFC 9207: if the server says who is answering, it must be the one that was asked.
         if "iss" in cb and as_meta.get("issuer") and cb["iss"][0].rstrip("/") != as_meta["issuer"].rstrip("/"):
             raise WalletError(tr("The authorization response comes from {iss}, not from {expected}.",
                                  iss=cb["iss"][0], expected=as_meta["issuer"]))
@@ -406,7 +406,7 @@ def request_credential(
         "Content-Type": "application/json",
     }
 
-    # Si el token trae credential_identifiers (authorization_details), se usan.
+    # If the token carries credential_identifiers (authorization_details), they are used.
     identifier = None
     for detail in token.get("authorization_details") or []:
         if detail.get("credential_configuration_id") == configuration_id and detail.get(
@@ -475,7 +475,7 @@ def request_credential(
 
 @dataclass
 class IssueOptions:
-    client_id: str | None = None  # authorization_code; defecto: el que funcionó o account-console
+    client_id: str | None = None  # authorization_code; default: the one that worked, or account-console
     redirect_uri: str | None = None
     client_id_pre: str | None = None  # pre-authorized_code
     tx_code: str | None = None
@@ -490,11 +490,11 @@ class IssueOptions:
 class IssuedCredential:
     configuration_id: str
     path: Path
-    claims: dict[str, Any] | None  # None si el formato no es SD-JWT
+    claims: dict[str, Any] | None  # None if the format is not SD-JWT
 
 
 def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: Prompter) -> list[IssuedCredential]:
-    """Acepta una oferta OpenID4VCI y guarda las credenciales recibidas en el perfil activo."""
+    """Accepts an OpenID4VCI offer and stores the received credentials in the active profile."""
     key = HolderKey.load_or_create()
     offer = resolve_offer(session, raw_offer)
     if "credential_offer" in offer and isinstance(offer["credential_offer"], dict):
@@ -513,7 +513,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     log(tr("Offered credentials: {ids}", ids=", ".join(config_ids)))
 
     issuer_meta = _get_first_json(session, _well_known(issuer, "openid-credential-issuer"))
-    # OpenID4VCI 1.0 §12.2: la metadata debe ser la del emisor de la oferta.
+    # OpenID4VCI 1.0 §12.2: the metadata must be that of the offering issuer.
     if str(issuer_meta.get("credential_issuer", "")).rstrip("/") != issuer.rstrip("/"):
         raise WalletError(tr("The issuer metadata belongs to {other}, not to {issuer}.",
                              other=issuer_meta.get("credential_issuer"), issuer=issuer))
@@ -538,7 +538,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
         session,
         _well_known(as_base, "oauth-authorization-server") + _well_known(as_base, "openid-configuration"),
     )
-    # RFC 8414 §3.3: el 'issuer' de la metadata debe ser el servidor que se ha consultado.
+    # RFC 8414 §3.3: the metadata 'issuer' must be the server that was queried.
     if as_meta.get("issuer") and str(as_meta["issuer"]).rstrip("/") != as_base.rstrip("/"):
         raise WalletError(tr("The authorization server metadata belongs to {other}, not to {server}.",
                              other=as_meta["issuer"], server=as_base))
@@ -587,7 +587,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
             suggested_username=issuer_config.get("username"),
         )
         proof_iss = client_id
-        # Recordar lo que funcionó (nunca la contraseña).
+        # Remember what worked (never the password).
         config = load_config()
         remembered = {"client_id": client_id, "redirect_uri": redirect_uri}
         if username:
@@ -620,7 +620,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
 
 
 def pick_display(displays: Any, locales: tuple[str, ...] | None = None) -> dict[str, Any]:
-    """Elige la entrada 'display' (OpenID4VCI) en el idioma de la interfaz (si no, inglés), o la primera."""
+    """Picks the 'display' entry (OpenID4VCI) in the interface language (else English), or the first one."""
     if not isinstance(displays, list) or not displays:
         return {}
     locales = locales or tuple(dict.fromkeys((i18n.current(), "en")))
@@ -632,7 +632,7 @@ def pick_display(displays: Any, locales: tuple[str, ...] | None = None) -> dict[
 
 
 def credential_display(config: dict[str, Any], config_id: str, issuer_name: str) -> dict[str, Any]:
-    """Nombre y colores con que el emisor quiere que se muestre la credencial (si los publica)."""
+    """Name and colours the issuer wants the credential shown with (if it publishes them)."""
     entry = pick_display(config.get("display") or (config.get("credential_metadata") or {}).get("display"))
     display = {"name": entry.get("name") or humanize(config_id), "issuer_name": issuer_name}
     for key in ("background_color", "text_color", "description"):
@@ -645,7 +645,7 @@ def credential_display(config: dict[str, Any], config_id: str, issuer_name: str)
 
 
 def did_web_url(did: str) -> str:
-    """did:web:host[%3Apuerto][:ruta:...] -> URL del documento DID."""
+    """did:web:host[%3Aport][:path:...] -> URL of the DID document."""
     parts = [unquote(p) for p in did.split(":")[2:]]
     if not parts or not parts[0]:
         raise WalletError(tr("Invalid did:web: {did}", did=did))
@@ -671,9 +671,9 @@ def _issuer_keys(
     session: requests.Session, sd: SdJwt, issuer: str, as_meta: dict[str, Any]
 ) -> tuple[list[Any], bool]:
     """
-    Claves públicas candidatas del emisor y si consta que pertenecen al 'iss' de la
-    credencial: x5c, documento did:web, metadata jwt-vc-issuer o, en último caso, el
-    jwks del servidor de autorización que ofreció la credencial.
+    Candidate public keys of the issuer, and whether they are known to belong to the
+    credential's 'iss': x5c, did:web document, jwt-vc-issuer metadata or, as a last resort,
+    the jwks of the authorization server that offered the credential.
     """
     iss = str(sd.payload.get("iss", ""))
     kid = sd.header.get("kid")
@@ -710,7 +710,7 @@ def _issuer_keys(
 def verify_issued_credential(
     session: requests.Session, raw: str, holder: HolderKey, issuer: str, as_meta: dict[str, Any]
 ) -> None:
-    """Antes de guardar: firma del emisor y ligado a la clave del wallet."""
+    """Before storing: issuer signature and binding to the wallet key."""
     sd = parse_sd_jwt(raw)
     iss = sd.payload.get("iss") or issuer
     keys, bound = _issuer_keys(session, sd, issuer, as_meta)

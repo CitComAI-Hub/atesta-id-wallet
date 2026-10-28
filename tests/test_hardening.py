@@ -1,4 +1,4 @@
-"""Regresiones de la revisión de seguridad y robustez (0.5.1).  Ejecutar:  python -m unittest discover -s tests"""
+"""Regressions from the security and robustness review (0.5.1).  Run:  python -m unittest discover -s tests"""
 
 import io
 import json
@@ -12,13 +12,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_offline as base  # noqa: E402  (fija ATESTA_ID_WALLET_HOME y el idioma de las pruebas)
+import test_offline as base  # noqa: E402  (sets ATESTA_ID_WALLET_HOME and the test language)
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 
 from atesta_id_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, vci, vp  # noqa: E402
 
 
-POSIX_ONLY = unittest.skipIf(os.name != "posix", "Windows: los datos los protege la ACL del perfil, no los bits de modo")
+POSIX_ONLY = unittest.skipIf(os.name != "posix", "Windows: the data is protected by the profile ACL, not by mode bits")
 
 
 def disclosure(*items):
@@ -45,7 +45,7 @@ class JoseTests(unittest.TestCase):
         signing_input = f"{common.b64u_json({'alg': 'ES256'})}.{common.b64u_json({'a': 1})}"
         r, s = decode_dss_signature(signer.sign(signing_input.encode(), ec.ECDSA(hashes.SHA256())))
         token = f"{signing_input}.{common.b64u(r.to_bytes(48, 'big') + s.to_bytes(48, 'big'))}"
-        self.assertFalse(jose._verify_jws(token, signer.public_key()))  # dice ES256 pero la clave es P-384
+        self.assertFalse(jose._verify_jws(token, signer.public_key()))  # says ES256 but the key is P-384
         p256 = ec.generate_private_key(ec.SECP256R1())
         self.assertTrue(jose._verify_jws(storage.HolderKey(p256).sign_jwt({}, {"a": 1}), p256.public_key()))
 
@@ -101,7 +101,7 @@ class DcqlSelectionTests(unittest.TestCase):
         return sorted(json.loads(common.b64u_decode(p))[1] for p in token.split("~")[1:-1])
 
     def test_without_claims_nothing_selective_is_disclosed(self):
-        """OpenID4VP 1.0 §6.4.1: sin 'claims' el verificador no pide datos selectivos."""
+        """OpenID4VP 1.0 §6.4.1: without 'claims' the verifier asks for no selective data."""
         match = vp.match_dcql({"credentials": [{"id": "q", "format": "dc+sd-jwt"}]}, [self.record], False)[0]
         self.assertEqual(match.paths, [])
         self.assertEqual(self.disclosed(match), [])
@@ -123,7 +123,7 @@ class DcqlSelectionTests(unittest.TestCase):
 
 
 class RedirectAfterPresentationTests(unittest.TestCase):
-    """El redirect_uri del verificador se abre en el navegador: solo direcciones web."""
+    """The verifier's redirect_uri is opened in the browser: web addresses only."""
 
     def setUp(self):
         base.isolated_home(self)
@@ -162,14 +162,14 @@ class StorageRobustnessTests(unittest.TestCase):
         self.assertEqual(target.read_text(), "dos")
         if os.name == "posix":
             self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
-        self.assertEqual([p.name for p in self.home.iterdir()], ["config.json"])  # sin temporales
+        self.assertEqual([p.name for p in self.home.iterdir()], ["config.json"])  # no temporary files
 
     def test_failed_write_keeps_the_old_file(self):
         target = self.home / "config.json"
         storage.write_private(target, '{"verifiers": {"a": 1}}')
 
         with self.assertRaises(TypeError):
-            storage.write_private(target, object())  # falla al escribir
+            storage.write_private(target, object())  # fails while writing
         self.assertEqual(json.loads(target.read_text()), {"verifiers": {"a": 1}})
         self.assertEqual([p.name for p in self.home.iterdir()], ["config.json"])
 
@@ -201,7 +201,7 @@ class StorageRobustnessTests(unittest.TestCase):
         first = storage.add_trusted_ca(folder_a / "ca.pem")
         second = storage.add_trusted_ca(folder_b / "ca.pem")
         self.assertNotEqual(first, second)
-        self.assertEqual(storage.add_trusted_ca(folder_a / "ca.pem"), first)  # el mismo: no se duplica
+        self.assertEqual(storage.add_trusted_ca(folder_a / "ca.pem"), first)  # the same one: not duplicated
         self.assertEqual(len(list(storage.TRUST_DIR.glob("*.pem"))), 2)
         (self.home / "bad.pem").write_text("no")
         with self.assertRaises(common.WalletError):
@@ -223,17 +223,17 @@ class IssuanceChecksTests(unittest.TestCase):
     def test_display_follows_the_interface_language(self):
         displays = [{"name": "Town hall", "locale": "en"}, {"name": "Rådhus", "locale": "da"},
                     {"name": "Ayuntamiento", "locale": "es-ES"}]
-        self.assertEqual(vci.pick_display(displays)["name"], "Ayuntamiento")  # las pruebas van en español
+        self.assertEqual(vci.pick_display(displays)["name"], "Ayuntamiento")  # the tests run in Spanish
         self.assertEqual(vci.pick_display(displays, ("da",))["name"], "Rådhus")
         self.assertEqual(vci.pick_display(displays[1:2], ("fr",))["name"], "Rådhus")
 
     def callback(self, url, as_meta=None):
-        """authorization_code_flow con la URL de vuelta pegada a mano (--browser-login)."""
+        """authorization_code_flow with the return URL pasted by hand (--browser-login)."""
         prompter = base.ScriptedPrompter(texts=[url])
         captured = {}
         original = vci.secrets.token_bytes
         self.addCleanup(setattr, vci.secrets, "token_bytes", original)
-        vci.secrets.token_bytes = lambda n: b"\x01" * n  # state predecible para construir la URL
+        vci.secrets.token_bytes = lambda n: b"\x01" * n  # predictable state to build the URL
         captured["state"] = common.b64u(b"\x01" * 16)
         return vci.authorization_code_flow(
             None, {"authorization_endpoint": "https://as.example/auth", "issuer": "https://as.example", **(as_meta or {})},
@@ -268,7 +268,7 @@ class IssuanceChecksTests(unittest.TestCase):
 
 
 class IssuerMetadataTests(unittest.TestCase):
-    """La metadata del emisor y del servidor de autorización deben ser las de quien hace la oferta."""
+    """The issuer and authorization server metadata must belong to whoever makes the offer."""
 
     @classmethod
     def setUpClass(cls):
@@ -319,7 +319,7 @@ class IssuerMetadataTests(unittest.TestCase):
 class CliErrorTests(unittest.TestCase):
     def test_unexpected_exception_is_reported_not_a_traceback(self):
         base.isolated_home(self)
-        self.addCleanup(i18n.set_language, "es")  # main() vuelve a elegir el idioma del sistema
+        self.addCleanup(i18n.set_language, "es")  # main() picks the system language again
         original = cli.cmd_list
         self.addCleanup(setattr, cli, "cmd_list", original)
 
@@ -342,7 +342,7 @@ class QrPreferenceTests(unittest.TestCase):
         self.assertEqual(desktop._wallet_qr(["https://v/r"], "x"), "https://v/r")
 
 
-@unittest.skipIf(base.gui is None, "PySide6 no instalado")
+@unittest.skipIf(base.gui is None, "PySide6 not installed")
 class GuiSafetyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

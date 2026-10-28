@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Firmas JWS, claves JWK/X.509 y cifrado JWE de respuestas."""
+"""JWS signatures, JWK/X.509 keys and JWE encryption of responses."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from .common import WalletError, b64u, b64u_decode, b64u_json, debug
 from .i18n import tr
 
 
-# Curva que exige cada algoritmo ES* (RFC 7518 §3.4): ES256 con P-384 no es una firma válida.
+# Curve required by each ES* algorithm (RFC 7518 §3.4): ES256 with P-384 is not a valid signature.
 _ES_CURVES = {"ES256": "secp256r1", "ES384": "secp384r1", "ES512": "secp521r1"}
 
 
@@ -127,10 +127,10 @@ def _concat_kdf(z: bytes, alg_id: str, apu: bytes, apv: bytes, key_bits: int) ->
 
 
 def encrypt_response_jwe(payload: dict[str, Any], request: dict[str, Any], *, apv: str | None) -> str:
-    """JWE ECDH-ES (acuerdo directo) + AxxxGCM para response_mode direct_post.jwt."""
+    """JWE ECDH-ES (direct key agreement) + AxxxGCM for response_mode direct_post.jwt."""
     meta = request.get("client_metadata") or {}
     keys = (meta.get("jwks") or {}).get("keys") or []
-    # La clave del verificador debe servir para ECDH-ES (OpenID4VP 1.0 §8.3: el alg del JWE es el de la clave).
+    # The verifier key must be usable for ECDH-ES (OpenID4VP 1.0 §8.3: the JWE alg is the key's).
     jwk = next((k for k in keys if isinstance(k, dict) and k.get("kty") == "EC" and k.get("use", "enc") == "enc"
                 and k.get("crv") in _CURVES and k.get("alg", "ECDH-ES") == "ECDH-ES"), None)
     if jwk is None:

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Empaqueta para Linux la carpeta que genera PyInstaller (packaging/atesta-id-wallet.spec):
-#   Atesta_ID_Wallet-VERSION-x86_64.AppImage   un solo fichero, sin instalar (cualquier distro)
-#   atesta-id-wallet_VERSION_amd64.deb         Debian/Ubuntu: menú, enlaces y comandos en /usr/bin
-# Uso:  packaging/build_linux.sh [CARPETA_PYINSTALLER] [SALIDA]
-#   FORMATS="deb"                    solo algunos formatos (por defecto: "appimage deb")
-#   APPIMAGETOOL=/ruta/appimagetool  para no descargarlo
-#   MAINTAINER="Nombre <correo>"     campo Maintainer del .deb
+# Packages for Linux the folder made by PyInstaller (packaging/atesta-id-wallet.spec):
+#   Atesta_ID_Wallet-VERSION-x86_64.AppImage   a single file, no installation (any distro)
+#   atesta-id-wallet_VERSION_amd64.deb         Debian/Ubuntu: menu, links and commands in /usr/bin
+# Usage:  packaging/build_linux.sh [PYINSTALLER_FOLDER] [OUTPUT]
+#   FORMATS="deb"                    only some formats (default: "appimage deb")
+#   APPIMAGETOOL=/path/appimagetool  to avoid downloading it
+#   MAINTAINER="Name <email>"        Maintainer field of the .deb
 set -euo pipefail
 umask 022
 
@@ -43,7 +43,7 @@ build_appimage() {
     cp -a "$BUNDLE" "$appdir/usr/lib/atesta-id-wallet"
     cat > "$appdir/AppRun" <<'APPRUN'
 #!/bin/sh
-# Sin argumentos o con un enlace: la interfaz gráfica.  'cli ...': la terminal (atesta-id-wallet ...).
+# No arguments or a link: the graphical interface.  'cli ...': the terminal (atesta-id-wallet ...).
 HERE="$(dirname "$(readlink -f "$0")")"
 if [ "$1" = "cli" ]; then
     shift
@@ -56,13 +56,13 @@ APPRUN
     cp "$ICON" "$appdir/atesta-id-wallet.png"
     ln -s atesta-id-wallet.png "$appdir/.DirIcon"
     if [[ -z "$tool" ]]; then
-        # Versión fija: la 13 de AppImageKit (la 'continuous' cambia sin aviso).
+        # Fixed version: AppImageKit 13 (the 'continuous' one changes without notice).
         tool="$WORK/appimagetool"
         curl -fsSL -o "$tool" https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
         chmod 755 "$tool"
     fi
     local target="$OUT/Atesta_ID_Wallet-$VERSION-x86_64.AppImage"
-    # Sin FUSE (contenedores, CI): appimagetool se extrae a sí mismo y se ejecuta.
+    # Without FUSE (containers, CI): appimagetool extracts itself and runs.
     APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "$tool" --no-appstream "$appdir" "$target" >/dev/null
     echo "✔ $target"
 }

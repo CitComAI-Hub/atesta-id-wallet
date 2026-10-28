@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Colores, hoja de estilos e iconos de la interfaz (tema claro y oscuro)."""
+"""Interface colours, style sheet and icons (light and dark theme)."""
 
 from __future__ import annotations
 
@@ -59,9 +59,9 @@ DARK = Theme(
     backdrop="rgba(0, 0, 0, 150)",
 )
 
-# Degradados de las tarjetas cuando el emisor no publica un color (texto blanco en todos).
+# Card gradients when the issuer publishes no colour (white text on all of them).
 CARD_GRADIENTS = (
-    ("#2a3b8f", "#5468d4"),  # índigo
+    ("#2a3b8f", "#5468d4"),  # indigo
     ("#0f4f55", "#1d8a84"),  # verde azulado
     ("#45297a", "#7a4bc4"),  # violeta
     ("#6e2638", "#bd4b62"),  # granate
@@ -85,7 +85,7 @@ def current() -> Theme:
 
 
 def card_colors(record: dict) -> tuple[QColor, QColor, QColor]:
-    """(inicio, fin, texto) del degradado de una tarjeta: el del emisor si lo publica, si no uno estable."""
+    """(start, end, text) of a card gradient: the issuer's if it publishes one, otherwise a stable one."""
     display = record.get("display") or {}
     base = QColor(display.get("background_color") or "")
     if base.isValid():
@@ -105,7 +105,7 @@ def _svg(name: str) -> bytes:
 
 
 def icon_pixmap(name: str, color: str, size: int = 20, stroke: float | None = None) -> QPixmap:
-    """Icono Lucide coloreado (los SVG usan currentColor)."""
+    """Coloured Lucide icon (the SVGs use currentColor)."""
     data = _svg(name).replace(b"currentColor", color.encode())
     if stroke is not None:
         data = data.replace(b'stroke-width="2"', f'stroke-width="{stroke}"'.encode())
@@ -124,7 +124,7 @@ def icon(name: str, color: str, size: int = 20) -> QIcon:
 
 
 def palette(t: Theme) -> QPalette:
-    """Paleta para los widgets nativos que no cubre la hoja de estilos (menús, selectores...)."""
+    """Palette for the native widgets the style sheet does not cover (menus, pickers...)."""
     p = QPalette()
     roles = {
         QPalette.Window: t.window, QPalette.WindowText: t.text, QPalette.Base: t.surface,
@@ -142,7 +142,7 @@ def palette(t: Theme) -> QPalette:
 
 @lru_cache(maxsize=1)
 def _private_tmp() -> Path:
-    """Directorio temporal propio del proceso: en el /tmp compartido otro usuario podría dejar el fichero antes."""
+    """Temporary folder of this process: in the shared /tmp another user could place the file first."""
     import atexit
     import shutil
     import tempfile
@@ -153,7 +153,7 @@ def _private_tmp() -> Path:
 
 
 def _arrow_file(color: str) -> str:
-    """Chevron coloreado en disco: la hoja de estilos solo acepta imágenes por ruta."""
+    """Coloured chevron on disk: the style sheet only takes images by path."""
     path = _private_tmp() / f"chevron-{color.strip('#')}.svg"
     if not path.exists():
         path.write_bytes(_svg("chevron-down").replace(b"currentColor", color.encode()))

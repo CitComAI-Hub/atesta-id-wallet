@@ -42,16 +42,16 @@ from . import theme
 
 
 def esc(text: Any) -> str:
-    """Texto para insertar en un texto enriquecido (cuerpo de los paneles): sin HTML y con sus saltos de línea."""
+    """Text to insert into rich text (panel bodies): without HTML and keeping its line breaks."""
     return html.escape(str(text)).replace("\n", "<br>")
 
 
 def label(text: str = "", name: str | None = None, *, wrap: bool = False, selectable: bool = False,
           rich: bool = False) -> QLabel:
     """
-    Texto plano salvo rich=True. Qt interpreta como HTML cualquier texto que lo parezca, y aquí se
-    muestran nombres y datos que vienen de emisores y verificadores: un verificador podría
-    pintar su nombre de verde. Con rich=True, los valores externos se pasan por esc().
+    Plain text unless rich=True. Qt renders as HTML any text that looks like it, and names and
+    data from issuers and verifiers are shown here: a verifier could paint its name green.
+    With rich=True, external values go through esc().
     """
     widget = QLabel()
     widget.setTextFormat(Qt.RichText if rich else Qt.PlainText)
@@ -78,7 +78,7 @@ def button(text: str, kind: str | None = None, icon: str | None = None) -> QPush
 
 
 def clear_layout(layout: Any) -> None:
-    """Vacía un layout ocultando ya los widgets (deleteLater no actúa hasta volver al bucle de eventos)."""
+    """Empties a layout, hiding the widgets at once (deleteLater only acts back in the event loop)."""
     while layout.count():
         item = layout.takeAt(0)
         widget = item.widget()
@@ -96,7 +96,7 @@ def hline() -> QFrame:
 
 
 class FlowLayout(QLayout):
-    """Coloca los elementos en filas que se reparten según el ancho disponible."""
+    """Lays the items out in rows that wrap with the available width."""
 
     def __init__(self, parent: QWidget | None = None, spacing: int = 18):
         super().__init__(parent)
@@ -158,7 +158,7 @@ class FlowLayout(QLayout):
 
 
 class CredentialCard(QWidget):
-    """Credencial como tarjeta (formato ID-1), con el color del emisor."""
+    """Credential as a card (ID-1 format), in the issuer's colour."""
 
     clicked = Signal()
     WIDTH = 300
@@ -206,7 +206,7 @@ class CredentialCard(QWidget):
         gradient.setColorAt(1, end)
         painter.fillPath(path, gradient)
 
-        # Motivo decorativo: arcos concéntricos en la esquina.
+        # Decoration: concentric arcs in the corner.
         painter.setClipPath(path)
         decoration = QColor(text)
         for index, radius in enumerate((0.55, 0.78, 1.0)):
@@ -261,7 +261,7 @@ class CredentialCard(QWidget):
 
 
 class IconBubble(QWidget):
-    """Icono dentro de un círculo de color suave (cabecera de paneles y filas)."""
+    """Icon inside a soft-coloured circle (panel headers and rows)."""
 
     def __init__(self, icon: str, color: str, background: str, size: int = 48):
         super().__init__()
@@ -317,7 +317,7 @@ def pill(text: str, color: str, background: str) -> QLabel:
 
 
 class Panel(QFrame):
-    """Superficie con borde redondeado que agrupa filas."""
+    """Rounded surface that groups rows."""
 
     def __init__(self, margins: tuple[int, int, int, int] = (20, 16, 20, 16)):
         super().__init__()
@@ -346,7 +346,7 @@ def key_value_row(key: str, value: str, *, last: bool = False) -> QWidget:
 
 
 class EmptyState(QWidget):
-    """Ilustración de línea + título + texto, para listas vacías."""
+    """Line illustration + title + text, for empty lists."""
 
     def __init__(self, icon: str, title: str, text: str, action: QPushButton | None = None):
         super().__init__()
@@ -372,7 +372,7 @@ class EmptyState(QWidget):
 
 
 class _EmptyArt(QWidget):
-    """Dos tarjetas superpuestas en línea discontinua con un icono: dibujo propio."""
+    """Two overlapping dashed cards with an icon: custom drawing."""
 
     def __init__(self, icon: str):
         super().__init__()
@@ -402,7 +402,7 @@ class _EmptyArt(QWidget):
 
 
 class Toast(QLabel):
-    """Aviso breve en la parte inferior de la ventana."""
+    """Short notice at the bottom of the window."""
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -436,7 +436,7 @@ def fade_in(widget: QWidget, ms: int = 160) -> None:
 
 
 def locale() -> QLocale:
-    """Formato de fechas del idioma de la interfaz."""
+    """Date format of the interface language."""
     return QLocale(i18n.current())
 
 
@@ -445,7 +445,7 @@ def short_date(timestamp: float) -> str:
 
 
 def relative_time(timestamp: float) -> str:
-    """'hoy, 14:32', 'ayer, 09:10' o '3 mar 2026' (en el idioma de la interfaz)."""
+    """'today, 14:32', 'yesterday, 09:10' or '3 Mar 2026' (in the interface language)."""
     moment = time.localtime(timestamp)
     today = time.localtime()
     days = (time.mktime(today[:3] + (0, 0, 0, 0, 0, -1)) - time.mktime(moment[:3] + (0, 0, 0, 0, 0, -1))) / 86400

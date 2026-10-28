@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Aviso de versiones nuevas (GitHub Releases).
+New-version notice (GitHub Releases).
 
-Solo se consulta GitHub si el usuario lo pide (Ajustes / `atesta-id-wallet update`) o activa la
-comprobación automática (una vez al día como mucho). La petición no lleva datos del wallet:
-GitHub solo ve la dirección IP y la versión en el User-Agent. No se descarga ni instala nada.
+GitHub is only asked when the user requests it (Settings / `atesta-id-wallet update`) or turns on
+the automatic check (at most once a day). The request carries no wallet data: GitHub only sees
+the IP address and the version in the User-Agent. Nothing is downloaded or installed.
 """
 
 from __future__ import annotations
@@ -32,21 +32,21 @@ class Release:
 
 
 def parse_version(text: str) -> tuple[int, ...]:
-    """'v0.6.0' -> (0, 6, 0); () si no parece una versión."""
+    """'v0.6.0' -> (0, 6, 0); () if it does not look like a version."""
     match = re.match(r"v?(\d+(?:\.\d+)*)", (text or "").strip())
     return tuple(int(part) for part in match.group(1).split(".")) if match else ()
 
 
 def latest_release(timeout: float = 10) -> Release:
-    """Última versión publicada (/releases/latest ya excluye borradores y versiones previas)."""
+    """Latest published version (/releases/latest already leaves out drafts and pre-releases)."""
     response = requests.get(LATEST_API, timeout=timeout, headers={
         "Accept": "application/vnd.github+json", "User-Agent": f"atesta-id-wallet/{__version__}"})
-    if response.status_code == 404:  # sin versiones publicadas, o repositorio privado
+    if response.status_code == 404:  # no published versions, or a private repository
         raise WalletError(tr("No published version was found at {url}", url=RELEASES_PAGE))
     data = _json(response, "GET", LATEST_API)
     tag = str(data.get("tag_name") or "")
     url = str(data.get("html_url") or "")
-    # Solo se abre en el navegador una página de las releases del proyecto, nunca otra dirección.
+    # Only a page under the project's releases is opened in the browser, never another address.
     if not url.startswith(RELEASES_PAGE + "/"):
         url = RELEASES_PAGE
     return Release(tag.lstrip("v"), url)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Interfaz de línea de comandos."""
+"""Command line interface."""
 
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ def cmd_history(_: argparse.Namespace) -> int:
 
 
 def _resolve_credentials(selectors: list[str], records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Número de 'list' o id (nombre del fichero, admite prefijo único)."""
+    """Number from 'list' or id (file name; a unique prefix is enough)."""
     out = []
     for selector in selectors:
         if selector.isdigit() and 1 <= int(selector) <= len(records):
@@ -223,7 +223,7 @@ def cmd_profiles(args: argparse.Namespace) -> int:
         print(tr("✔ Profile '{name}' created. Use it with: atesta-id-wallet --profile {name} ...", name=args.name))
         return 0
     if args.action == "remove":
-        profile_dir(args.name)  # valida el nombre antes de preguntar
+        profile_dir(args.name)  # validates the name before asking
         if args.name != DEFAULT_PROFILE and not confirm(
             tr("Remove the profile '{name}' with its key and credentials?", name=args.name), assume_yes=args.yes
         ):
@@ -291,7 +291,7 @@ def cmd_check_update() -> int:
 
 
 def cmd_update(args: argparse.Namespace) -> int:
-    if args.check or FROZEN:  # los paquetes (AppImage, .deb, instalador) se actualizan descargando el nuevo
+    if args.check or FROZEN:  # packages (AppImage, .deb, installer) are updated by downloading the new one
         return cmd_check_update()
     marker = Path(sys.prefix) / "atesta-id-wallet-source"
     if not marker.exists():
@@ -417,7 +417,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _pop_profile(argv: list[str]) -> str | None:
-    """Extrae --profile X / --profile=X de cualquier posición."""
+    """Takes --profile X / --profile=X from any position."""
     for index, arg in enumerate(argv):
         if arg == "--profile":
             if index + 1 >= len(argv):
@@ -458,7 +458,7 @@ def _run(argv: list[str]) -> int:
     if not positionals or positionals[0] not in SUBCOMMANDS:
         if any(a in ("--version", "-h", "--help") for a in global_flags):
             parser.parse_args(global_flags)
-        # Modo automático: oferta -> issue, petición -> present.
+        # Automatic mode: offer -> issue, request -> present.
         rest = [a for a in argv if a not in global_flags]
         entry = positionals[0] if positionals else None
         if entry is not None:
@@ -493,7 +493,7 @@ def cmd_language(args: argparse.Namespace) -> int:
 
 
 def _tolerant_output() -> None:
-    """Una consola o tubería que no es UTF-8 (cp1252 en Windows) no debe romper con '✔' o '·'."""
+    """A console or pipe that is not UTF-8 (cp1252 on Windows) must not crash on '✔' or '·'."""
     for stream in (sys.stdout, sys.stderr):
         if stream is not None and hasattr(stream, "reconfigure"):
             try:
@@ -519,7 +519,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\n" + tr("Cancelled."), file=sys.stderr)
         return 130
-    except Exception as exc:  # respuesta inesperada de un servidor, fichero dañado...
+    except Exception as exc:  # unexpected server response, damaged file...
         if common.VERBOSE:
             traceback.print_exc()
         print("\n" + tr("UNEXPECTED ERROR: {error} (repeat with --verbose for details)",

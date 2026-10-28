@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""OpenID4VP: petición del verificador, DCQL / Presentation Exchange y respuesta."""
+"""OpenID4VP: verifier request, DCQL / Presentation Exchange, and response."""
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def fetch_request(session: requests.Session, raw: str) -> tuple[dict[str, Any], 
             raise _http_error("GET/POST", uri, response)
         token = response.text.strip()
     else:
-        # Petición por valor (sin firmar) en la propia URL.
+        # Request by value (unsigned) in the URL itself.
         request = dict(qp)
         for key in ("dcql_query", "presentation_definition", "client_metadata"):
             if key in request:
@@ -138,12 +138,12 @@ def _filter_ok(value: Any, flt: dict[str, Any]) -> bool:
 
 
 class NoMatchingCredential(WalletError):
-    """El verificador pide una credencial que no está en el wallet."""
+    """The verifier asks for a credential that is not in the wallet."""
 
     def __init__(self, message: str, wanted: list[str]):
         super().__init__(message)
-        self.detail = message  # versión técnica, para --verbose
-        self.wanted = list(dict.fromkeys(wanted))  # tipos o nombres pedidos, sin repetir
+        self.detail = message  # technical version, for --verbose
+        self.wanted = list(dict.fromkeys(wanted))  # requested types or names, without repetitions
         self.verifier: str | None = None
 
     def __str__(self) -> str:
@@ -163,7 +163,7 @@ class Match:
     paths: list[list[Any]] | None
 
 
-# choose(query_id, candidatas) -> la credencial a usar; por defecto la más reciente.
+# choose(query_id, candidates) -> the credential to use; by default the newest.
 Chooser = Callable[[str, list[dict[str, Any]]], dict[str, Any]]
 
 
@@ -177,8 +177,8 @@ def _usable(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _dcql_claims(query: dict[str, Any], claims: Any) -> list[dict[str, Any]] | None:
     """
-    Los claim queries que satisface la credencial, o None si no la satisface (OpenID4VP 1.0 §6.4.1):
-    con claim_sets, la primera combinación posible; sin ellos, todos los de 'claims'.
+    The claim queries the credential satisfies, or None if it does not (OpenID4VP 1.0 §6.4.1):
+    with claim_sets, the first possible combination; without them, all of 'claims'.
     """
     claim_queries = [cq for cq in query.get("claims") or [] if isinstance(cq, dict)]
     ok = {}
@@ -209,8 +209,8 @@ def match_dcql(dcql: dict[str, Any], records: list[dict[str, Any]], disclose_all
         found = []
         for record in records:
             sd: SdJwt = record["_sd"]
-            # dc+sd-jwt y vc+sd-jwt son el mismo formato con distinto nombre;
-            # solo se cruzan si no hay una consulta con el nombre exacto.
+            # dc+sd-jwt and vc+sd-jwt are the same format under different names;
+            # they are only mixed when no query uses the exact name.
             if fmt and record.get("format") != fmt and (strict_format or fmt not in SD_JWT_FORMATS):
                 continue
             if vcts and sd.claims.get("vct") not in vcts:
@@ -220,7 +220,7 @@ def match_dcql(dcql: dict[str, Any], records: list[dict[str, Any]], disclose_all
         return found
 
     def to_match(query_id: str, record: dict[str, Any]) -> Match:
-        # Sin 'claims' el verificador no pide ningún dato selectivo: solo se envía lo obligatorio.
+        # Without 'claims' the verifier asks for no selective data: only the mandatory parts are sent.
         claim_queries = _dcql_claims(queries[query_id], record["_sd"].claims) or []
         paths = None if disclose_all else [cq.get("path", []) for cq in claim_queries]
         return Match(query_id, record, paths)
@@ -232,7 +232,7 @@ def match_dcql(dcql: dict[str, Any], records: list[dict[str, Any]], disclose_all
     matches: dict[str, Match] = {}
     for cset in credential_sets:
         chosen: dict[str, list[dict[str, Any]]] | None = None
-        # Primero opciones con formato exacto; si ninguna encaja, se relaja.
+        # Options with the exact format first; if none fits, the format is relaxed.
         for strict in (True, False):
             for option in cset.get("options", []):
                 found = {qid: find(queries[qid], strict) for qid in option if qid in queries}
@@ -295,7 +295,7 @@ def match_presentation_definition(
 
 @dataclass
 class PreparedPresentation:
-    """Lo que se va a enviar, listo para pedir consentimiento antes de firmar nada."""
+    """What will be sent, ready to ask for consent before signing anything."""
     request: dict[str, Any]
     identity: VerifierIdentity
     response_uri: str
@@ -314,7 +314,7 @@ def prepare_presentation(
     allow_unverified: bool = False,
     choose: Chooser = _first,
 ) -> PreparedPresentation:
-    """Descarga y valida la petición y elige las credenciales; no envía nada."""
+    """Downloads and validates the request and picks the credentials; sends nothing."""
     debug(f"Request: {raw}")
     request, identity = fetch_request(session, raw)
     debug(f"Request object: {json.dumps(request, ensure_ascii=False)[:2000]}")
@@ -355,7 +355,7 @@ def prepare_presentation(
 
 
 def build_response(prepared: PreparedPresentation, key: HolderKey, *, vp_token_style: str = "array") -> dict[str, str]:
-    """Firma las presentaciones (KB-JWT) y monta el cuerpo del POST a response_uri."""
+    """Signs the presentations (KB-JWT) and builds the POST body for response_uri."""
     request, matches = prepared.request, prepared.matches
     presentations = [
         build_sd_jwt_presentation(
@@ -399,7 +399,7 @@ def build_response(prepared: PreparedPresentation, key: HolderKey, *, vp_token_s
 def send_presentation(
     session: requests.Session, prepared: PreparedPresentation, body: dict[str, str]
 ) -> str | None:
-    """Envía la respuesta; devuelve el redirect_uri que indique el verificador, si lo hay."""
+    """Sends the response; returns the verifier's redirect_uri, if any."""
     log(tr("Sending the presentation…"))
     response = session.post(prepared.response_uri, data=body, timeout=30)
     if response.status_code >= 400:
@@ -416,7 +416,7 @@ def send_presentation(
         debug(response.text[:500])
     if redirect_uri is None:
         return None
-    # Se abre en el navegador: nunca file://, javascript: ni otros esquemas locales.
+    # It is opened in the browser: never file://, javascript: or other local schemes.
     if not isinstance(redirect_uri, str) or urlsplit(redirect_uri).scheme not in ("https", "http"):
         log(tr("Warning: the verifier's redirect_uri is not a web address; it is not opened: {uri}",
                uri=redirect_uri))
@@ -442,5 +442,5 @@ def _history_event(kind: str, prepared: PreparedPresentation) -> dict[str, Any]:
 
 
 def record_declined(prepared: PreparedPresentation) -> None:
-    """Deja constancia en el historial de que el usuario no quiso compartir los datos."""
+    """Records in the history that the user declined to share the data."""
     add_history(_history_event("declined", prepared))

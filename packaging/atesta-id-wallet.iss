@@ -1,8 +1,8 @@
-; Instalador de Windows (Inno Setup 6) para la carpeta de PyInstaller.
-; Por usuario y sin permisos de administrador: el programa va a %LOCALAPPDATA%\Programs y los
-; enlaces openid4vp:// y openid-credential-offer:// a HKCU, igual que 'atesta-id-wallet install-handler'.
-; Los datos del wallet (%APPDATA%\atesta-id-wallet) no se tocan al desinstalar.
-; Uso:  iscc /DAppVersion=0.5.1 /DSourceDir=dist\atesta-id-wallet /DOutputDir=dist packaging\atesta-id-wallet.iss
+; Windows installer (Inno Setup 6) for the PyInstaller folder.
+; Per user and without administrator rights: the program goes to %LOCALAPPDATA%\Programs and the
+; openid4vp:// and openid-credential-offer:// links to HKCU, like 'atesta-id-wallet install-handler'.
+; The wallet data (%APPDATA%\atesta-id-wallet) is not touched when uninstalling.
+; Usage:  iscc /DAppVersion=0.6.0 /DSourceDir=dist\atesta-id-wallet /DOutputDir=dist packaging\atesta-id-wallet.iss
 
 #ifndef AppVersion
   #error Pass /DAppVersion=X.Y.Z
@@ -15,7 +15,7 @@
 #endif
 
 [Setup]
-; AppId fijo: identifica la aplicación entre versiones (actualizar = instalar encima).
+; Fixed AppId: identifies the application across versions (updating = installing over it).
 AppId={{6E0B7A52-3C1F-4F0E-9B7D-2D5A8C41E9A3}
 AppName=Atesta ID Wallet
 AppVersion={#AppVersion}
@@ -54,7 +54,7 @@ Name: "{autoprograms}\Atesta ID Wallet"; Filename: "{app}\atesta-id-wallet-gui.e
 Name: "{autodesktop}\Atesta ID Wallet"; Filename: "{app}\atesta-id-wallet-gui.exe"; Tasks: desktopicon
 
 [Registry]
-; Mismas claves que desktop._install_windows(); se borran al desinstalar.
+; Same keys as desktop._install_windows(); removed when uninstalling.
 Root: HKCU; Subkey: "Software\Classes\openid4vp"; ValueType: string; ValueName: ""; ValueData: "URL:openid4vp"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\openid4vp"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\openid4vp\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\atesta-id-wallet-gui.exe"" ""%1"""

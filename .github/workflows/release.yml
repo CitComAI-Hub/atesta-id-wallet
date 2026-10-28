@@ -1,7 +1,7 @@
-# Versiones publicables: AppImage y .deb (Linux), instalador y zip (Windows), SHA256SUMS.
-#   git tag v0.6.0 && git push origin v0.6.0   -> construye, prueba y publica la release
-#   Actions -> Release -> Run workflow         -> construye y prueba; los ficheros quedan como artefactos
-# Ver docs/RELEASING.md.
+# Release builds: AppImage and .deb (Linux), installer and zip (Windows), SHA256SUMS.
+#   git tag v0.6.0 && git push origin v0.6.0   -> builds, tests and publishes the release
+#   Actions -> Release -> Run workflow         -> builds and tests; the files are kept as artifacts
+# See docs/RELEASING.md.
 name: Release
 
 on:
@@ -48,7 +48,7 @@ jobs:
 
   linux:
     needs: test
-    # La más antigua con soporte: el AppImage y el .deb exigen glibc >= 2.35.
+    # The oldest supported one: the AppImage and the .deb need glibc >= 2.35.
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +105,7 @@ jobs:
         run: |
           dist\atesta-id-wallet\atesta-id-wallet.exe --version
           if ($LASTEXITCODE -ne 0) { throw "CLI failed" }
-          # La GUI no tiene consola: se espera a que termine y se mira el código de salida.
+          # The GUI has no console: wait for it to finish and check the exit code.
           $p = Start-Process dist\atesta-id-wallet\atesta-id-wallet-gui.exe -ArgumentList "--smoke-test" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "GUI smoke test failed ($($p.ExitCode))" }
       - name: Installer and zip
@@ -133,7 +133,7 @@ jobs:
           $p = Start-Process "$app\atesta-id-wallet-gui.exe" -ArgumentList "--smoke-test" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Installed GUI smoke test failed ($($p.ExitCode))" }
           Start-Process "$app\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
-          # El desinstalador se relanza desde %TEMP%: -Wait vuelve antes de que acabe.
+          # The uninstaller relaunches itself from %TEMP%: -Wait returns before it is done.
           for ($i = 0; $i -lt 60 -and (Test-Path "HKCU:\Software\Classes\openid4vp"); $i++) { Start-Sleep 1 }
           if (Test-Path "HKCU:\Software\Classes\openid4vp") { throw "Link handler left after uninstalling" }
       - uses: actions/upload-artifact@v4
@@ -158,8 +158,8 @@ jobs:
       - name: Checksums
         working-directory: release
         run: sha256sum * > SHA256SUMS && cat SHA256SUMS
-      # Procedencia firmada (Sigstore): 'gh attestation verify FICHERO --repo CitComAI-Hub/atesta-id-wallet'.
-      # GitHub solo la ofrece en repositorios públicos (o privados con Enterprise Cloud).
+      # Signed provenance (Sigstore): 'gh attestation verify FILE --repo CitComAI-Hub/atesta-id-wallet'.
+      # GitHub only offers it on public repositories (or private ones with Enterprise Cloud).
       - uses: actions/attest-build-provenance@v2
         if: ${{ !github.event.repository.private }}
         with:

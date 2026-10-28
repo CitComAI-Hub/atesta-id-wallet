@@ -1,4 +1,4 @@
-"""Punto de entrada del ejecutable de terminal (PyInstaller)."""
+"""Entry point of the terminal executable (PyInstaller)."""
 
 import sys
 

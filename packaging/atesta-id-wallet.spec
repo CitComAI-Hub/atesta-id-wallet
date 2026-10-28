@@ -1,8 +1,8 @@
 # -*- mode: python -*-
-# PyInstaller: una carpeta con dos ejecutables que comparten las bibliotecas:
-#   atesta-id-wallet-gui   interfaz gráfica (sin consola en Windows)
+# PyInstaller: one folder with two executables that share the libraries:
+#   atesta-id-wallet-gui   graphical interface (no console on Windows)
 #   atesta-id-wallet       terminal
-# Uso (desde la raíz del repositorio):  pyinstaller --noconfirm packaging/atesta-id-wallet.spec
+# Usage (from the repository root):  pyinstaller --noconfirm packaging/atesta-id-wallet.spec
 import sys
 from pathlib import Path
 
@@ -10,8 +10,8 @@ from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(SPECPATH).parent
 ICON = str(ROOT / "packaging" / "atesta-id-wallet.ico") if sys.platform == "win32" else None
-DATAS = collect_data_files("atesta_id_wallet")  # catálogos de idiomas e iconos
-# Partes de Qt que el wallet no usa (ahorran espacio; QtNetwork sí: ventana única).
+DATAS = collect_data_files("atesta_id_wallet")  # language catalogs and icons
+# Qt parts the wallet does not use (saves space; QtNetwork is used: single window).
 EXCLUDES = ["tkinter", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtPdf", "PySide6.QtOpenGL",
             "PySide6.QtSql", "PySide6.QtTest", "PySide6.QtDBus", "PySide6.QtConcurrent"]
 
@@ -20,8 +20,8 @@ gui = Analysis([str(ROOT / "packaging" / "launch_gui.py")], pathex=[str(ROOT)], 
 cli = Analysis([str(ROOT / "packaging" / "launch_cli.py")], pathex=[str(ROOT)], datas=DATAS,
                excludes=EXCLUDES + ["PySide6", "shiboken6"])
 
-# El tema GTK de Qt arrastraría una copia de GTK 3 que puede no casar con la del sistema; Qt usa
-# entonces su propio estilo (Fusion, el de la aplicación) y los diálogos del portal xdg-desktop-portal.
+# Qt's GTK theme would pull in a copy of GTK 3 that may not match the system one; Qt then uses
+# its own style (Fusion, the one the app uses) and the xdg-desktop-portal dialogs.
 gui.binaries = [b for b in gui.binaries
                 if not any(part in b[0] for part in ("libqgtk3", "libgtk-3", "libgdk-3"))]
 

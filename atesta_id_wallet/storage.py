@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Perfiles, clave del holder, credenciales y configuración en disco."""
+"""Profiles, holder key, credentials and configuration on disk."""
 
 from __future__ import annotations
 
@@ -36,9 +36,9 @@ def _default_base_dir() -> Path:
 BASE_DIR = Path(os.environ.get("ATESTA_ID_WALLET_HOME") or _default_base_dir())
 PROFILES_DIR = BASE_DIR / "profiles"
 DEFAULT_PROFILE = "default"
-LEGACY_DATA_DIR = Path(__file__).resolve().parent.parent / "wallet_data"  # versiones de un solo script
+LEGACY_DATA_DIR = Path(__file__).resolve().parent.parent / "wallet_data"  # single-script versions
 
-# Rutas del perfil activo; set_profile() las cambia.
+# Paths of the active profile; set_profile() changes them.
 PROFILE = DEFAULT_PROFILE
 DATA_DIR = BASE_DIR
 KEY_FILE = DATA_DIR / "holder_key.pem"
@@ -93,7 +93,7 @@ class HolderKey:
 
 
 def profile_dir(name: str) -> Path:
-    """El perfil 'default' vive en la raíz (compatibilidad con la 0.1); el resto en profiles/."""
+    """The 'default' profile lives in the root (compatibility with 0.1); the others in profiles/."""
     if name == DEFAULT_PROFILE:
         return BASE_DIR
     if not PROFILE_NAME_RE.match(name):
@@ -112,7 +112,7 @@ def set_profile(name: str) -> None:
 
 
 def settings_file() -> Path:
-    """Ajustes de la aplicación, comunes a todos los perfiles (p. ej. el idioma)."""
+    """Application settings, shared by all profiles (e.g. the language)."""
     return BASE_DIR / "settings.json"
 
 
@@ -142,9 +142,9 @@ def ensure_data_dir(path: Path | None = None) -> None:
 
 def write_private(path: Path, text: str) -> None:
     """
-    Escribe con permisos 0600 desde el principio (no hay ventana con el umask por defecto) y de
-    forma atómica: un corte a mitad no deja un config.json vacío, que haría olvidar los
-    certificados fijados de los verificadores.
+    Writes with 0600 permissions from the start (no window with the default umask) and
+    atomically: an interruption halfway does not leave an empty config.json, which would forget
+    the pinned verifier certificates.
     """
     ensure_data_dir(path.parent)
     tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
@@ -162,8 +162,8 @@ def write_private(path: Path, text: str) -> None:
 
 def harden_permissions() -> None:
     """
-    Corrige permisos de datos creados por la 0.1 (con el umask por defecto). Solo toca lo que
-    es del wallet: $ATESTA_ID_WALLET_HOME puede apuntar a una carpeta con otras cosas.
+    Fixes the permissions of data created by 0.1 (with the default umask). Only touches what
+    belongs to the wallet: $ATESTA_ID_WALLET_HOME may point to a folder with other things.
     """
     if not BASE_DIR.is_dir():
         return
@@ -225,7 +225,7 @@ def save_credential(raw: str, *, fmt: str, issuer: str, configuration_id: str,
     stamp = time.strftime("%Y%m%dT%H%M%S")
     path = CRED_DIR / f"{stamp}_{safe_id}.json"
     suffix = 1
-    while path.exists():  # varias credenciales en el mismo segundo (lotes, varias configuraciones)
+    while path.exists():  # several credentials in the same second (batches, several configurations)
         suffix += 1
         path = CRED_DIR / f"{stamp}_{safe_id}_{suffix}.json"
     record = {
@@ -236,7 +236,7 @@ def save_credential(raw: str, *, fmt: str, issuer: str, configuration_id: str,
         "credential": raw,
     }
     if display:
-        record["display"] = display  # nombre y colores publicados por el emisor
+        record["display"] = display  # name and colours published by the issuer
     write_private(path, json.dumps(record, indent=2, ensure_ascii=False))
     return path
 
@@ -245,7 +245,7 @@ def load_credentials() -> list[dict[str, Any]]:
     if not CRED_DIR.exists():
         return []
     records = []
-    for path in sorted(CRED_DIR.glob("*.json"), reverse=True):  # más reciente primero
+    for path in sorted(CRED_DIR.glob("*.json"), reverse=True):  # newest first
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -254,7 +254,7 @@ def load_credentials() -> list[dict[str, Any]]:
         if record.get("format") in SD_JWT_FORMATS:
             try:
                 record["_sd"] = parse_sd_jwt(record["credential"])
-            except Exception as exc:  # credencial corrupta: se ignora
+            except Exception as exc:  # damaged credential: ignored
                 debug(f"Could not parse {path}: {exc}")
                 continue
         records.append(record)
@@ -262,7 +262,7 @@ def load_credentials() -> list[dict[str, Any]]:
 
 
 def credential_name(record: dict[str, Any]) -> str:
-    """Nombre para mostrar: el que publica el emisor, o el tipo (vct) de la credencial."""
+    """Display name: the one the issuer publishes, or the credential type (vct)."""
     sd: SdJwt | None = record.get("_sd")
     claims = sd.claims if sd else {}
     published = (record.get("display") or {}).get("name")
@@ -273,7 +273,7 @@ def credential_name(record: dict[str, Any]) -> str:
 
 
 def credential_holder(record: dict[str, Any]) -> str:
-    """El dato que mejor identifica al titular (email, usuario, nombre...), si lo hay."""
+    """The value that best identifies the holder (email, username, name...), if any."""
     sd: SdJwt | None = record.get("_sd")
     claims = sd.claims if sd else {}
     for keys in (("given_name", "family_name"), ("firstName", "lastName")):
@@ -289,7 +289,7 @@ def credential_issuer_name(record: dict[str, Any]) -> str:
 
 
 def credential_label(record: dict[str, Any]) -> str:
-    """Una línea para identificar la credencial ante el usuario."""
+    """One line that identifies the credential to the user."""
     kind = credential_name(record)
     who = credential_holder(record)
     stored = time.strftime("%Y-%m-%d", time.localtime(record.get("stored_at", 0)))
@@ -312,7 +312,7 @@ def is_expired(record: dict[str, Any]) -> bool:
     return isinstance(exp, (int, float)) and exp < time.time()
 
 
-# Lo que forma un perfil (el perfil 'default' comparte directorio con profiles/).
+# What makes up a profile (the 'default' profile shares its folder with profiles/).
 PROFILE_ITEMS = ("holder_key.pem", "credentials", "config.json", "trusted_cas", "history.jsonl")
 
 
@@ -321,7 +321,7 @@ def history_file() -> Path:
 
 
 def add_history(event: dict[str, Any]) -> None:
-    """Añade un evento (issued / presented / declined) al historial del perfil activo."""
+    """Adds an event (issued / presented / declined) to the history of the active profile."""
     event = {"time": int(time.time()), **event}
     path = history_file()
     ensure_data_dir(path.parent)
@@ -331,7 +331,7 @@ def add_history(event: dict[str, Any]) -> None:
 
 
 def load_history() -> list[dict[str, Any]]:
-    """Eventos del historial, del más reciente al más antiguo."""
+    """History events, newest first."""
     try:
         lines = history_file().read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -368,7 +368,7 @@ def profile_is_empty() -> bool:
 
 
 def write_backup(out: Path, password: str) -> None:
-    """Copia cifrada (scrypt + AES-256-GCM) del perfil activo, clave incluida."""
+    """Encrypted backup (scrypt + AES-256-GCM) of the active profile, key included."""
     if not KEY_FILE.exists():
         raise WalletError(tr("The profile '{profile}' is empty; there is nothing to back up.", profile=PROFILE))
     if len(password) < 8:
@@ -386,7 +386,7 @@ def write_backup(out: Path, password: str) -> None:
 
 
 def restore_backup(path: Path, password: str) -> int:
-    """Restaura una copia en el perfil activo, que debe estar vacío; devuelve cuántas credenciales hay."""
+    """Restores a backup into the active profile, which must be empty; returns the number of credentials."""
     if not profile_is_empty():
         raise WalletError(tr("The profile '{profile}' already has data. Restore into a new profile or empty it.",
                              profile=PROFILE))
@@ -416,7 +416,7 @@ def restore_backup(path: Path, password: str) -> int:
 
 
 def read_ca_file(source: Path) -> list[Any]:
-    """Certificados de un PEM, o WalletError si no se puede leer."""
+    """Certificates in a PEM file, or WalletError if it cannot be read."""
     from cryptography import x509
 
     try:
@@ -427,7 +427,7 @@ def read_ca_file(source: Path) -> list[Any]:
 
 
 def add_trusted_ca(source: Path) -> Path:
-    """Copia el PEM a trusted_cas/ del perfil sin pisar otra CA que tenga el mismo nombre de fichero."""
+    """Copies the PEM to the profile's trusted_cas/ without overwriting another CA with the same file name."""
     certs = read_ca_file(source)
     pem = "".join(c.public_bytes(serialization.Encoding.PEM).decode("ascii") for c in certs)
     stem = re.sub(r"[^A-Za-z0-9_.-]", "_", source.stem)[:60] or "ca"

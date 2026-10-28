@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Lo que los flujos de emisión y presentación necesitan preguntar al usuario.
+What the issuance and presentation flows need to ask the user.
 
-Los módulos de protocolo (vci, vp) no hablan con el usuario directamente: reciben un
-Prompter. TerminalPrompter pregunta por consola; la GUI implementa el mismo interfaz
-con diálogos.
+The protocol modules (vci, vp) never talk to the user directly: they receive a Prompter.
+TerminalPrompter asks in the console; the GUI implements the same interface with panels.
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ from .i18n import N_, tr
 from .sdjwt import disclosed_claims
 from .storage import credential_label
 
-TRUST_TEXT = {  # se traducen al mostrarlos: tr(TRUST_TEXT[nivel])
+TRUST_TEXT = {  # translated when shown: tr(TRUST_TEXT[level])
     "trusted": N_("✔ verified identity (certificate from a trusted CA)"),
     "pinned": N_("✔ same certificate as last time (not issued by a trusted CA)"),
     "new": N_("⚠ FIRST TIME: self-signed certificate or unknown CA; nobody vouches for who it claims to be"),
@@ -40,21 +39,21 @@ def short_value(value: Any, limit: int = 80) -> str:
 
 @dataclass
 class OfferSummary:
-    """Lo que se muestra antes de aceptar una oferta de credencial."""
-    issuer: str  # URL del credential_issuer
-    issuer_name: str  # nombre publicado por el emisor (display) o su dominio
-    credentials: list[str]  # nombres de las credenciales ofrecidas
-    known: bool  # ya se ha usado este emisor antes
+    """What is shown before accepting a credential offer."""
+    issuer: str  # credential_issuer URL
+    issuer_name: str  # name published by the issuer (display) or its domain
+    credentials: list[str]  # names of the offered credentials
+    known: bool  # this issuer has been used before
 
 
 @dataclass
 class ConsentItem:
-    label: str  # credencial que se usa
-    claims: list[tuple[str, str]]  # (ruta, valor abreviado) que verá el verificador
+    label: str  # credential being used
+    claims: list[tuple[str, str]]  # (path, shortened value) the verifier will see
 
 
 def consent_items(matches: list[Any]) -> list[ConsentItem]:
-    """Resumen de lo que se va a revelar, para la consola o la GUI."""
+    """Summary of what will be disclosed, for the console or the GUI."""
     return [
         ConsentItem(
             credential_label(m.record),
@@ -66,11 +65,10 @@ def consent_items(matches: list[Any]) -> list[ConsentItem]:
 
 class Prompter:
     """
-    Interfaz; cada método puede lanzar WalletError para cancelar el flujo.
+    Interface; every method may raise WalletError to cancel the flow.
 
-    text/secret/confirm/notice/choose_credential/consent son obligatorios; review_offer y
-    login tienen una implementación por defecto basada en ellos (la GUI los sustituye por
-    pantallas propias).
+    text/secret/confirm/notice/choose_credential/consent are required; review_offer and login
+    have a default implementation built on them (the GUI replaces them with its own screens).
     """
 
     def review_offer(self, offer: OfferSummary) -> bool:
@@ -79,7 +77,7 @@ class Prompter:
         return self.confirm(tr("This is the first time you use the issuer {issuer}. Continue?", issuer=offer.issuer_name))
 
     def login(self, host: str, username: str | None, *, ask_username: bool) -> tuple[str, str]:
-        """Usuario (si ask_username, con username como sugerencia) y contraseña para host."""
+        """Username (if ask_username, with username as a suggestion) and password for host."""
         if ask_username:
             username = self.text(tr("Keycloak username or email"), default=username)
         return username or "", self.secret(tr("Password for {host}", host=host))
@@ -94,14 +92,14 @@ class Prompter:
         raise NotImplementedError
 
     def notice(self, message: str) -> None:
-        """Instrucciones que el usuario debe leer (p. ej. una URL que abrir en el navegador)."""
+        """Instructions the user must read (e.g. a URL to open in the browser)."""
         raise NotImplementedError
 
     def choose_credential(self, query_id: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
         raise NotImplementedError
 
     def consent(self, prepared: Any) -> bool:
-        """prepared es un vp.PreparedPresentation; True solo si el usuario acepta enviarlo."""
+        """prepared is a vp.PreparedPresentation; True only if the user agrees to send it."""
         raise NotImplementedError
 
 

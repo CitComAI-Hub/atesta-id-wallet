@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Lectura de SD-JWT VC y selección de disclosures."""
+"""SD-JWT VC parsing and disclosure selection."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def parse_sd_jwt(raw: str) -> SdJwt:
 
     by_digest: dict[str, Disclosure] = {}
     for encoded in parts[1:]:
-        if not encoded or encoded.count(".") == 2:  # vacío o KB-JWT
+        if not encoded or encoded.count(".") == 2:  # empty or KB-JWT
             continue
         try:
             decoded = json.loads(b64u_decode(encoded))
@@ -68,7 +68,7 @@ def parse_sd_jwt(raw: str) -> SdJwt:
         else:
             raise WalletError(tr("Disclosure with an invalid format."))
         digest = _sd_digest(encoded, alg)
-        if digest in by_digest:  # la especificación SD-JWT exige rechazar disclosures repetidas
+        if digest in by_digest:  # the SD-JWT specification requires rejecting repeated disclosures
             raise WalletError(tr("The SD-JWT contains the same disclosure twice."))
         by_digest[digest] = Disclosure(encoded, digest, salt, name, value)
     used: set[str] = set()
@@ -76,7 +76,7 @@ def parse_sd_jwt(raw: str) -> SdJwt:
     def take(digest: Any) -> Disclosure | None:
         disclosure = by_digest.get(digest) if isinstance(digest, str) else None
         if disclosure is not None:
-            if digest in used:  # un digest que aparece dos veces en el payload
+            if digest in used:  # a digest that appears twice in the payload
                 raise WalletError(tr("The SD-JWT references the same disclosure twice."))
             used.add(digest)
         return disclosure
@@ -92,7 +92,7 @@ def parse_sd_jwt(raw: str) -> SdJwt:
                 disclosure = take(digest)
                 if disclosure is None or disclosure.name is None:
                     continue
-                if disclosure.name in out:  # no puede sustituir a un claim visible del emisor
+                if disclosure.name in out:  # it cannot replace a claim the issuer made visible
                     raise WalletError(tr("A disclosure overwrites the claim '{name}'.", name=disclosure.name))
                 disclosure.path = path + [disclosure.name]
                 out[disclosure.name] = resolve(disclosure.value, disclosure.path)
@@ -127,17 +127,17 @@ def select_disclosures(sd_jwt: SdJwt, requested_paths: list[list[Any]] | None) -
     return [
         d
         for d in sd_jwt.disclosures
-        if d.path  # una disclosure huérfana (sin ruta) no se revela nunca
+        if d.path  # an orphan disclosure (no path) is never revealed
         and any(_path_is_prefix(d.path, p) or _path_is_prefix(p, d.path) for p in requested_paths)
     ]
 
 
-# Claims técnicos que no son datos personales; el resto se muestra al pedir consentimiento.
+# Technical claims that are not personal data; the rest is shown when asking for consent.
 TECHNICAL_CLAIMS = {"_sd", "_sd_alg", "cnf", "iss", "iat", "exp", "nbf", "vct", "vct#integrity", "status"}
 
 
 def disclosed_claims(sd_jwt: SdJwt, requested_paths: list[list[Any]] | None) -> list[tuple[str, Any, bool]]:
-    """(ruta, valor, ¿selectiva?) de lo que verá el verificador, sin repetir rutas anidadas."""
+    """(path, value, selective?) of what the verifier will see, without repeating nested paths."""
     selected = select_disclosures(sd_jwt, requested_paths)
     paths = [d.path for d in selected if d.path]
     out: list[tuple[str, Any, bool]] = []
@@ -146,14 +146,14 @@ def disclosed_claims(sd_jwt: SdJwt, requested_paths: list[list[Any]] | None) -> 
             out.append((key, _without_digests(value), False))
     for path in paths:
         if any(other != path and _path_is_prefix(other, path) for other in paths):
-            continue  # ya incluido en un claim padre (p. ej. elementos de un array)
+            continue  # already included in a parent claim (e.g. array elements)
         _, value = _claim_at(sd_jwt.claims, path)
         out.append((".".join(map(str, path)), value, True))
     return out
 
 
 def _without_digests(value: Any) -> Any:
-    """Un claim visible tal como lo ve el verificador, sin los digests (_sd, '...') de lo no revelado."""
+    """A visible claim as the verifier sees it, without the digests (_sd, '...') of what is not revealed."""
     if isinstance(value, dict):
         return {k: _without_digests(v) for k, v in value.items() if k not in ("_sd", "_sd_alg")}
     if isinstance(value, list):

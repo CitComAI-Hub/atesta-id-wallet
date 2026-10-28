@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Identidad y confianza del verificador (x509_san_dns, x509_hash, TOFU, CAs)."""
+"""Verifier identity and trust (x509_san_dns, x509_hash, TOFU, CAs)."""
 
 from __future__ import annotations
 
@@ -22,13 +22,13 @@ CLIENT_ID_PREFIXES = ("x509_san_dns", "x509_hash", "redirect_uri", "decentralize
 @dataclass
 class VerifierIdentity:
     client_id: str
-    prefix: str  # x509_san_dns, x509_hash, redirect_uri, ... o "" (pre-registrado)
-    value: str  # client_id sin prefijo
-    name: str  # lo que se muestra al usuario
+    prefix: str  # x509_san_dns, x509_hash, redirect_uri, ... or "" (pre-registered)
+    value: str  # client_id without prefix
+    name: str  # what is shown to the user
     cert: x509.Certificate | None = None
-    # trusted: cadena hasta una CA de confianza · pinned: mismo certificado que la última vez
-    # new: firmado y coherente pero nunca visto · changed: certificado distinto al recordado
-    # unverified: no se ha podido autenticar
+    # trusted: chain up to a trusted CA · pinned: same certificate as last time
+    # new: signed and consistent but never seen · changed: different from the remembered certificate
+    # unverified: could not be authenticated
     trust: str = "unverified"
 
 
@@ -49,7 +49,7 @@ def chain_is_trusted(chain: list[x509.Certificate], dns_name: str | None) -> boo
         return False
     from cryptography.x509 import verification as xv
 
-    # Los certificados de verificador no siempre llevan EKU serverAuth: no se exige.
+    # Verifier certificates do not always have the serverAuth EKU: it is not required.
     ee_policy = xv.ExtensionPolicy.permit_all()
     if dns_name:
         ee_policy = ee_policy.require_present(x509.SubjectAlternativeName, xv.Criticality.AGNOSTIC, None)
@@ -75,7 +75,7 @@ def split_client_id(client_id: str) -> tuple[str, str]:
 
 
 def check_request_object(token: str, client_id: str) -> VerifierIdentity:
-    """Autentica al verificador a partir del request object firmado (x509_san_dns / x509_hash)."""
+    """Authenticates the verifier from the signed request object (x509_san_dns / x509_hash)."""
     header, payload = jwt_decode_unverified(token)
     prefix, value = split_client_id(client_id)
     identity = VerifierIdentity(client_id, prefix, value, value)
@@ -101,7 +101,7 @@ def check_request_object(token: str, client_id: str) -> VerifierIdentity:
         identity.name = (_dns_names(cert) or [value])[0]
         trusted = chain_is_trusted(chain, None)
     else:
-        # Otros esquemas firmados (DID, attestation, federation) no se soportan todavía.
+        # Other signed schemes (DID, attestation, federation) are not supported yet.
         return identity
 
     identity.cert = cert
@@ -115,7 +115,7 @@ def check_request_object(token: str, client_id: str) -> VerifierIdentity:
 
 
 def check_response_uri(identity: VerifierIdentity, response_uri: str) -> None:
-    """Evita que una petición firmada por A haga enviar los datos a B (reglas de x509_san_dns en OpenID4VP 1.0)."""
+    """Stops a request signed by A from sending the data to B (x509_san_dns rules in OpenID4VP 1.0)."""
     require_https(response_uri, "response_uri")
     if identity.prefix == "x509_san_dns" and identity.trust != "trusted":
         if host_of(response_uri) != identity.value.lower():

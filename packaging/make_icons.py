@@ -1,8 +1,8 @@
 """
-Genera los iconos de la aplicación a partir de packaging/app-icon.svg (con PySide6 y Pillow):
-  atesta_id_wallet/gui/icons/app-icon.png   ventana, menú de Linux (install-handler) y .deb/AppImage
-  packaging/atesta-id-wallet.ico            ejecutables e instalador de Windows
-Uso:  python packaging/make_icons.py   (los resultados se guardan en git; repetir si cambia el SVG)
+Generates the app icons from packaging/app-icon.svg (with PySide6 and Pillow):
+  atesta_id_wallet/gui/icons/app-icon.png   window, Linux menu (install-handler) and .deb/AppImage
+  packaging/atesta-id-wallet.ico            Windows executables and installer
+Usage:  python packaging/make_icons.py   (the results are kept in git; run again if the SVG changes)
 """
 
 import io
@@ -37,7 +37,7 @@ def main() -> int:
     QGuiApplication(sys.argv[:1])
     render(256).save(ROOT / "atesta_id_wallet" / "gui" / "icons" / "app-icon.png", optimize=True)
     sizes = [16, 24, 32, 48, 64, 128, 256]
-    frames = {size: render(size) for size in sizes}  # cada tamaño renderizado, no reescalado
+    frames = {size: render(size) for size in sizes}  # each size rendered, not rescaled
     frames[256].save(ROOT / "packaging" / "atesta-id-wallet.ico", sizes=[(s, s) for s in sizes],
                      append_images=[frames[s] for s in sizes[:-1]])
     return 0

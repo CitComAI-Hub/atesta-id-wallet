@@ -6,8 +6,9 @@
 - **Security first**: nothing is sent without explicit consent; see `docs/SECURITY.md`.
 - **Platforms**: Linux (any distro) + Windows; macOS later (needs a signed .app bundle).
 - **UI**: PySide6 (Qt) on top of the protocol code; the CLI stays for debugging and automation.
-- **Language**: documentation in English; the app in English (source and fallback), Spanish and
-  Danish, chosen automatically from the system or by hand (Settings / `atesta-id-wallet language`).
+- **Language**: code, comments and documentation in English; the app in English (source and
+  fallback), Spanish and Danish, chosen automatically from the system or by hand (Settings /
+  `atesta-id-wallet language`).
 
 ## Status (0.6.0, October 2026)
 
