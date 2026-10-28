@@ -6,11 +6,12 @@
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files
-
 ROOT = Path(SPECPATH).parent
 ICON = str(ROOT / "packaging" / "atesta-id-wallet.ico") if sys.platform == "win32" else None
-DATAS = collect_data_files("atesta_id_wallet")  # language catalogs and icons
+# Language catalogs and icons, taken from the source tree (collect_data_files would only find them
+# if the package were installed in the build environment).
+DATAS = [(str(ROOT / "atesta_id_wallet" / "i18n" / "*.json"), "atesta_id_wallet/i18n"),
+         (str(ROOT / "atesta_id_wallet" / "gui" / "icons" / "*"), "atesta_id_wallet/gui/icons")]
 # Qt parts the wallet does not use (saves space; QtNetwork is used: single window).
 EXCLUDES = ["tkinter", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtPdf", "PySide6.QtOpenGL",
             "PySide6.QtSql", "PySide6.QtTest", "PySide6.QtDBus", "PySide6.QtConcurrent"]
