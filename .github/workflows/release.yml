@@ -46,6 +46,9 @@ jobs:
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
+          # Like a real console (UTF-8); a pipe would default to cp1252 on Windows. The CLI copes
+          # with that by itself (cli._tolerant_output), but tests also call other modules directly.
+          PYTHONIOENCODING: utf-8
         run: |
           set +e
           python -m unittest discover -s tests > test-output.txt 2>&1

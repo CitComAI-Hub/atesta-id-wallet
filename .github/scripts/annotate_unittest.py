@@ -19,6 +19,7 @@ def escape(text: str) -> str:
 
 
 def main() -> int:
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows pipes default to cp1252, tracebacks may not fit
     text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
     code = int(sys.argv[2])
     if code == 0:

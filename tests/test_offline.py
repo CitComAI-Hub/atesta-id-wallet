@@ -18,6 +18,11 @@ os.environ["ATESTA_ID_WALLET_HOME"] = tempfile.mkdtemp(prefix="atesta-id-wallet-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests  # noqa: E402
+import urllib3.util.connection  # noqa: E402
+
+# The fake servers listen on 127.0.0.1. On Windows "localhost" resolves to ::1 first, and every
+# refused IPv6 connection costs about 2 seconds (enough to hit the GUI tests' timeouts).
+urllib3.util.connection.HAS_IPV6 = False
 from cryptography import x509  # noqa: E402
 from cryptography.hazmat.primitives import hashes, serialization  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
