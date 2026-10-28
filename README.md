@@ -5,6 +5,11 @@ OpenID4VCI 1.0 and uses them to sign in with OpenID4VP 1.0, in SD-JWT VC format
 (`dc+sd-jwt`). It replaces a phone wallet such as Lissi: you get credentials from
 Keycloak and log in to verifiers (e.g. the CITCOM/VRAIN marketplace) from your laptop.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/wallet-dark.png">
+  <img src="docs/images/wallet-light.png" alt="The wallet window: credentials shown as cards in their issuers' colours" width="820">
+</picture>
+
 It uses the protocols of the European Digital Identity (EUDI) wallets: OpenID4VCI, OpenID4VP and
 SD-JWT VC. It is **not** a certified EUDI Wallet under eIDAS 2.0: that needs a provider notified
 by a Member State, certification at assurance level high (with a secure hardware key store,
@@ -90,7 +95,9 @@ Only one window runs at a time: a link clicked while the wallet is open goes to 
 
 Open **Atesta ID Wallet** from the applications menu. Your credentials appear as cards in
 **Wallet**. **Activity** shows what you received and what you shared with whom, and
-**Settings** holds the language, profiles, backups and verifier trust.
+**Settings** holds the language, profiles, security (wallet password), backups and verifier trust.
+
+<img src="docs/images/credential-light.png" alt="A credential opened: its card, its data and its details" width="820">
 
 **1. Add a credential.** In your Keycloak account, open *Verifiable Credentials → Issue to wallet*.
 If you see a link, click it and the wallet opens. If you see a QR code, press **Scan QR** and
@@ -271,6 +278,9 @@ installed. `tests/test_offline.py` covers the flows end to end; `tests/test_hard
 the regression tests for the security review of 0.5.1; `tests/test_packaging.py` covers the
 packaged executables and the new-version check; `tests/test_vault.py` the encryption and the lock. Test messages are checked in Spanish, so
 the Spanish catalog is exercised too.
+
+The README screenshots are generated with made-up data by `python docs/make_screenshots.py`
+(run it again when the interface changes).
 
 Builds and releases: [docs/RELEASING.md](docs/RELEASING.md). Manual checks on Windows:
 [docs/TESTING-WINDOWS.md](docs/TESTING-WINDOWS.md).
