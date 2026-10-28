@@ -1,11 +1,12 @@
 # Release builds: AppImage and .deb (Linux), installer and zip (Windows), SHA256SUMS.
 #   git tag v0.6.0 && git push origin v0.6.0   -> builds, tests and publishes the release
-#   Actions -> Release -> Run workflow         -> builds and tests; the files are kept as artifacts
+#   push to main, or Actions -> Release -> Run workflow -> builds and tests; files kept as artifacts
 # See docs/RELEASING.md.
 name: Release
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -42,9 +43,16 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match version $version"; exit 1
           fi
       - name: Tests
+        shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m unittest discover -s tests
+        run: |
+          set +e
+          python -m unittest discover -s tests > test-output.txt 2>&1
+          code=$?
+          cat test-output.txt
+          python .github/scripts/annotate_unittest.py test-output.txt "$code"
+          exit $code
 
   linux:
     needs: test

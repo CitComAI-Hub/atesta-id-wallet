@@ -22,8 +22,9 @@ and the other libraries. Linux builds run on Ubuntu 22.04, so they need glibc 2.
 1. Update the version in `pyproject.toml` **and** `atesta_id_wallet/common.py` (`__version__`);
    the workflow fails if they differ from each other or from the tag.
 2. Update `todo.md` and the README status line; commit and push to `main`.
-3. Optional: *Actions → Release → Run workflow* on `main` builds and tests everything without
-   publishing; the files are kept as workflow artifacts.
+3. Every push to `main` already builds and tests everything without publishing (the files are
+   kept as workflow artifacts); check that the last run on `main` is green. Test failures show
+   up as annotations on the run page, readable without signing in (the logs are not).
 4. Tag and push:
 
    ```bash
