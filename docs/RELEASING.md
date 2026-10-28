@@ -10,7 +10,7 @@ machine, so every published file comes from a known commit.
 | `Atesta_ID_Wallet-X.Y.Z-windows-x64-setup.exe` | PyInstaller + Inno Setup (`packaging/atesta-id-wallet.iss`) | Per-user install in `%LOCALAPPDATA%\Programs\Atesta ID Wallet`, Start menu entry, link handler in HKCU; removed again by the uninstaller. No admin rights. |
 | `Atesta_ID_Wallet-X.Y.Z-windows-x64.zip` | PyInstaller | Portable folder, for testing without installing. |
 | `atesta-id-wallet_X.Y.Z_amd64.deb` | PyInstaller + `dpkg-deb` (`packaging/build_linux.sh`) | `/opt/atesta-id-wallet`, commands in `/usr/bin`, menu entry and link handler for every user. |
-| `Atesta_ID_Wallet-X.Y.Z-x86_64.AppImage` | PyInstaller + appimagetool 13 (`packaging/build_linux.sh`) | `AppRun` opens the GUI; `… .AppImage cli ARGS` runs the command line. |
+| `Atesta_ID_Wallet-X.Y.Z-x86_64.AppImage` | PyInstaller + appimagetool 1.9.1 (`packaging/build_linux.sh`, checksum pinned) | `AppRun` opens the GUI; `… .AppImage cli ARGS` runs the command line. |
 | `SHA256SUMS` | `sha256sum` | Checksums of all the files above. |
 
 All of them hold the same PyInstaller folder (`packaging/atesta-id-wallet.spec`): two executables,
