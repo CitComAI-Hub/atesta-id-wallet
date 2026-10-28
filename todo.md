@@ -14,11 +14,12 @@
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, with a GUI, a CLI, three languages and an offline test suite (100+ tests, GUI included).
-Packaged builds (Windows installer, .deb, AppImage) are produced and smoke-tested by CI, but
-nobody outside the team has used it and nobody has tested it by hand on real Windows or macOS.
+Release 0.6.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
+smoke-tested by CI (including a silent install/uninstall on Windows), but nobody outside the team
+has used it and nobody has tested it by hand on real Windows or macOS.
 
 **TRL 6 target**: a pilot with real users in the CITCOM environment. Blocking for that, in order:
-the manual Windows test, a public place to download the builds, an encrypted holder key with an
+the manual Windows test, an encrypted holder key with an
 app lock, the CITCOM verifier trust list, and a decision on the second login.
 
 ## Done
@@ -72,10 +73,8 @@ app lock, the CITCOM verifier trust list, and a decision on the second login.
 
 ## Next: roadmap to the pilot (TRL 6)
 
-1. [ ] **Distribution**: the repository is private, so pilot users cannot download releases and
-       the new-version check gets a 404. Make it public or choose another download place.
-       First real release: push the `v0.6.0` tag and check the workflow. Windows code signing
-       (Authenticode certificate) to avoid the SmartScreen warning.
+1. [ ] **Windows code signing** (Authenticode certificate) to avoid the SmartScreen warning.
+       Done: public repository, release 0.6.0 published by CI, new-version check working.
 2. [ ] **Test on real Windows** by hand with [docs/TESTING-WINDOWS.md](docs/TESTING-WINDOWS.md)
        (browser links, clipboard, screenshots, `%APPDATA%` permissions, update/uninstall) and
        decide on macOS for the pilot.
@@ -123,7 +122,6 @@ even if the browser already has one. Options (decide with whoever administers Ke
 
 - Is there a CA or trust list for the CITCOM verifiers that we can ship by default?
 - Is macOS needed for the pilot?
-- Can the repository be public (downloads and new-version check), or where will builds be hosted?
 - Who buys and keeps the Windows code-signing certificate?
 - Who administers the CITCOM Keycloak (for options A/B of the second login)?
 - App icon for the name *Atesta ID Wallet* (the current one is a placeholder).
