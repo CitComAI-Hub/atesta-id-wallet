@@ -1,4 +1,4 @@
-"""Pruebas sin red de atesta_id_wallet.  Ejecutar:  python -m unittest discover -s tests"""
+"""Offline tests of atesta_id_wallet.  Run:  python -m unittest discover -s tests"""
 
 import base64
 import datetime
@@ -26,7 +26,7 @@ from cryptography.x509.oid import NameOID  # noqa: E402
 
 from atesta_id_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, trust, ui, vci, vp  # noqa: E402
 
-# Las aserciones sobre mensajes están en español: así se ejercita también su catálogo.
+# Assertions on messages are in Spanish: this exercises its catalog too.
 i18n.set_language("es")
 
 
@@ -256,13 +256,13 @@ class ClipboardTests(unittest.TestCase):
         self.assertIsNone(self.check(b"hola"))
 
     def test_binary_is_not_text(self):
-        # Impr Pant deja un PNG en el portapapeles: no debe romper la lectura.
+        # Print Screen leaves a PNG in the clipboard: reading must not break.
         self.assertIsNone(self.check(b"\xff\xfe\x00 binario"))
         self.assertIsNone(self.check(b"\x89PNG\r\n\x1a\n sin QR"))
 
 
 def isolated_home(test: unittest.TestCase) -> Path:
-    """Directorio de datos propio para el test; restaura el perfil al terminar."""
+    """Own data folder for the test; restores the profile at the end."""
     home = Path(tempfile.mkdtemp(prefix="atesta-id-wallet-test-"))
     saved = storage.BASE_DIR, storage.PROFILES_DIR
     storage.BASE_DIR, storage.PROFILES_DIR = home, home / "profiles"
@@ -394,7 +394,7 @@ class IssuedCredentialTests(unittest.TestCase):
             vci.verify_issued_credential(None, make_sd_jwt(stranger), self.holder, "did:web:issuer.example", {})
 
     def test_did_web_issuer_offered_by_keycloak(self):
-        """Keycloak ofrece la credencial pero el iss es un did:web: se verifica con el documento DID."""
+        """Keycloak offers the credential but iss is a did:web: it is verified with the DID document."""
         issuer_key = ec.generate_private_key(ec.SECP256R1())
         did = "did:web:issuer.example"
         n = issuer_key.public_key().public_numbers()
@@ -442,7 +442,7 @@ class StorageTests(unittest.TestCase):
         self._getpass = getpass.getpass
         self.addCleanup(setattr, getpass, "getpass", self._getpass)
 
-    @unittest.skipIf(os.name != "posix", "Windows: los datos los protege la ACL del perfil, no los bits de modo")
+    @unittest.skipIf(os.name != "posix", "Windows: the data is protected by the profile ACL, not by mode bits")
     def test_private_permissions(self):
         storage.HolderKey.load_or_create()
         path = storage.save_credential("x", fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
@@ -516,7 +516,7 @@ class FakeVerifier(http.server.BaseHTTPRequestHandler):
 
 
 def verifier_request(base, key, cert, response_uri=None, signed=True):
-    """Publica en FakeVerifier una petición DCQL (email) y devuelve el enlace openid4vp://."""
+    """Publishes a DCQL request (email) on FakeVerifier and returns the openid4vp:// link."""
     payload = {
         "client_id": "x509_san_dns:localhost", "response_type": "vp_token", "response_mode": "direct_post",
         "response_uri": response_uri or f"{base}/response", "nonce": "n1",
@@ -528,7 +528,7 @@ def verifier_request(base, key, cert, response_uri=None, signed=True):
 
 
 class PresentFlowTests(unittest.TestCase):
-    """present de principio a fin contra un verificador local (x509_san_dns:localhost)."""
+    """present end to end against a local verifier (x509_san_dns:localhost)."""
 
     @classmethod
     def setUpClass(cls):
@@ -596,7 +596,7 @@ class PresentFlowTests(unittest.TestCase):
 
 
 def qr_png(text: str, path: Path | None = None) -> bytes:
-    """Captura simulada: QR en medio de una 'pantalla' blanca."""
+    """Simulated screenshot: QR code in the middle of a white 'screen'."""
     import io
 
     import zxingcpp
@@ -620,7 +620,7 @@ class I18nTests(unittest.TestCase):
 
     @classmethod
     def extract(cls):
-        """Textos fuente de tr()/N_() y pares de tr_n() en todo el paquete."""
+        """Source texts of tr()/N_() and pairs of tr_n() in the whole package."""
         import ast
 
         messages, plurals, dynamic = set(), set(), []
@@ -645,13 +645,13 @@ class I18nTests(unittest.TestCase):
 
     def test_catalogs_complete_and_consistent(self):
         messages, plurals, dynamic = self.extract()
-        self.assertEqual(dynamic, [], "tr() con f-string: nunca coincidiría con el catálogo")
+        self.assertEqual(dynamic, [], "tr() with an f-string: it would never match the catalog")
         self.assertGreater(len(messages), 300)
         for code in ("es", "da"):
             catalog = i18n.load_catalog(code)
             with self.subTest(code=code):
-                self.assertEqual(set(catalog["messages"]) - messages, set(), "entradas sobrantes")
-                self.assertEqual(messages - set(catalog["messages"]), set(), "faltan traducciones")
+                self.assertEqual(set(catalog["messages"]) - messages, set(), "unused entries")
+                self.assertEqual(messages - set(catalog["messages"]), set(), "missing translations")
                 self.assertEqual(set(catalog["plurals"]), {s for s, _ in plurals})
                 for source, translated in catalog["messages"].items():
                     self.assertTrue(translated, source)
@@ -660,7 +660,7 @@ class I18nTests(unittest.TestCase):
                     forms = catalog["plurals"][singular]
                     self.assertEqual(len(forms), 2, singular)
                     for form, source in zip(forms, (singular, plural)):
-                        # {n} es opcional; el resto de marcadores, los mismos que en el original
+                        # {n} is optional; the other placeholders must be the same as in the source
                         self.assertEqual(self.fields(form) - {"n"}, self.fields(source) - {"n"}, singular)
 
     def test_fallback_plural_and_formatting(self):
@@ -672,7 +672,7 @@ class I18nTests(unittest.TestCase):
         self.assertEqual(i18n.tr("Wallet"), "Wallet")
         self.assertEqual(i18n.tr("Settings"), "Indstillinger")
         self.assertEqual(i18n.tr_n("{n} credential", "{n} credentials", 1), "1 legitimation")
-        self.assertEqual(i18n.tr("not in any catalog"), "not in any catalog")  # fallback al inglés
+        self.assertEqual(i18n.tr("not in any catalog"), "not in any catalog")  # falls back to English
         self.assertEqual(i18n.set_language("fr"), "en")
 
     def test_system_language(self):
@@ -725,7 +725,7 @@ class QrTests(unittest.TestCase):
 
 
 class FakeWinreg:
-    """winreg mínimo en memoria para probar el registro de enlaces en Windows."""
+    """Minimal in-memory winreg to test the link registration on Windows."""
     HKEY_CURRENT_USER, REG_SZ = "HKCU", 1
 
     def __init__(self):
@@ -790,7 +790,7 @@ class WindowsHandlerTests(unittest.TestCase):
 
 
 class ScriptedPrompter(ui.Prompter):
-    """Respuestas fijas; registra lo que se preguntó."""
+    """Fixed answers; records what was asked."""
 
     def __init__(self, texts=(), confirms=True):
         self.texts, self.confirms, self.asked = list(texts), confirms, []
@@ -808,7 +808,7 @@ class ScriptedPrompter(ui.Prompter):
 
 
 class FakeIssuer(http.server.BaseHTTPRequestHandler):
-    """Emisor OpenID4VCI mínimo con pre-authorized_code + tx_code."""
+    """Minimal OpenID4VCI issuer with pre-authorized_code + tx_code."""
     key = None
     base = ""
 
@@ -891,7 +891,7 @@ class IssueFlowTests(unittest.TestCase):
         event = storage.load_history()[0]
         self.assertEqual((event["type"], event["party"], event["credentials"]),
                          ("issued", "Ayuntamiento", ["Persona jurídica"]))
-        # Emisor ya conocido: no vuelve a preguntar.
+        # Known issuer: it does not ask again.
         prompter = ScriptedPrompter(texts=["1234"], confirms=False)
         vci.issue(requests.Session(), self.offer, vci.IssueOptions(), prompter)
         self.assertFalse(any("primera vez" in q for q in prompter.asked))
@@ -908,7 +908,7 @@ class IssueFlowTests(unittest.TestCase):
         impostor = ec.generate_private_key(ec.SECP256R1())
 
         def do_get(handler):
-            if handler.path == "/jwks":  # publica otra clave: la firma no casará
+            if handler.path == "/jwks":  # publishes another key: the signature will not match
                 FakeIssuer.key = impostor
                 try:
                     return original_do_get(handler)
@@ -929,13 +929,21 @@ try:
     from PySide6.QtWidgets import QApplication
 
     from atesta_id_wallet.gui import app as gui
-except ImportError:  # la GUI es opcional
+except ImportError:  # the GUI is optional
     gui = None
 
 
-@unittest.skipIf(gui is None, "PySide6 no instalado")
+
+if gui is not None:
+    import atexit
+
+    atexit.register(gui.release_widgets)
+
+
+
+@unittest.skipIf(gui is None, "PySide6 not installed")
 class GuiFlowTests(unittest.TestCase):
-    """La GUI de principio a fin: hilo de trabajo + paneles (respondidos por el test)."""
+    """The GUI end to end: worker thread + panels (answered by the test)."""
 
     @classmethod
     def setUpClass(cls):
@@ -956,7 +964,7 @@ class GuiFlowTests(unittest.TestCase):
         isolated_home(self)
         FakeVerifier.received = []
         QGuiApplication.clipboard().clear()
-        # Nunca mirar las capturas reales del usuario.
+        # Never look at the user's real screenshots.
         self.addCleanup(setattr, gui, "_screenshot_dirs", gui._screenshot_dirs)
         gui._screenshot_dirs = lambda: []
         self.window = gui.MainWindow()
@@ -1000,7 +1008,7 @@ class GuiFlowTests(unittest.TestCase):
         self.window.process(self.present_link())
         self.wait()
         self.assertEqual(FakeVerifier.received, [])
-        self.assertIsNone(self.window.last_result)  # cancelar no es un error
+        self.assertIsNone(self.window.last_result)  # cancelling is not an error
         self.assertIsNone(self.window.overlay.sheet)
         self.assertEqual(storage.load_history()[0]["type"], "declined")
 
@@ -1026,7 +1034,7 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(seen, ["openid4vp://?request_uri=https://v/1"])
 
     def test_scan_ignores_already_used_qr(self):
-        """Tras un QR (fallido o no), Escanear no debe volver a coger el mismo del portapapeles."""
+        """After a QR code (failed or not), Scan must not pick the same one from the clipboard again."""
         self.window.process("openid4vp://?request_uri=https://127.0.0.1:9/no-existe")
         self.wait()
         seen = []
@@ -1043,7 +1051,7 @@ class GuiFlowTests(unittest.TestCase):
         shots = Path(tempfile.mkdtemp(prefix="atesta-shots-"))
         old = shots / "old.png"
         qr_png("openid4vp://?request_uri=https://v/old", old)
-        os.utime(old, (time.time() - 3600, time.time() - 3600))  # anterior: no debe usarse
+        os.utime(old, (time.time() - 3600, time.time() - 3600))  # older: must not be used
         gui._screenshot_dirs = lambda: [shots]
         seen = []
         self.window.process = seen.append

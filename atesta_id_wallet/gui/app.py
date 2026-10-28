@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Ventana principal.
+Main window.
 
-Los flujos (emisión, presentación) se ejecutan en un hilo aparte. Cuando necesitan
-preguntar algo, GuiPrompter pide a la ventana un panel y espera; la ventana muestra
-el panel sin bloquear y responde cuando el usuario decide.
+The flows (issuance, presentation) run in a worker thread. When they need to ask something,
+GuiPrompter asks the window for a panel and waits; the window shows the panel without
+blocking and answers when the user decides.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import requests
-from PySide6.QtCore import QBuffer, QIODevice, QLocale, QObject, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QBuffer, QCoreApplication, QEvent, QIODevice, QLocale, QObject, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
@@ -95,7 +95,7 @@ from .widgets import CredentialCard, IconBubble, Toast, esc, label
 
 
 # ---------------------------------------------------------------------------
-# Puente entre el hilo de trabajo y la interfaz
+# Bridge between the worker thread and the interface
 # ---------------------------------------------------------------------------
 
 
@@ -120,8 +120,8 @@ class Bridge(QObject):
     ask = Signal(object)
     logged = Signal(str, bool)
     finished = Signal(object, object)  # (callback, resultado)
-    failed = Signal(object, str)  # (excepción, traza)
-    update_checked = Signal(object, bool)  # (Release, None o excepción; automática)
+    failed = Signal(object, str)  # (exception, traceback)
+    update_checked = Signal(object, bool)  # (Release, None or exception; automatic)
 
 
 class GuiPrompter(Prompter):
@@ -162,7 +162,7 @@ class GuiPrompter(Prompter):
 
 
 # ---------------------------------------------------------------------------
-# Ventana
+# Window
 # ---------------------------------------------------------------------------
 
 
@@ -179,10 +179,10 @@ class MainWindow(QMainWindow):
         self.busy = False
         self.records: list[dict[str, Any]] = []
         self.log_text = ""
-        self.last_result: tuple[bool, str] | None = None  # (éxito, título) del último flujo; para los tests
-        self._watch: dict[str, Any] | None = None  # estado mientras se espera un QR
-        # Enlaces ya procesados (con éxito o no): Escanear no debe volver a coger el QR anterior,
-        # que sigue en el portapapeles o en las capturas recientes.
+        self.last_result: tuple[bool, str] | None = None  # (success, title) of the last flow; for the tests
+        self._watch: dict[str, Any] | None = None  # state while waiting for a QR code
+        # Links already processed (successfully or not): Scan must not pick the previous QR code again,
+        # which is still in the clipboard or in the recent screenshots.
         self._consumed: set[str] = set()
         self._page_name = "wallet"
         self.available_release: updates.Release | None = None
@@ -198,7 +198,7 @@ class MainWindow(QMainWindow):
             hints.colorSchemeChanged.connect(lambda *_: self.apply_theme())
         self.apply_theme()
 
-    # -- construcción ---------------------------------------------------------
+    # -- building -------------------------------------------------------------
 
     def apply_theme(self) -> None:
         t = theme.current()
@@ -274,7 +274,7 @@ class MainWindow(QMainWindow):
         column.addWidget(self.profile_combo)
         return bar
 
-    # -- navegación -----------------------------------------------------------
+    # -- navigation -----------------------------------------------------------
 
     def _go(self, name: str) -> None:
         self._page_name = name
@@ -307,7 +307,7 @@ class MainWindow(QMainWindow):
     def switch_profile(self, name: str) -> None:
         if not name or name == storage.PROFILE:
             return
-        if self.busy:  # no cambiar de identidad a mitad de un flujo
+        if self.busy:  # never switch identity in the middle of a flow
             self._sync_profile_widgets()
             return
         set_profile(name)
@@ -354,7 +354,7 @@ class MainWindow(QMainWindow):
         self._sheet(TextSheet(title, body, answer, secret=secret, placeholder=placeholder, icon=icon,
                               confirm_text=confirm_text))
 
-    # -- leer un QR o enlace ----------------------------------------------------
+    # -- reading a QR code or link ----------------------------------------------
 
     def scan(self) -> None:
         if self.busy:
@@ -411,7 +411,7 @@ class MainWindow(QMainWindow):
         return link if link and link.strip() not in self._consumed else None
 
     def _new_screenshot_link(self, since: float, seen: set[Path]) -> str | None:
-        """QR de una captura guardada después de 'since' que aún no se haya mirado."""
+        """QR code of a screenshot saved after 'since' that has not been looked at yet."""
         candidates = []
         for directory in _screenshot_dirs():
             try:
@@ -493,7 +493,7 @@ class MainWindow(QMainWindow):
                           "to the browser: the sign-in will complete by itself.", count,
                           verifier=esc(prepared.identity.name)),
                      icon="send")
-        if redirect_uri:  # send_presentation solo devuelve direcciones web
+        if redirect_uri:  # send_presentation only returns web addresses
             webbrowser.open(redirect_uri)
 
     def _run(self, title: str, task: Callable[[], Any], on_done: Callable[[Any], None]) -> None:
@@ -505,7 +505,7 @@ class MainWindow(QMainWindow):
         def work() -> None:
             try:
                 result = task()
-            except Exception as exc:  # se muestra en la ventana; la traza va al registro técnico
+            except Exception as exc:  # shown in the window; the traceback goes to the technical log
                 self.bridge.failed.emit(exc, traceback.format_exc())
             else:
                 self.bridge.finished.emit(on_done, result)
@@ -549,7 +549,7 @@ class MainWindow(QMainWindow):
         if self.busy and not is_debug and isinstance(sheet, ProgressSheet):
             sheet.set_detail(message)
 
-    # -- preguntas del flujo ------------------------------------------------------
+    # -- questions from the flow --------------------------------------------------
 
     @Slot(object)
     def _on_ask(self, request: Ask) -> None:
@@ -557,12 +557,12 @@ class MainWindow(QMainWindow):
         self.activateWindow()
         try:
             getattr(self, f"_ask_{request.kind}")(request)
-        except Exception:  # un fallo al mostrar el panel no debe dejar el hilo esperando
+        except Exception:  # a failure showing the panel must not leave the thread waiting
             self._on_log(traceback.format_exc(), True)
             request.cancel()
 
     def _reply(self, request: Ask) -> Callable[[Any], None]:
-        """Callback para un panel: None cancela; cualquier otro valor responde y vuelve al progreso."""
+        """Callback for a panel: None cancels; any other value answers and goes back to the progress."""
         def reply(value: Any) -> None:
             self._show_progress()
             if value is None:
@@ -611,7 +611,7 @@ class MainWindow(QMainWindow):
         reply = self._reply(request)
         self._sheet(ConsentSheet(request.args[0], lambda ok: reply(ok)))
 
-    # -- acciones de las páginas ----------------------------------------------------
+    # -- page actions ---------------------------------------------------------------
 
     def confirm_delete(self, record: dict[str, Any]) -> None:
         def delete() -> None:
@@ -739,7 +739,7 @@ class MainWindow(QMainWindow):
                                                       "cannot be detected."), forget, confirm_text=tr("Forget"))
 
     def set_language(self, preference: str) -> None:
-        """Guarda el idioma elegido en Ajustes y reconstruye la ventana con él."""
+        """Saves the language chosen in Settings and rebuilds the window with it."""
         settings = load_settings()
         settings["language"] = preference
         save_settings(settings)
@@ -758,7 +758,7 @@ class MainWindow(QMainWindow):
     # -- versiones nuevas -------------------------------------------------------
 
     def check_for_updates(self, *, automatic: bool = False) -> None:
-        """Pregunta a GitHub en segundo plano; la automática solo avisa si hay una versión nueva."""
+        """Asks GitHub in the background; the automatic check only speaks up if there is a new version."""
         def work() -> None:
             try:
                 result: Any = updates.newer_release()
@@ -799,7 +799,7 @@ class MainWindow(QMainWindow):
 
 
 def _remember_profile(name: str) -> None:
-    """La ventana se abre la próxima vez con el último perfil elegido."""
+    """Next time the window opens with the last chosen profile."""
     settings = load_settings()
     if settings.get("profile") != name:
         settings["profile"] = name
@@ -816,18 +816,18 @@ def _choose_startup_profile(requested: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Una sola ventana: un enlace abierto con el wallet ya en marcha va a esa ventana
+# A single window: a link opened while the wallet is running goes to that window
 # ---------------------------------------------------------------------------
 
 
 def _instance_name() -> str:
     """
-    Socket local por usuario. En Linux/macOS es una ruta en un directorio privado (0700) para que
-    otro usuario no pueda ocupar el nombre y recibir los enlaces; en Windows, una tubería con nombre.
+    Per-user local socket. On Linux/macOS it is a path in a private (0700) folder, so that another
+    user cannot take the name and receive the links; on Windows, a named pipe.
     """
     if sys.platform == "win32":
-        # Las tuberías con nombre son globales: con un nombre adivinable, otro usuario del equipo podría
-        # crearla antes y recibir los enlaces. El sufijo aleatorio se guarda en la carpeta del usuario.
+        # Named pipes are global: with a guessable name, another user of the computer could create it
+        # first and receive the links. The random suffix is stored in the user's folder.
         token_file = storage.BASE_DIR / "gui-instance"
         try:
             token = token_file.read_text(encoding="utf-8").strip()
@@ -841,15 +841,15 @@ def _instance_name() -> str:
     candidates = [Path(runtime) / "atesta-id-wallet-gui.sock"] if runtime and Path(runtime).is_dir() else []
     candidates.append(storage.BASE_DIR / "gui.sock")
     for path in candidates:
-        if len(str(path).encode()) < 100:  # límite de longitud de los sockets Unix (sun_path)
+        if len(str(path).encode()) < 100:  # length limit of Unix sockets (sun_path)
             if path.parent == storage.BASE_DIR:
                 storage.ensure_data_dir(storage.BASE_DIR)
             return str(path)
-    return f"atesta-id-wallet-{os.getuid()}"  # en el directorio temporal; Qt lo crea solo para este usuario
+    return f"atesta-id-wallet-{os.getuid()}"  # in the temporary folder; Qt creates it for this user only
 
 
 def forward_to_running_instance(entry: str | None, name: str | None = None) -> bool:
-    """True si ya hay una ventana abierta y se le ha pasado el enlace (o la orden de mostrarse)."""
+    """True if a window is already open and has been handed the link (or told to show itself)."""
     socket = QLocalSocket()
     socket.connectToServer(name or _instance_name())
     if not socket.waitForConnected(500):
@@ -866,8 +866,8 @@ def listen_for_instances(window: MainWindow, name: str | None = None) -> QLocalS
     server = QLocalServer(window)
     server.setSocketOptions(QLocalServer.UserAccessOption)
     if not server.listen(name):
-        QLocalServer.removeServer(name)  # socket huérfano de una ventana que se cerró mal
-        if not server.listen(name):  # sin ventana única no pasa nada grave: cada enlace abre otra
+        QLocalServer.removeServer(name)  # orphan socket of a window that did not close cleanly
+        if not server.listen(name):  # without a single window nothing serious happens: every link opens another one
             common.debug(f"Single-instance socket unavailable ({name}): {server.errorString()}")
 
     def on_connection() -> None:
@@ -933,14 +933,32 @@ def main(argv: list[str] | None = None) -> int:
         QTimer.singleShot(0, lambda: window.process(args.entry))
     if updates.automatic_check_due():
         window.check_for_updates(automatic=True)
-    return app.exec()
+    code = app.exec()
+    release_widgets()
+    return code
+
+
+def release_widgets() -> None:
+    """
+    Closes and deletes the top-level windows while QApplication still exists, including pending
+    deleteLater() calls. Left to the interpreter shutdown, PySide's cleanup may visit widgets that
+    Qt has already deleted and crash (segfault on exit, which turns a clean exit into an error).
+    """
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in app.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
 
 
 def smoke_test() -> int:
     """
-    Comprueba que un ejecutable empaquetado trae lo necesario (lo usa la CI): Qt con SVG, iconos,
-    catálogos, zxing-cpp, Pillow y cryptography. Usa $ATESTA_ID_WALLET_HOME si se le da uno vacío y
-    devuelve 0 o 1, sin diálogos (en Windows la GUI no tiene consola donde escribir).
+    Checks that a packaged executable has everything it needs (used by CI): Qt with SVG, icons,
+    catalogs, zxing-cpp, Pillow and cryptography. Uses $ATESTA_ID_WALLET_HOME if given an empty
+    one and returns 0 or 1, without dialogs (on Windows the GUI has no console to write to).
     """
     try:
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -962,7 +980,7 @@ def smoke_test() -> int:
         window = MainWindow()
         window.show()
         QApplication.processEvents()
-        window.close()
+        release_widgets()
         return 0
     except Exception:
         if sys.stderr is not None:
