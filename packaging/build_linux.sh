@@ -79,13 +79,15 @@ build_deb() {
     ln -s /opt/atesta-id-wallet/atesta-id-wallet-gui "$pkg/usr/bin/atesta-id-wallet-gui"
     desktop_entry /opt/atesta-id-wallet/atesta-id-wallet-gui > "$pkg/usr/share/applications/atesta-id-wallet.desktop"
     cp "$ICON" "$pkg/usr/share/icons/hicolor/256x256/apps/atesta-id-wallet.png"
+    # Only what PyInstaller leaves out of the bundle: libc and the graphics driver (EGL). The X11/xcb,
+    # xkbcommon and fontconfig libraries are inside /opt/atesta-id-wallet/_internal.
     cat > "$pkg/DEBIAN/control" <<CONTROL
 Package: atesta-id-wallet
 Version: $VERSION
 Architecture: amd64
 Maintainer: $MAINTAINER
 Installed-Size: $(du -sk "$pkg" | cut -f1)
-Depends: libc6 (>= 2.35), libegl1, libfontconfig1, libxkbcommon0, libxcb-cursor0
+Depends: libc6 (>= 2.35), libegl1
 Recommends: wl-clipboard | xclip
 Section: utils
 Priority: optional

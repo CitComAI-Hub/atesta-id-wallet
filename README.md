@@ -19,7 +19,7 @@ each with a `SHA256SUMS` file. They need no Python and no administrator rights (
 |---|---|---|
 | Windows 10/11 (x64) | `Atesta_ID_Wallet-X.Y.Z-windows-x64-setup.exe` | Run it. Installs for your user, adds a Start menu entry and opens the wallet links. |
 | Windows, portable | `Atesta_ID_Wallet-X.Y.Z-windows-x64.zip` | Unzip and run `atesta-id-wallet-gui.exe`; register the links in *Settings → General*. |
-| Debian, Ubuntu (22.04+) | `atesta-id-wallet_X.Y.Z_amd64.deb` | `sudo apt install ./atesta-id-wallet_X.Y.Z_amd64.deb` |
+| Debian, Ubuntu (22.04+) | `atesta-id-wallet_X.Y.Z_amd64.deb` | `sudo apt install ./atesta-id-wallet_X.Y.Z_amd64.deb` (with `dpkg -i`, run `sudo apt install -f` afterwards for the dependencies) |
 | Any Linux (glibc 2.35+) | `Atesta_ID_Wallet-X.Y.Z-x86_64.AppImage` | `chmod +x` it and run it; register the links in *Settings → General*. `./Atesta_ID_Wallet-….AppImage cli …` runs the command line. |
 
 To check a download: `sha256sum -c SHA256SUMS --ignore-missing` (Linux) or
