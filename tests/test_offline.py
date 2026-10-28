@@ -17,6 +17,9 @@ from urllib.parse import parse_qs, urlsplit
 os.environ["ATESTA_ID_WALLET_HOME"] = tempfile.mkdtemp(prefix="atesta-id-wallet-test-")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import keyring  # noqa: E402
+import keyring.backend  # noqa: E402
+import keyring.errors  # noqa: E402
 import requests  # noqa: E402
 import urllib3.util.connection  # noqa: E402
 
@@ -30,6 +33,31 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: E402
 from cryptography.x509.oid import NameOID  # noqa: E402
 
 from atesta_id_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, trust, ui, vci, vp  # noqa: E402
+
+
+
+class MemoryKeyring(keyring.backend.KeyringBackend):
+    """Keyring in memory: the tests must never touch the user's real keyring."""
+
+    priority = 1
+
+    def __init__(self):
+        super().__init__()
+        self.secrets = {}
+
+    def get_password(self, service, username):
+        return self.secrets.get((service, username))
+
+    def set_password(self, service, username, password):
+        self.secrets[(service, username)] = password
+
+    def delete_password(self, service, username):
+        if self.secrets.pop((service, username), None) is None:
+            raise keyring.errors.PasswordDeleteError(username)
+
+
+TEST_KEYRING = MemoryKeyring()
+keyring.set_keyring(TEST_KEYRING)
 
 # Assertions on messages are in Spanish: this exercises its catalog too.
 i18n.set_language("es")
@@ -569,7 +597,7 @@ class PresentFlowTests(unittest.TestCase):
         self.assertEqual((event["type"], event["party"], event["claims"]), ("presented", "localhost", ["email"]))
 
     def test_missing_credential_is_explained(self):
-        for path in storage.CRED_DIR.glob("*.json"):
+        for path in storage.CRED_DIR.glob("*.enc"):
             path.unlink()
         with self.assertRaisesRegex(vp.NoMatchingCredential, "localhost pide una credencial que no tienes"):
             self.present(self.request(), "--yes")

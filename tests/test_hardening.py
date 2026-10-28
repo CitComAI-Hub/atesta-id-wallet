@@ -180,7 +180,7 @@ class StorageRobustnessTests(unittest.TestCase):
     def test_every_profile_lives_in_profiles(self):
         storage.HolderKey.load_or_create()
         storage.create_profile("work")
-        self.assertEqual(storage.KEY_FILE, self.home / "profiles" / "default" / "holder_key.pem")
+        self.assertEqual(storage.KEY_FILE, self.home / "profiles" / "default" / "holder_key.enc")
         self.assertEqual(storage.list_profiles(), ["default", "work"])
         if os.name == "posix":
             for folder in (self.home, self.home / "profiles", self.home / "profiles" / "default"):

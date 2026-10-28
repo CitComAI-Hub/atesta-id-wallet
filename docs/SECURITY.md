@@ -1,18 +1,41 @@
 # Security model
 
 This page explains what the wallet protects against, what it trusts and what it does not.
-It describes version 0.5.1.
+It describes version 0.8.0.
 
 ## Assets
 
 | Asset | Where | Protection |
 |---|---|---|
-| Holder private key | `holder_key.pem` | File permissions `0600`. **Not encrypted.** Anyone who can read your files as your user can use your credentials. |
-| Credentials (personal data) | `credentials/*.json` | File permissions `0600`. |
-| Settings, pinned verifier certificates | `config.json` | `0600`, written atomically (a crash cannot leave it empty and silently drop the pins). |
-| Activity history | `history.jsonl` | `0600`. Records who received what; it is personal data too. |
+| Holder private key | `holder_key.enc` | Encrypted with the profile data key (see below), file `0600`. |
+| Credentials (personal data) | `credentials/*.enc` | Encrypted with the profile data key, `0600`. |
+| Settings, pinned verifier certificates | `config.enc` | Encrypted, `0600`, written atomically (a crash cannot leave it empty and silently drop the pins). |
+| Activity history | `history.enc` | Encrypted, `0600`. Records who received what; it is personal data too. |
+| Profile data key | System keyring, or `vault.json` wrapped with the wallet password | See *Encryption at rest*. |
+| Trusted CA certificates | `trusted_cas/*.pem` | Public certificates: not encrypted, `0600`. |
 | Keycloak password | Never stored | Typed into the window or the terminal, sent only over HTTPS to the authorization server's host. |
 | Backups | File chosen by the user | AES-256-GCM, key derived from a password with scrypt (N=2¹⁵, r=8, p=1). Restore rejects archive entries outside the profile (no path traversal, no links). |
+
+## Encryption at rest
+
+Every profile has a random 256-bit data key. Its files are encrypted with AES-256-GCM under that
+key, with the file's name inside the profile as associated data, so one file cannot be swapped for
+another. The data key is kept in one of two ways:
+
+- **System keyring** (default): Secret Service (GNOME Keyring, KWallet) on Linux, Credential
+  Manager (DPAPI) on Windows. It opens with the user's session without questions. This protects
+  against a copied data folder or backup of the disk, another user of the computer, and a stolen
+  disk; not against programs running as the user, which can ask the keyring too.
+- **Wallet password** (*Settings → Security*, `atesta-id-wallet password set`): the data key is
+  wrapped with a key derived from the password with scrypt (N=2¹⁵, r=8, p=1) and removed from the
+  keyring. Nothing can be read until the password is typed: this is the app lock. The window locks
+  again after 5 minutes without use or with *Lock*. The password cannot be recovered; `reset`
+  empties the profile and starts again.
+
+Without a usable keyring (headless systems, some minimal desktops) a wallet password is required:
+the data is never stored in clear text. Unlocked keys live in the process memory until it locks
+or exits; Python cannot reliably wipe them. Backups contain the decrypted profile under their own
+password, so they can be restored on another computer (whose keyring does not have the key).
 
 ## Presentation (OpenID4VP)
 
@@ -125,8 +148,7 @@ name to look like a trusted one or inject links.
 
 | Gap | Impact | Planned mitigation |
 |---|---|---|
-| Holder key not encrypted at rest, no app lock | Local malware, another person at the unlocked computer, or a stolen unencrypted disk can use the credentials. | OS keyring or passphrase-protected key, plus an app lock. |
-| File permissions are POSIX-only | On Windows, `0600`/`0700` have no effect. The data relies on `%APPDATA%` being private to the user (the default ACL). | Encrypted holder key (see above). |
+| Keys are software keys | Without a wallet password, malware running as the user can ask the keyring for the data key. With one, it can still read the key from memory while the wallet is unlocked. There is no hardware-backed key (TPM, secure element). | Hardware-backed holder keys if the pilot needs them. |
 | No default trust list | Most verifiers start as `new`. Users must judge the domain shown. | Ship the project's verifier CA or trust list. |
 | Issuer trust is not anchored | Any HTTPS issuer the user accepts can issue credentials. An `x5c` issuer certificate is not validated against a CA, only used to check the signature. | Issuer allow-list or trust list. |
 | A credential is stored with a warning if no issuer key is found | The wallet may hold a credential whose signature it could not check. The verifier will check it anyway. | Make it an error once the pilot issuers are known. |

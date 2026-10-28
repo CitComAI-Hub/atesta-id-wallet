@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from . import vault
 from .common import SD_JWT_FORMATS, WalletError, b64u, b64u_json, debug, host_of, humanize, log
 from .i18n import tr
 from .sdjwt import SdJwt, parse_sd_jwt
@@ -40,9 +41,9 @@ DEFAULT_PROFILE = "default"
 # Paths of the active profile; set_profile() changes them.
 PROFILE = DEFAULT_PROFILE
 DATA_DIR = PROFILES_DIR / DEFAULT_PROFILE
-KEY_FILE = DATA_DIR / "holder_key.pem"
+KEY_FILE = DATA_DIR / "holder_key.enc"
 CRED_DIR = DATA_DIR / "credentials"
-CONFIG_FILE = DATA_DIR / "config.json"
+CONFIG_FILE = DATA_DIR / "config.enc"
 TRUST_DIR = DATA_DIR / "trusted_cas"
 PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
@@ -55,22 +56,18 @@ class HolderKey:
     def load_or_create(cls, path: Path | None = None) -> "HolderKey":
         path = path or KEY_FILE
         if path.exists():
-            key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+            key = serialization.load_pem_private_key(read_secret(path), password=None)
             if not isinstance(key, ec.EllipticCurvePrivateKey):
                 raise WalletError(tr("{path} does not contain an EC key.", path=path))
             return cls(key)
-        ensure_data_dir()
         key = ec.generate_private_key(ec.SECP256R1())
-        pem = key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8,
-            serialization.NoEncryption(),
-        )
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(pem)
+        write_secret(path, cls(key).pem())
         log(tr("New holder key generated in {path}", path=path))
         return cls(key)
+
+    def pem(self) -> bytes:
+        return self.private_key.private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
 
     @property
     def public_jwk(self) -> dict[str, str]:
@@ -102,9 +99,9 @@ def set_profile(name: str) -> None:
     global PROFILE, DATA_DIR, KEY_FILE, CRED_DIR, CONFIG_FILE, TRUST_DIR
     PROFILE = name
     DATA_DIR = profile_dir(name)
-    KEY_FILE = DATA_DIR / "holder_key.pem"
+    KEY_FILE = DATA_DIR / "holder_key.enc"
     CRED_DIR = DATA_DIR / "credentials"
-    CONFIG_FILE = DATA_DIR / "config.json"
+    CONFIG_FILE = DATA_DIR / "config.enc"
     TRUST_DIR = DATA_DIR / "trusted_cas"
 
 
@@ -143,18 +140,18 @@ def ensure_data_dir(path: Path | None = None) -> None:
         os.chmod(folder, 0o700)
 
 
-def write_private(path: Path, text: str) -> None:
+def write_private(path: Path, content: str | bytes) -> None:
     """
     Writes with 0600 permissions from the start (no window with the default umask) and
-    atomically: an interruption halfway does not leave an empty config.json, which would forget
+    atomically: an interruption halfway does not leave an empty config file, which would forget
     the pinned verifier certificates.
     """
     ensure_data_dir(path.parent)
     tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(content.encode("utf-8") if isinstance(content, str) else content)
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp, path)
@@ -163,26 +160,55 @@ def write_private(path: Path, text: str) -> None:
         raise
 
 
+def unlock(password: str | None = None) -> None:
+    """Unlocks the active profile (or creates its key, protected by 'password' if given)."""
+    vault.unlock(DATA_DIR, password)
+
+
+def vault_state() -> str:
+    """Active profile: 'open' (readable), 'locked' (needs the wallet password) or 'new' (no keyring: a
+    wallet password must be chosen before storing anything)."""
+    if vault.is_open(DATA_DIR):
+        return "open"
+    return "new" if vault.mode(DATA_DIR) is None else "locked"
+
+
+def _secret_name(path: Path) -> str:
+    return path.relative_to(DATA_DIR).as_posix()
+
+
+def write_secret(path: Path, data: bytes) -> None:
+    """Encrypted (see vault) and atomic write of a file of the active profile."""
+    write_private(path, vault.encrypt(DATA_DIR, _secret_name(path), data))
+
+
+def read_secret(path: Path) -> bytes:
+    return vault.decrypt(DATA_DIR, _secret_name(path), path.read_bytes())
+
+
 def load_config() -> dict[str, Any]:
-    try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    if not CONFIG_FILE.exists():
         return {}
+    try:
+        config = json.loads(read_secret(CONFIG_FILE))
+    except ValueError:
+        return {}
+    return config if isinstance(config, dict) else {}
 
 
 def save_config(config: dict[str, Any]) -> None:
-    write_private(CONFIG_FILE, json.dumps(config, indent=2, ensure_ascii=False))
+    write_secret(CONFIG_FILE, json.dumps(config, indent=2, ensure_ascii=False).encode("utf-8"))
 
 
 def save_credential(raw: str, *, fmt: str, issuer: str, configuration_id: str,
                     display: dict[str, Any] | None = None) -> Path:
     safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", configuration_id)[:80]
     stamp = time.strftime("%Y%m%dT%H%M%S")
-    path = CRED_DIR / f"{stamp}_{safe_id}.json"
+    path = CRED_DIR / f"{stamp}_{safe_id}.enc"
     suffix = 1
     while path.exists():  # several credentials in the same second (batches, several configurations)
         suffix += 1
-        path = CRED_DIR / f"{stamp}_{safe_id}_{suffix}.json"
+        path = CRED_DIR / f"{stamp}_{safe_id}_{suffix}.enc"
     record = {
         "format": fmt,
         "issuer": issuer,
@@ -192,7 +218,7 @@ def save_credential(raw: str, *, fmt: str, issuer: str, configuration_id: str,
     }
     if display:
         record["display"] = display  # name and colours published by the issuer
-    write_private(path, json.dumps(record, indent=2, ensure_ascii=False))
+    write_secret(path, json.dumps(record, indent=2, ensure_ascii=False).encode("utf-8"))
     return path
 
 
@@ -200,10 +226,13 @@ def load_credentials() -> list[dict[str, Any]]:
     if not CRED_DIR.exists():
         return []
     records = []
-    for path in sorted(CRED_DIR.glob("*.json"), reverse=True):  # newest first
+    for path in sorted(CRED_DIR.glob("*.enc"), reverse=True):  # newest first
         try:
-            record = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            record = json.loads(read_secret(path))
+        except (vault.Locked, vault.PasswordNeeded):
+            raise
+        except (OSError, ValueError, WalletError) as exc:  # damaged file: ignored
+            debug(f"Could not read {path}: {exc}")
             continue
         record["_path"] = str(path)
         if record.get("format") in SD_JWT_FORMATS:
@@ -268,29 +297,28 @@ def is_expired(record: dict[str, Any]) -> bool:
 
 
 # What makes up a profile.
-PROFILE_ITEMS = ("holder_key.pem", "credentials", "config.json", "trusted_cas", "history.jsonl")
+PROFILE_ITEMS = ("holder_key.enc", "credentials", "config.enc", "trusted_cas", "history.enc", vault.VAULT_FILE)
 
 
 def history_file() -> Path:
-    return DATA_DIR / "history.jsonl"
+    return DATA_DIR / "history.enc"
+
+
+def _history_text() -> str:
+    path = history_file()
+    return read_secret(path).decode("utf-8") if path.exists() else ""
 
 
 def add_history(event: dict[str, Any]) -> None:
     """Adds an event (issued / presented / declined) to the history of the active profile."""
     event = {"time": int(time.time()), **event}
-    path = history_file()
-    ensure_data_dir(path.parent)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    with os.fdopen(fd, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+    text = _history_text() + json.dumps(event, ensure_ascii=False) + "\n"
+    write_secret(history_file(), text.encode("utf-8"))
 
 
 def load_history() -> list[dict[str, Any]]:
     """History events, newest first."""
-    try:
-        lines = history_file().read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
+    lines = _history_text().splitlines()
     events = []
     for line in lines:
         try:
@@ -301,6 +329,8 @@ def load_history() -> list[dict[str, Any]]:
 
 
 def _wipe_profile(path: Path) -> None:
+    """Empties a profile, its encryption key included (also the way out of a forgotten password)."""
+    vault.destroy(path)
     for item in PROFILE_ITEMS:
         target = path / item
         if target.is_dir():
@@ -330,14 +360,46 @@ def write_backup(out: Path, password: str) -> None:
         raise WalletError(tr("Use a password with at least 8 characters."))
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
-        for item in PROFILE_ITEMS:
-            if (DATA_DIR / item).exists():
-                tar.add(DATA_DIR / item, arcname=item)
+        for name, data in _backup_entries():
+            info = tarfile.TarInfo(name)
+            info.size, info.mtime, info.mode = len(data), int(time.time()), 0o600
+            tar.addfile(info, io.BytesIO(data))
     salt, nonce = secrets.token_bytes(16), secrets.token_bytes(12)
     sealed = AESGCM(_backup_key(password, salt)).encrypt(nonce, buffer.getvalue(), BACKUP_MAGIC)
     fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "wb") as fh:
         fh.write(BACKUP_MAGIC + salt + nonce + sealed)
+
+
+def _backup_entries() -> list[tuple[str, bytes]]:
+    """
+    The profile decrypted, with plain names (holder_key.pem, credentials/X.json...): the backup has
+    its own password, and the profile key (in the keyring) does not travel to another computer.
+    """
+    entries = [("holder_key.pem", read_secret(KEY_FILE))]
+    for path, name in ((CONFIG_FILE, "config.json"), (history_file(), "history.jsonl")):
+        if path.exists():
+            entries.append((name, read_secret(path)))
+    if CRED_DIR.is_dir():
+        entries += [(f"credentials/{p.stem}.json", read_secret(p)) for p in sorted(CRED_DIR.glob("*.enc"))]
+    if TRUST_DIR.is_dir():
+        entries += [(f"trusted_cas/{p.name}", p.read_bytes()) for p in sorted(TRUST_DIR.glob("*.pem"))]
+    return entries
+
+
+def _restore_target(name: str) -> tuple[Path, bool] | None:
+    """Where a backup entry goes in the profile, and whether it is encrypted; None if unexpected."""
+    simple = {"holder_key.pem": KEY_FILE, "config.json": CONFIG_FILE, "history.jsonl": history_file()}
+    if name in simple:
+        return simple[name], True
+    folder, _, file = name.partition("/")
+    if "/" in file or not re.fullmatch(r"[A-Za-z0-9_.-]+", file or "") or file.startswith("."):
+        return None
+    if folder == "credentials" and file.endswith(".json"):
+        return CRED_DIR / f"{file[:-5]}.enc", True
+    if folder == "trusted_cas" and file.endswith(".pem"):
+        return TRUST_DIR / file, False
+    return None
 
 
 def restore_backup(path: Path, password: str) -> int:
@@ -354,19 +416,20 @@ def restore_backup(path: Path, password: str) -> int:
     except Exception as exc:
         raise WalletError(tr("Wrong password or damaged backup.")) from exc
 
-    ensure_data_dir()
     with tarfile.open(fileobj=io.BytesIO(plain), mode="r:gz") as tar:
-        for member in tar.getmembers():
-            parts = Path(member.name).parts
-            if (member.name.startswith("/") or ".." in parts or not parts or parts[0] not in PROFILE_ITEMS
-                    or not (member.isfile() or member.isdir())):
+        members = tar.getmembers()
+        for member in members:
+            if not member.isfile() or _restore_target(member.name) is None:
                 raise WalletError(tr("Unexpected entry in the backup: {name}", name=member.name))
-        for member in tar.getmembers():
-            target = DATA_DIR / member.name
-            if member.isdir():
-                ensure_data_dir(target)
+        if "holder_key.pem" not in {m.name for m in members}:
+            raise WalletError(tr("Unexpected entry in the backup: {name}", name="holder_key.pem"))
+        for member in members:
+            target, encrypted = _restore_target(member.name)
+            data = tar.extractfile(member).read()
+            if encrypted:
+                write_secret(target, data)
             else:
-                write_private(target, tar.extractfile(member).read().decode("utf-8"))
+                write_private(target, data)
     return len(load_credentials())
 
 
@@ -407,4 +470,5 @@ def remove_profile(name: str) -> None:
     path = profile_dir(name)
     if not path.is_dir():
         raise WalletError(tr("The profile '{name}' does not exist.", name=name))
+    vault.destroy(path)
     shutil.rmtree(path)

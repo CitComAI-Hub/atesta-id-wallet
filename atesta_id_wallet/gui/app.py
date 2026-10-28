@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, storage, updates
+from .. import common, i18n, storage, updates, vault
 from ..common import Cancelled, WalletError, __version__
 from ..desktop import (
     APP_ICON,
@@ -76,7 +76,7 @@ from ..ui import OfferSummary, Prompter, consent_items
 from ..vci import IssueOptions, issue
 from ..vp import NoMatchingCredential, build_response, prepare_presentation, record_declined, send_presentation
 from . import theme
-from .pages import ActivityPage, CredentialPage, SettingsPage, WalletPage
+from .pages import ActivityPage, CredentialPage, LockPage, SettingsPage, WalletPage
 from .sheets import (
     ChooseSheet,
     ConfirmSheet,
@@ -89,7 +89,7 @@ from .sheets import (
     ScanSheet,
     TextSheet,
 )
-from .widgets import CredentialCard, IconBubble, Toast, esc, label
+from .widgets import CredentialCard, IconBubble, Toast, button, esc, label
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +165,8 @@ class GuiPrompter(Prompter):
 
 
 class MainWindow(QMainWindow):
+    AUTO_LOCK_MINUTES = 5  # with a wallet password, the wallet locks after this long without use
+
     def __init__(self) -> None:
         super().__init__()
         self.bridge = Bridge()
@@ -184,6 +186,11 @@ class MainWindow(QMainWindow):
         self._consumed: set[str] = set()
         self._page_name = "wallet"
         self.available_release: updates.Release | None = None
+        self._pending_entry: str | None = None  # link that arrived while the wallet was locked
+        self._idle_timer = QTimer(self)
+        self._idle_timer.setSingleShot(True)
+        self._idle_timer.setInterval(self.AUTO_LOCK_MINUTES * 60_000)
+        self._idle_timer.timeout.connect(self._idle_timeout)
 
         self.setWindowTitle("Atesta ID Wallet")
         self.setMinimumSize(920, 640)
@@ -215,7 +222,8 @@ class MainWindow(QMainWindow):
         self.wallet_page = WalletPage(self)
         self.activity_page = ActivityPage(self)
         self.settings_page = SettingsPage(self)
-        for page in (self.wallet_page, self.activity_page, self.settings_page):
+        self.lock_page = LockPage(self)
+        for page in (self.wallet_page, self.activity_page, self.settings_page, self.lock_page):
             self.stack.addWidget(page)
         self.detail_page: CredentialPage | None = None
         row.addWidget(self.stack, 1)
@@ -270,6 +278,12 @@ class MainWindow(QMainWindow):
         self.profile_combo.setCurrentText(storage.PROFILE)
         self.profile_combo.currentTextChanged.connect(self.switch_profile)
         column.addWidget(self.profile_combo)
+        if vault.mode(storage.DATA_DIR) == "password" and storage.vault_state() == "open":
+            column.addSpacing(8)
+            lock = button(tr("Lock"), None, "lock")
+            lock.setToolTip(tr("Close the wallet until the password is typed again"))
+            lock.clicked.connect(self.lock_now)
+            column.addWidget(lock)
         return bar
 
     # -- navigation -----------------------------------------------------------
@@ -277,6 +291,8 @@ class MainWindow(QMainWindow):
     def _go(self, name: str) -> None:
         self._page_name = name
         page = {"wallet": self.wallet_page, "activity": self.activity_page, "settings": self.settings_page}[name]
+        if storage.vault_state() != "open":
+            page = self.lock_page
         page.refresh()
         self.stack.setCurrentWidget(page)
         self.nav_buttons[name].setChecked(True)
@@ -297,7 +313,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.detail_page)
 
     def reload(self) -> None:
-        self.records = load_credentials()
+        self.records = load_credentials() if storage.vault_state() == "open" else []
         current = self.stack.currentWidget() if hasattr(self, "stack") else None
         if current is not None and hasattr(current, "refresh"):
             current.refresh()
@@ -310,9 +326,8 @@ class MainWindow(QMainWindow):
             return
         set_profile(name)
         _remember_profile(name)
-        self._sync_profile_widgets()
-        self.reload()
-        self._go(self._page_name)
+        self._build()
+        self._restart_idle()
         self.toast.show_message(tr("Profile «{name}»", name=name))
 
     def _sync_profile_widgets(self) -> None:
@@ -322,7 +337,7 @@ class MainWindow(QMainWindow):
         self.profile_combo.setCurrentText(storage.PROFILE)
         self.profile_combo.blockSignals(False)
 
-    # -- paneles --------------------------------------------------------------
+    # -- panels ---------------------------------------------------------------
 
     def _sheet(self, sheet: Any) -> None:
         self.overlay.show_sheet(sheet)
@@ -444,11 +459,15 @@ class MainWindow(QMainWindow):
                                                  "link the website gave you."), self.process,
                             placeholder="openid4vp://…", icon="link")
 
-    # -- flujos ---------------------------------------------------------------
+    # -- flows ----------------------------------------------------------------
 
     def process(self, entry: str) -> None:
         if self.busy:
             self.toast.show_message(tr("Finish the current step first"))
+            return
+        if storage.vault_state() != "open":  # handled once the wallet is unlocked
+            self._pending_entry = entry
+            self.unlock()
             return
         self._stop_watch()
         try:
@@ -664,24 +683,30 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
+        def write(password: str) -> None:
+            try:
+                write_backup(Path(path), password)
+            except (WalletError, OSError) as exc:
+                return self._result(False, tr("Could not create the backup"), esc(exc))
+            self._result(True, tr("Backup created"), tr("Saved in {path}. Keep it outside this computer: it "
+                                                        "cannot be opened without the password.", path=esc(path)),
+                         icon="archive")
+        self._choose_password(tr("Backup password"), tr("It encrypts the backup. You will need this password to "
+                                                        "restore it; it cannot be recovered if you forget it."), write)
+
+    def _choose_password(self, title: str, body: str, action: Callable[[str], None]) -> None:
+        """Asks for a new password twice and calls action with it."""
         def first(password: str) -> None:
-            if len(password) < 8:
-                return self._result(False, tr("Password too short"), tr("Use at least 8 characters."))
+            if len(password) < vault.MIN_PASSWORD:
+                return self._result(False, tr("Password too short"),
+                                    tr("Use a password with at least {n} characters.", n=vault.MIN_PASSWORD))
 
             def second(repeated: str) -> None:
                 if repeated != password:
                     return self._result(False, tr("The passwords do not match"), tr("Try again."))
-                try:
-                    write_backup(Path(path), password)
-                except (WalletError, OSError) as exc:
-                    return self._result(False, tr("Could not create the backup"), esc(exc))
-                self._result(True, tr("Backup created"), tr("Saved in {path}. Keep it outside this computer: it "
-                                                            "cannot be opened without the password.", path=esc(path)),
-                             icon="archive")
+                action(password)
             self._ask_text_then(tr("Repeat the password"), "", second, secret=True, icon="lock")
-        self._ask_text_then(tr("Backup password"), tr("It encrypts the backup. You will need this password to restore "
-                                                      "it; it cannot be recovered if you forget it."), first,
-                            secret=True, icon="lock")
+        self._ask_text_then(title, body, first, secret=True, icon="lock")
 
     def restore(self) -> None:
         if not profile_is_empty():
@@ -753,7 +778,100 @@ class MainWindow(QMainWindow):
             return self._result(False, tr("Could not register the links"), esc(exc))
         self.toast.show_message(tr("Links registered: they will open this application"))
 
-    # -- versiones nuevas -------------------------------------------------------
+    # -- wallet lock ----------------------------------------------------------
+
+    def unlock(self) -> None:
+        """Opens the active profile: asks for the wallet password, or to choose one if there is no keyring."""
+        state = storage.vault_state()
+        if state == "open":
+            return self._unlocked()
+        if state == "new":
+            return self._choose_password(
+                tr("Choose a wallet password"),
+                tr("It encrypts the profile «{profile}» and is asked for whenever the wallet opens. It cannot be "
+                   "recovered: if you forget it, only a backup brings the credentials back.",
+                   profile=esc(storage.PROFILE)), self._try_unlock)
+        self._ask_password()
+
+    def _ask_password(self, error: str = "") -> None:
+        self._ask_text_then(tr("Wallet password"), error or tr("Profile «{profile}»", profile=esc(storage.PROFILE)),
+                            self._try_unlock, secret=True, icon="lock", confirm_text=tr("Unlock"))
+
+    def _try_unlock(self, password: str) -> None:
+        try:
+            storage.unlock(password)
+        except vault.WrongPassword:
+            return self._ask_password(tr("Wrong wallet password. Try again."))
+        except WalletError as exc:
+            return self._result(False, tr("Could not open the wallet"), esc(exc))
+        self._unlocked()
+
+    def _unlocked(self) -> None:
+        self._build()
+        self._restart_idle()
+        entry, self._pending_entry = self._pending_entry, None
+        if entry:
+            self.process(entry)
+
+    def lock_now(self) -> None:
+        if self.busy:
+            self.toast.show_message(tr("Finish the current step first"))
+            return
+        self._stop_watch()
+        self.overlay.close_sheet()
+        vault.lock(storage.DATA_DIR)
+        self._restart_idle()
+        self._build()
+        self.toast.show_message(tr("Wallet locked"))
+
+    def _restart_idle(self) -> None:
+        # The event filter (a Python call for every Qt event) is only installed while it is needed.
+        if vault.mode(storage.DATA_DIR) == "password" and storage.vault_state() == "open":
+            self._idle_timer.start()
+            QApplication.instance().installEventFilter(self)
+        else:
+            self._idle_timer.stop()
+            QApplication.instance().removeEventFilter(self)
+
+    def _idle_timeout(self) -> None:
+        if self.busy:  # never in the middle of a flow: try again later
+            self._idle_timer.start()
+        else:
+            self.lock_now()
+
+    def eventFilter(self, watched: Any, event: Any) -> bool:
+        if self._idle_timer.isActive() and event.type() in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress,
+                                                            QEvent.Type.Wheel):
+            self._idle_timer.start()  # any use of the wallet postpones the automatic lock
+        return False
+
+    def set_wallet_password(self) -> None:
+        def apply(password: str) -> None:
+            try:
+                vault.set_password(storage.DATA_DIR, password)
+            except WalletError as exc:
+                return self._result(False, tr("Could not set the password"), esc(exc))
+            self._build()
+            self._restart_idle()
+            self.toast.show_message(tr("Wallet password set"))
+        self._choose_password(tr("New wallet password"),
+                              tr("It encrypts this profile and locks the wallet. It cannot be recovered: if you "
+                                 "forget it, only a backup brings the credentials back."), apply)
+
+    def remove_wallet_password(self) -> None:
+        def remove() -> None:
+            try:
+                vault.set_password(storage.DATA_DIR, None)
+            except WalletError as exc:
+                return self._result(False, tr("Could not remove the password"), esc(exc))
+            self._build()
+            self._restart_idle()
+            self.toast.show_message(tr("Wallet password removed"))
+        self._confirm(tr("Remove the wallet password?"), tr("The data stays encrypted, with the key in the system "
+                                                            "keyring: it opens with your session, without asking."),
+                      remove, confirm_text=tr("Remove"), icon="lock")
+
+    # -- new versions -------------------------------------------------------
 
     def check_for_updates(self, *, automatic: bool = False) -> None:
         """Asks GitHub in the background; the automatic check only speaks up if there is a new version."""
@@ -931,7 +1049,10 @@ def main(argv: list[str] | None = None) -> int:
     window._instance_server = listen_for_instances(window)
     window.show()
     if args.entry:
-        QTimer.singleShot(0, lambda: window.process(args.entry))
+        QTimer.singleShot(0, lambda: window.process(args.entry))  # asks for the password first if locked
+    elif storage.vault_state() != "open":
+        QTimer.singleShot(0, window.unlock)
+    window._restart_idle()
     if updates.automatic_check_due():
         window.check_for_updates(automatic=True)
     code = app.exec()
@@ -958,7 +1079,7 @@ def release_widgets() -> None:
 def smoke_test() -> int:
     """
     Checks that a packaged executable has everything it needs (used by CI): Qt with SVG, icons,
-    catalogs, zxing-cpp, Pillow and cryptography. Uses $ATESTA_ID_WALLET_HOME if given an empty
+    catalogs, zxing-cpp, Pillow, cryptography and keyring. Uses $ATESTA_ID_WALLET_HOME if given an empty
     one and returns 0 or 1, without dialogs (on Windows the GUI has no console to write to).
     """
     try:
@@ -978,6 +1099,13 @@ def smoke_test() -> int:
             raise RuntimeError(f"missing {APP_ICON}")
         decode_qr(Image.new("RGB", (64, 64), "white"))
         ec.generate_private_key(ec.SECP256R1())
+        import importlib
+
+        import keyring
+
+        keyring.get_keyring()
+        importlib.import_module({"win32": "keyring.backends.Windows", "darwin": "keyring.backends.macOS"}.get(
+            sys.platform, "keyring.backends.SecretService"))  # the backend for this system is bundled
         window = MainWindow()
         window.show()
         QApplication.processEvents()

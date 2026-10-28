@@ -10,7 +10,7 @@
   fallback), Spanish and Danish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
-## Status (0.7.0, October 2026)
+## Status (0.8.0, October 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, with a GUI, a CLI, three languages and an offline test suite (100+ tests, GUI included).
@@ -19,8 +19,7 @@ smoke-tested by CI (including a silent install/uninstall on Windows), but nobody
 has used it and nobody has tested it by hand on real Windows or macOS.
 
 **TRL 6 target**: a pilot with real users in the CITCOM environment. Blocking for that, in order:
-the manual Windows test, an encrypted holder key with an
-app lock, the CITCOM verifier trust list, and a decision on the second login.
+the manual Windows test, the CITCOM verifier trust list, and a decision on the second login.
 
 ## Done
 
@@ -79,6 +78,10 @@ app lock, the CITCOM verifier trust list, and a decision on the second login.
   profile in `profiles/NAME` (also `default`), new backup format (`ATESTAB1`; older backups
   cannot be restored).
 
+- **0.8.0: encryption at rest and app lock** (`vault`): every profile file encrypted with
+  AES-256-GCM under a per-profile key, kept in the system keyring or wrapped with a wallet
+  password (scrypt); window lock after 5 minutes without use; `atesta-id-wallet password`.
+
 ## Next: roadmap to the pilot (TRL 6)
 
 1. [ ] **Windows code signing** (Authenticode certificate) to avoid the SmartScreen warning.
@@ -88,8 +91,8 @@ app lock, the CITCOM verifier trust list, and a decision on the second login.
        decide on macOS for the pilot.
 3. [ ] **CI**: tests on Linux and Windows for every push (today only on release tags); add
        `ruff` and a type checker.
-4. [ ] **Holder key protection**: OS keyring (Secret Service / DPAPI / Keychain) or passphrase,
-       together with an app lock (PIN/password) in the GUI.
+4. [x] **Holder key protection** (0.8.0): encrypted profile, key in the OS keyring or behind a
+       wallet password with app lock. Still to check by hand on Windows (Credential Manager).
 5. [ ] **Trust list**: ship the CITCOM verifier CA (or trust list) with the app, so pilot verifiers
        show as trusted instead of "first time".
 6. [ ] **Second login when receiving a credential**: decide option A/B/C (below).

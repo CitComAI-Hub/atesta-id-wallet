@@ -6,20 +6,25 @@
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+
 ROOT = Path(SPECPATH).parent
 ICON = str(ROOT / "packaging" / "atesta-id-wallet.ico") if sys.platform == "win32" else None
 # Language catalogs and icons, taken from the source tree (collect_data_files would only find them
 # if the package were installed in the build environment).
 DATAS = [(str(ROOT / "atesta_id_wallet" / "i18n" / "*.json"), "atesta_id_wallet/i18n"),
          (str(ROOT / "atesta_id_wallet" / "gui" / "icons" / "*"), "atesta_id_wallet/gui/icons")]
+# keyring finds its backends (Secret Service, Windows Credential Manager...) through package metadata.
+DATAS += copy_metadata("keyring")
+KEYRING = collect_submodules("keyring.backends")
 # Qt parts the wallet does not use (saves space; QtNetwork is used: single window).
 EXCLUDES = ["tkinter", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtPdf", "PySide6.QtOpenGL",
             "PySide6.QtSql", "PySide6.QtTest", "PySide6.QtDBus", "PySide6.QtConcurrent"]
 
 gui = Analysis([str(ROOT / "packaging" / "launch_gui.py")], pathex=[str(ROOT)], datas=DATAS,
-               hiddenimports=["PySide6.QtSvg"], excludes=EXCLUDES)
+               hiddenimports=["PySide6.QtSvg", *KEYRING], excludes=EXCLUDES)
 cli = Analysis([str(ROOT / "packaging" / "launch_cli.py")], pathex=[str(ROOT)], datas=DATAS,
-               excludes=EXCLUDES + ["PySide6", "shiboken6"])
+               hiddenimports=KEYRING, excludes=EXCLUDES + ["PySide6", "shiboken6"])
 
 # Qt's GTK theme would pull in a copy of GTK 3 that may not match the system one; Qt then uses
 # its own style (Fusion, the one the app uses) and the xdg-desktop-portal dialogs.

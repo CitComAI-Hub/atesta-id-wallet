@@ -5,7 +5,7 @@ OpenID4VCI 1.0 and uses them to sign in with OpenID4VP 1.0, in SD-JWT VC format
 (`dc+sd-jwt`). It replaces a phone wallet such as Lissi: you get credentials from
 Keycloak and log in to verifiers (e.g. the CITCOM/VRAIN marketplace) from your laptop.
 
-> **Status: prototype (TRL 5), version 0.7.0.** Tested against Keycloak and the CITCOM
+> **Status: prototype (TRL 5), version 0.8.0.** Tested against Keycloak and the CITCOM
 > marketplace. Desktop window (Qt) and command line, in English, Spanish and Danish. Linux is the
 > tested platform; the Windows builds are new and not yet tested by hand on real machines;
 > macOS is untested. Read [docs/SECURITY.md](docs/SECURITY.md) before using it with real data.
@@ -153,6 +153,7 @@ atesta-id-wallet remove 2               # delete by number or id from 'list'
 atesta-id-wallet backup ~/wallet.bak    # encrypted backup of the profile, holder key included
 atesta-id-wallet restore ~/wallet.bak   # into an empty profile
 atesta-id-wallet reset                  # delete key, credentials and settings of the profile
+atesta-id-wallet password [set|remove]  # wallet password: app lock (see Data)
 ```
 
 **Profiles** keep separate identities, for example personal, work or testing. Each profile has
@@ -200,13 +201,21 @@ Stored in `~/.local/share/atesta-id-wallet/` on Linux, `%APPDATA%\atesta-id-wall
 Each profile (`default` and the ones you create) is a folder `profiles/<name>/` with the files
 below; `settings.json` is in the root. Directories are `0700` and files `0600`.
 
+Everything in a profile is **encrypted** (AES-256-GCM) with a key of that profile. The key is in
+the system keyring (GNOME Keyring/KWallet, Windows Credential Manager), so the wallet opens with
+your session. A **wallet password** (*Settings → Security* or `atesta-id-wallet password set`)
+takes the key out of the keyring and locks the wallet: it is asked for when the wallet opens and
+after 5 minutes without use. Without a keyring the wallet asks you to choose one. The password
+cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.md).
+
 | File in `profiles/<name>/` | Contents |
 |---|---|
-| `holder_key.pem` | Wallet private key (P-256). Your credentials are bound to it: **back it up** (`backup`) and never share it. |
-| `credentials/*.json` | Received SD-JWT credentials, with the issuer's display name and colours. |
-| `config.json` | Per issuer: username, `client_id` and `redirect_uri` that worked. Pinned verifier certificates. |
-| `history.jsonl` | Activity: credentials received, data shared or declined, and with whom. |
-| `trusted_cas/*.pem` | CAs whose verifiers are trusted. |
+| `holder_key.enc` | Wallet private key (P-256). Your credentials are bound to it: **back it up** (`backup`) and never share it. |
+| `credentials/*.enc` | Received SD-JWT credentials, with the issuer's display name and colours. |
+| `config.enc` | Per issuer: username, `client_id` and `redirect_uri` that worked. Pinned verifier certificates. |
+| `history.enc` | Activity: credentials received, data shared or declined, and with whom. |
+| `trusted_cas/*.pem` | CAs whose verifiers are trusted (public certificates, not encrypted). |
+| `vault.json` | How the profile key is kept: in the keyring, or wrapped with the wallet password. |
 | `settings.json` (root) | Application settings shared by all profiles (language, last profile, new-version check). |
 
 ## Limitations
@@ -218,7 +227,7 @@ below; `settings.json` is in the root. Directories are `0700` and files `0600`.
   No Digital Credentials API (browser-mediated) flows.
 - DCQL: `credentials`, `credential_sets`, `claims` (with `values`) and `claim_sets`;
   `trusted_authorities` and `multiple` are ignored.
-- The holder key is stored unencrypted, protected only by file permissions. There is no app lock.
+- Keys are software keys (no TPM or secure element). See [docs/SECURITY.md](docs/SECURITY.md).
 - One holder key per profile, so verifiers can correlate presentations made with the same profile.
 - No revocation check (Token Status List).
 
@@ -230,7 +239,8 @@ below; `settings.json` is in the root. Directories are `0700` and files `0600`.
 | `i18n` | `tr()` / `tr_n()` translations with English fallback; `es.json`, `da.json` catalogs |
 | `jose` | JWS verification, JWK/X.509 keys, JWE encryption of responses |
 | `sdjwt` | SD-JWT VC parsing (strict) and disclosure selection |
-| `storage` | Profiles, holder key, credentials, history, settings and trusted CAs on disk (atomic writes) |
+| `storage` | Profiles, holder key, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
+| `vault` | Profile encryption: data key in the system keyring or wrapped with the wallet password |
 | `trust` | Verifier identity and trust (x509_san_dns, x509_hash, pinning, CAs) |
 | `vci` | OpenID4VCI: offers, metadata checks, authorization server login, issuance, issuer signature |
 | `vp` | OpenID4VP: request, DCQL / Presentation Exchange, `prepare_presentation` → `build_response` → `send_presentation` |
@@ -254,7 +264,7 @@ The tests run offline (about 100 tests, a few seconds). They use local fake Keyc
 verifier servers, and drive the GUI headless. The GUI tests are skipped if PySide6 is not
 installed. `tests/test_offline.py` covers the flows end to end; `tests/test_hardening.py` holds
 the regression tests for the security review of 0.5.1; `tests/test_packaging.py` covers the
-packaged executables and the new-version check. Test messages are checked in Spanish, so
+packaged executables and the new-version check; `tests/test_vault.py` the encryption and the lock. Test messages are checked in Spanish, so
 the Spanish catalog is exercised too.
 
 Builds and releases: [docs/RELEASING.md](docs/RELEASING.md). Manual checks on Windows:

@@ -17,7 +17,7 @@ from typing import Any
 
 import requests
 
-from . import common, i18n, storage, updates
+from . import common, i18n, storage, updates, vault
 from .common import Cancelled, WalletError, __version__, confirm, log
 from .desktop import (
     FROZEN,
@@ -59,7 +59,9 @@ from .vp import build_response, prepare_presentation, record_declined, send_pres
 
 
 SUBCOMMANDS = ("issue", "present", "list", "history", "remove", "reset", "backup", "restore", "profiles",
-               "trust", "update", "language", "install-handler", "uninstall-handler")
+               "trust", "password", "update", "language", "install-handler", "uninstall-handler")
+# Commands that do not read the profile data, so they never ask for the wallet password.
+WITHOUT_UNLOCK = ("reset", "profiles", "update", "language", "install-handler", "uninstall-handler")
 
 
 def cmd_issue(args: argparse.Namespace) -> int:
@@ -173,7 +175,7 @@ def cmd_remove(args: argparse.Namespace) -> int:
 
 
 def cmd_reset(args: argparse.Namespace) -> int:
-    count = len(load_credentials())
+    count = len(list(storage.CRED_DIR.glob("*.enc"))) if storage.CRED_DIR.is_dir() else 0
     print(tr_n("The wallet key, {n} credential and the settings of the profile '{profile}' ({path}) will be "
                "deleted.", "The wallet key, {n} credentials and the settings of the profile '{profile}' ({path}) "
                "will be deleted.", count, profile=storage.PROFILE, path=storage.DATA_DIR))
@@ -215,6 +217,52 @@ def cmd_restore(args: argparse.Namespace) -> int:
     return 0
 
 
+def _new_password() -> str:
+    password = getpass.getpass(tr("New wallet password (at least {n} characters): ", n=vault.MIN_PASSWORD))
+    if getpass.getpass(tr("Repeat it: ")) != password:
+        raise WalletError(tr("The passwords do not match."))
+    return password
+
+
+def open_profile() -> None:
+    """Unlocks the active profile: asks for the wallet password, or to choose one if there is no keyring."""
+    state = storage.vault_state()
+    if state == "open":
+        return
+    if not sys.stdin or not sys.stdin.isatty():
+        raise vault.Locked() if state == "locked" else vault.PasswordNeeded()
+    if state == "new":
+        print(tr("There is no system keyring to protect the wallet: choose a wallet password."))
+        storage.unlock(_new_password())
+        return
+    for _ in range(3):
+        try:
+            storage.unlock(getpass.getpass(tr("Wallet password for the profile '{profile}': ",
+                                              profile=storage.PROFILE)))
+            return
+        except vault.WrongPassword as exc:
+            print(exc)
+    raise vault.WrongPassword()
+
+
+def cmd_password(args: argparse.Namespace) -> int:
+    if args.action == "set":
+        vault.set_password(storage.DATA_DIR, _new_password())
+        print(tr("✔ Wallet password set: it is asked for whenever the profile '{profile}' is opened.",
+                 profile=storage.PROFILE))
+    elif args.action == "remove":
+        vault.set_password(storage.DATA_DIR, None)
+        print(tr("✔ Wallet password removed: the key of the profile '{profile}' is in the system keyring.",
+                 profile=storage.PROFILE))
+    elif vault.mode(storage.DATA_DIR) == "password":
+        print(tr("The profile '{profile}' is encrypted with a key protected by the wallet password.",
+                 profile=storage.PROFILE))
+    else:
+        print(tr("The profile '{profile}' is encrypted with a key kept in the system keyring (no wallet password).",
+                 profile=storage.PROFILE))
+    return 0
+
+
 def cmd_profiles(args: argparse.Namespace) -> int:
     if args.action == "add":
         create_profile(args.name)
@@ -231,7 +279,7 @@ def cmd_profiles(args: argparse.Namespace) -> int:
         return 0
     for name in list_profiles():
         creds = profile_dir(name) / "credentials"
-        count = len(list(creds.glob("*.json"))) if creds.is_dir() else 0
+        count = len(list(creds.glob("*.enc"))) if creds.is_dir() else 0
         marker = "*" if name == storage.PROFILE else " "
         print(f"{marker} {name:20} " + tr_n("{n} credential", "{n} credentials", count))
     return 0
@@ -400,6 +448,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("Only check whether a newer version has been published (asks GitHub)."))
     update.set_defaults(func=cmd_update)
 
+    password = sub.add_parser("password", help=tr("Show, set or remove the wallet password (app lock)"))
+    password.add_argument("action", nargs="?", choices=["set", "remove"])
+    password.set_defaults(func=cmd_password)
+
     language = sub.add_parser("language", help=tr("Show or change the language (auto, en, es, da)"))
     language.add_argument("code", nargs="?", choices=(i18n.AUTO, *i18n.LANGUAGES))
     language.set_defaults(func=cmd_language)
@@ -472,6 +524,8 @@ def _run(argv: list[str]) -> int:
     if args.command == "trust" and args.action != "list" and not args.target:
         parser.error(tr("trust {action} needs an argument", action=args.action))
     _select_profile(requested_profile, args.command)
+    if args.command not in WITHOUT_UNLOCK:
+        open_profile()
     for attr, file_attr in (("offer", "offer_file"), ("request", "request_file")):
         if getattr(args, file_attr, None):
             setattr(args, attr, Path(getattr(args, file_attr)).read_text(encoding="utf-8"))

@@ -53,6 +53,17 @@ Firefox if pilot users have it).
       (*Properties → Security* only lists the user, SYSTEM and Administrators).
 - [ ] Antivirus (Defender) does not quarantine or block the executables; note any warning.
 
+## 5b. Encryption and lock
+
+- [ ] After receiving a credential, *Credential Manager → Windows Credentials* lists an
+      `atesta-id-wallet` entry, and the files in `profiles\default` are not readable (no
+      `BEGIN PRIVATE KEY`, no claim values).
+- [ ] *Settings → Security → Wallet password → Set…*: close and open the wallet; it asks for the
+      password; a wrong one is refused; the Credential Manager entry is gone.
+- [ ] Clicking a link while locked asks for the password first and then continues the flow.
+- [ ] After 5 minutes without touching the wallet it locks by itself (not in the middle of a flow).
+- [ ] *Remove* the password: the wallet opens again without asking.
+
 ## 6. Command line
 
 From PowerShell, in the install folder (`cd "$env:LOCALAPPDATA\Programs\Atesta ID Wallet"`):

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, storage, updates
+from .. import common, i18n, storage, updates, vault
 from ..common import __version__, host_of, humanize
 from ..i18n import N_, tr, tr_n
 from ..storage import (
@@ -153,6 +153,33 @@ class WalletPage(Page):
         self.scroll.setVisible(bool(shown))
         self.empty.setVisible(not records)
         self.no_results.setVisible(bool(records) and not shown)
+
+
+class LockPage(Page):
+    """Shown instead of the pages while the profile is locked (or needs a wallet password first)."""
+
+    def __init__(self, window: MainWindow):
+        super().__init__(window)
+        self.state: QWidget | None = None
+
+    def refresh(self) -> None:
+        if self.state is not None:
+            self.state.hide()
+            self.state.deleteLater()
+        new = storage.vault_state() == "new"
+        action = button(tr("Choose a password…") if new else tr("Unlock…"), "primary", "lock")
+        action.clicked.connect(self.window_.unlock)
+        if new:
+            state = EmptyState("lock", tr("Protect your wallet"),
+                               tr("There is no system keyring on this computer to keep the wallet key. Choose a "
+                                  "wallet password: everything in the profile «{profile}» is encrypted with it.",
+                                  profile=storage.PROFILE), action=action)
+        else:
+            state = EmptyState("lock", tr("The wallet is locked"),
+                               tr("The profile «{profile}» is encrypted. Type the wallet password to open it.",
+                                  profile=storage.PROFILE), action=action)
+        self.state = state
+        self.root.addWidget(state, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +397,24 @@ class SettingsPage(Page):
             _setting(tr("Remove this profile"), tr("Deletes its key and its credentials. This cannot be undone."),
                      self._action(tr("Remove…"), w.delete_profile, "trash-2", "danger")),
         ])
+        if vault.mode(storage.DATA_DIR) == "password":
+            remove = [self._action(tr("Remove"), w.remove_wallet_password)] if vault.keyring_available() else []
+            security = [
+                _setting(tr("Wallet password"), tr("The data of this profile is encrypted with a key protected by "
+                                                   "your password. It is asked for when the wallet opens and after "
+                                                   "{n} minutes without use.", n=w.AUTO_LOCK_MINUTES),
+                         self._action(tr("Change…"), w.set_wallet_password, "key-round"), *remove),
+                _setting(tr("Lock now"), tr("Closes the wallet until the password is typed again."),
+                         self._action(tr("Lock"), w.lock_now, "lock")),
+            ]
+        else:
+            security = [
+                _setting(tr("Wallet password"), tr("The data of this profile is encrypted; its key is kept in the "
+                                                   "system keyring and opens with your session. A password adds an "
+                                                   "app lock: it is asked for whenever the wallet opens."),
+                         self._action(tr("Set…"), w.set_wallet_password, "key-round")),
+            ]
+        self._section(tr("Security"), security)
         self._section(tr("Backup"), [
             _setting(tr("Create an encrypted backup"), tr("It includes the wallet key: without it the credentials are "
                      "useless. Keep it outside this computer."), self._action(tr("Create…"), w.backup, "archive")),

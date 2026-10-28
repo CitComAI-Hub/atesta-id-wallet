@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atesta-id-wallet"
-version = "0.7.0"
+version = "0.8.0"
 description = "Desktop wallet for verifiable credentials: OpenID4VCI 1.0 + OpenID4VP 1.0 (SD-JWT VC), no smartphone needed."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -13,6 +13,7 @@ dependencies = [
     "cryptography>=45",
     "zxing-cpp>=2.2",
     "Pillow>=10",
+    "keyring>=24",
 ]
 
 [project.optional-dependencies]
