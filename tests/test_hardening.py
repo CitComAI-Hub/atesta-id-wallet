@@ -4,6 +4,7 @@ import io
 import json
 import os
 import stat
+import subprocess
 import sys
 import time
 import unittest
@@ -402,11 +403,21 @@ class GuiSafetyTests(unittest.TestCase):
         server = base.gui.listen_for_instances(window, name)
         self.addCleanup(server.close)
         self.assertFalse(base.gui.forward_to_running_instance("x", name + "-nobody"))
-        self.assertTrue(base.gui.forward_to_running_instance("openid4vp://?request_uri=https://v/r", name))
-        deadline = time.time() + 5
-        while not received and time.time() < deadline:
+        # The second instance is another process, as in real use (in a thread of this process, the
+        # sender's blocking wait would keep the window from running and answering).
+        code = ("import sys; from PySide6.QtCore import QCoreApplication; app = QCoreApplication([]); "
+                "from atesta_id_wallet.gui.app import forward_to_running_instance as f; "
+                f"sys.exit(0 if f('openid4vp://?request_uri=https://v/r', {name!r}) else 3)")
+        root = str(Path(__file__).resolve().parent.parent)
+        env = {**os.environ, "PYTHONPATH": root + os.pathsep + os.environ.get("PYTHONPATH", "")}
+        sender = subprocess.Popen([sys.executable, "-c", code], env=env)
+        self.addCleanup(sender.kill)
+        deadline = time.time() + 20
+        while (not received or sender.poll() is None) and time.time() < deadline:
             self.app.processEvents()
             time.sleep(0.01)
+        forwarded = [sender.poll() == 0]
+        self.assertEqual(forwarded, [True])
         self.assertEqual(received, ["openid4vp://?request_uri=https://v/r"])
 
 

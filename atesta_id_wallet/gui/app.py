@@ -857,6 +857,9 @@ def forward_to_running_instance(entry: str | None, name: str | None = None) -> b
     socket.write(((entry or "") + "\n").encode("utf-8"))
     socket.flush()
     socket.waitForBytesWritten(1000)
+    # Wait for the window to acknowledge before closing: on Windows, what is still in the pipe when
+    # the client disconnects is lost (the link would never reach the window).
+    socket.waitForReadyRead(3000)
     socket.disconnectFromServer()
     return True
 
@@ -881,6 +884,8 @@ def listen_for_instances(window: MainWindow, name: str | None = None) -> QLocalS
             if b"\n" not in buffer:
                 return
             entry = bytes(buffer).split(b"\n", 1)[0].decode("utf-8", errors="replace").strip()
+            socket.write(b"ok\n")  # the acknowledgement forward_to_running_instance() waits for
+            socket.flush()
             socket.disconnectFromServer()
             window.showNormal()
             window.raise_()
