@@ -41,6 +41,7 @@ from .common import (
     site_of,
     parse_json,
     require_https,
+    split_url,
 )
 from . import i18n
 from .i18n import tr
@@ -195,7 +196,7 @@ def resolve_offer(session: requests.Session, raw: str) -> dict[str, Any]:
     if raw.startswith(("http://", "https://")):
         offer_uri = raw
     else:
-        params = parse_qs(urlsplit(raw).query, keep_blank_values=True)
+        params = parse_qs(split_url(raw, "openid-credential-offer").query, keep_blank_values=True)
         if "credential_offer" in params:
             return _offer_object(parse_json(params["credential_offer"][0], "credential_offer"))
         if "credential_offer_uri" not in params:
@@ -512,7 +513,8 @@ def _redeem_code(session: requests.Session, as_meta: dict[str, Any], callback_ur
                  dpop: DPoP | None) -> tuple[dict[str, Any], str | None]:
     """Checks the authorization response and exchanges its code for the token."""
     if "?" in callback_url or "#" in callback_url or "code=" in callback_url:
-        query = urlsplit(callback_url).query or urlsplit(callback_url).fragment
+        parts = split_url(callback_url, "redirect_uri")
+        query = parts.query or parts.fragment
         cb = parse_qs(query)
         if "error" in cb:
             raise WalletError(tr("The authorization server returned an error: {error} {description}",

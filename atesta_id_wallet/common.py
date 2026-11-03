@@ -10,7 +10,7 @@ import os
 import re
 import sys
 from typing import Any, Callable
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import SplitResult, quote, unquote, urlsplit
 
 import requests
 
@@ -66,7 +66,10 @@ def confirm(question: str, *, default: bool = False, assume_yes: bool = False) -
 
 
 def host_of(url: str) -> str:
-    return (urlsplit(url).hostname or "").lower()
+    try:
+        return (urlsplit(url).hostname or "").lower()
+    except ValueError:  # e.g. an unbalanced '[' (IPv6 literal)
+        return ""
 
 
 # Second-level labels under which a country code hands out domains (example.co.uk, example.com.es).
@@ -113,9 +116,20 @@ def local_http_allowed() -> bool:
     return os.environ.get("ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP") == "1"
 
 
+def split_url(url: str, what: str) -> SplitResult:
+    """urlsplit for addresses that come from outside: WalletError instead of ValueError."""
+    try:
+        parts = urlsplit(url)
+        parts.hostname  # noqa: B018  (parses the host: raises on e.g. an unbalanced '[')
+        parts.port  # noqa: B018  (raises on a port that is not a number)
+    except ValueError as exc:
+        raise WalletError(tr("{what} is not a valid URL: {url}", what=what, url=url)) from exc
+    return parts
+
+
 def require_https(url: str, what: str) -> None:
     """HTTPS is required; http://localhost only with ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP=1."""
-    parts = urlsplit(url)
+    parts = split_url(url, what)
     if parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in ("localhost", "127.0.0.1")
                                    and local_http_allowed()):
         return

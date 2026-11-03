@@ -89,6 +89,8 @@ call services on this computer.
 with the verifier's `nonce`, `aud = client_id` and the `sd_hash` of what is sent. Only the
 requested claims are disclosed, following OpenID4VP 1.0 §6.4.1:
 
+- a DCQL query whose shape is not that of OpenID4VP 1.0 §6 (types of `credentials`, `claims`,
+  `path`, `claim_sets`, `credential_sets`...) is refused before anything is matched;
 - a DCQL query without `claims` gets **no** selectively disclosable claim, only the mandatory parts;
 - with `claim_sets`, the wallet uses the first option it can satisfy, not the union of all claims;
 - with Presentation Exchange, only the fields of an input descriptor with

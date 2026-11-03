@@ -150,6 +150,11 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 - [ ] Redact secrets (codes, tokens) from the verbose log shown in *Settings → Advanced*
 - [ ] External security review before end-user distribution
 - [x] Split `tests/test_offline.py` (1000+ lines) by module: `tests/helpers.py` + one module per area
+- [x] Fuzzing of SD-JWT, JWT, offer, presentation request and DCQL parsing (`tests/test_fuzz.py`;
+      nightly with a new seed, `fuzz.yml`). Found: links with a bad host ('[') and malformed DCQL
+      queries raised ValueError/AttributeError instead of a clear error.
+- [ ] mypy on the GUI (scoped Qt enums); SBOM in releases; branch protection on `main` (GitHub
+      settings, needs an admin)
 
 ## Pending decision: avoid the second login when receiving a credential
 

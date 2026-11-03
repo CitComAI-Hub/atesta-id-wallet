@@ -295,12 +295,13 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[gui]"
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests
 ```
 
-The tests run offline (172 tests, a few seconds). They use local fake Keycloak, issuer and
+The tests run offline (179 tests, a few seconds). They use local fake Keycloak, issuer and
 verifier servers (`tests/helpers.py`, which also sets up a test data folder and keyring), and drive
 the GUI headless; the GUI tests are skipped if PySide6 is not installed. One module per area:
 `test_formats` (SD-JWT, JWE, request objects), `test_issue` (receiving credentials), `test_present`
 (presenting them), `test_browser_login`, `test_storage`, `test_vault` (encryption and lock),
-`test_desktop` (links, clipboard, QR codes, Windows), `test_i18n`, `test_gui`, `test_packaging`
+`test_desktop` (links, clipboard, QR codes, Windows), `test_i18n`, `test_gui`, `test_fuzz` (mutated
+and random inputs for the parsers; `ATESTA_FUZZ_ROUNDS`, `ATESTA_FUZZ_SEED`), `test_packaging`
 (packaged executables, new-version check) and `test_hardening` (regression tests of the security
 review of 0.5.1). Test messages are checked in Spanish, so the Spanish catalog is exercised too.
 

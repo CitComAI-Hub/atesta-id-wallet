@@ -146,7 +146,9 @@ class RedirectAfterPresentationTests(unittest.TestCase):
     def test_only_web_addresses_are_returned(self):
         self.assertEqual(self.send("https://v.example/done?x=1"), "https://v.example/done?x=1")
         self.assertEqual(self.send("http://localhost:8080/done"), "http://localhost:8080/done")
-        for bad in ("file:///etc/passwd", "javascript:alert(1)", "http://v.example/done", ["x"], "smb://h/s"):
+        # The last one is not even a URL: dropped too, the presentation was accepted all the same.
+        for bad in ("file:///etc/passwd", "javascript:alert(1)", "http://v.example/done", ["x"], "smb://h/s",
+                    "https://v.e]xample/done"):
             self.assertIsNone(self.send(bad), bad)
 
 

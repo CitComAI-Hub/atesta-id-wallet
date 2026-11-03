@@ -1,0 +1,26 @@
+# Long fuzzing of the parsers (tests/test_fuzz.py) with a new seed every night; each push runs a short,
+# fixed one through checks.yml. A failure prints the input and ATESTA_FUZZ_SEED to reproduce it.
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install .
+      - name: Fuzz
+        env:
+          ATESTA_FUZZ_ROUNDS: "50000"
+          ATESTA_FUZZ_SEED: ${{ github.run_id }}
+        run: python -m unittest discover -s tests -p test_fuzz.py -v

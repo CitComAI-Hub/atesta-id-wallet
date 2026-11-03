@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs
 
 import requests
 
@@ -27,6 +27,7 @@ from .common import (
     log,
     parse_json,
     require_https,
+    split_url,
 )
 from .i18n import tr
 from .jose import encrypt_response_jwe
@@ -66,7 +67,7 @@ def fetch_request(session: requests.Session, raw: str) -> tuple[dict[str, Any], 
     if raw.startswith(("http://", "https://")):
         params = {"request_uri": [raw]}
     else:
-        params = parse_qs(urlsplit(raw).query, keep_blank_values=True)
+        params = parse_qs(split_url(raw, "openid4vp").query, keep_blank_values=True)
     qp = {k: v[0] for k, v in params.items()}
     client_id = qp.get("client_id", "")
 
@@ -199,9 +200,57 @@ def _dcql_claims(query: dict[str, Any], claims: Any) -> list[dict[str, Any]] | N
     return None
 
 
+def _dcql_problem(dcql: Any) -> str | None:
+    """What is wrong with the shape of a DCQL query (OpenID4VP 1.0 §6), or None if nothing."""
+    def strings(value: Any) -> bool:
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+    if not isinstance(dcql, dict):
+        return "it is not a JSON object"
+    credentials = dcql.get("credentials")
+    if not isinstance(credentials, list) or not credentials:
+        return "'credentials' must be a non-empty array"
+    for query in credentials:
+        if not isinstance(query, dict) or not isinstance(query.get("id"), str) or not query["id"]:
+            return "every credential query must be an object with a string 'id'"
+        if "format" in query and not isinstance(query["format"], str):
+            return f"'format' of '{query['id']}' must be a string"
+        meta = query.get("meta", {})
+        if not isinstance(meta, dict) or ("vct_values" in meta and not strings(meta["vct_values"])):
+            return f"'meta' of '{query['id']}' must be an object, with 'vct_values' an array of strings"
+        claims = query.get("claims", [])
+        if not isinstance(claims, list):
+            return f"'claims' of '{query['id']}' must be an array"
+        for claim in claims:
+            path = claim.get("path") if isinstance(claim, dict) else None
+            if not isinstance(path, list) or not path or not all(
+                    step is None or isinstance(step, str) or (type(step) is int and step >= 0) for step in path):
+                return f"every claim of '{query['id']}' needs a 'path' of strings, indexes and nulls"
+            if "values" in claim and not isinstance(claim["values"], list):
+                return f"'values' in '{query['id']}' must be an array"
+            if "id" in claim and not isinstance(claim["id"], str):
+                return f"claim ids in '{query['id']}' must be strings"
+        claim_sets = query.get("claim_sets", [])
+        if not isinstance(claim_sets, list) or not all(strings(option) and option for option in claim_sets):
+            return f"'claim_sets' of '{query['id']}' must be an array of non-empty arrays of claim ids"
+    credential_sets = dcql.get("credential_sets", [])
+    if not isinstance(credential_sets, list):
+        return "'credential_sets' must be an array"
+    for cset in credential_sets:
+        options = cset.get("options") if isinstance(cset, dict) else None
+        if not isinstance(options, list) or not options or not all(strings(o) and o for o in options):
+            return "every credential set needs 'options': a non-empty array of non-empty arrays of query ids"
+        if not isinstance(cset.get("required", True), bool):
+            return "'required' of a credential set must be true or false"
+    return None
+
+
 def match_dcql(dcql: dict[str, Any], records: list[dict[str, Any]], disclose_all: bool,
                choose: Chooser = _first) -> list[Match]:
-    queries = {q["id"]: q for q in dcql.get("credentials", []) if isinstance(q, dict) and "id" in q}
+    problem = _dcql_problem(dcql)
+    if problem:
+        raise WalletError(tr("The verifier's DCQL query is not valid: {problem}.", problem=problem))
+    queries = {q["id"]: q for q in dcql["credentials"]}
     if not queries:
         raise WalletError(tr("The DCQL query does not ask for any credential."))
     records = _usable(records)
@@ -420,7 +469,11 @@ def send_presentation(
     if redirect_uri is None:
         return None
     # It is opened in the browser: never file://, javascript: or other local schemes.
-    if not isinstance(redirect_uri, str) or urlsplit(redirect_uri).scheme not in ("https", "http"):
+    try:
+        web = isinstance(redirect_uri, str) and split_url(redirect_uri, "redirect_uri").scheme in ("https", "http")
+    except WalletError:  # the presentation was accepted all the same: only the redirect is dropped
+        web = False
+    if not web:
         log(tr("Warning: the verifier's redirect_uri is not a web address; it is not opened: {uri}",
                uri=redirect_uri))
         return None
