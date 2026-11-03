@@ -10,7 +10,7 @@
   fallback), Spanish, Danish, German, French and Luxembourgish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
-## Status (0.8.0, October 2026)
+## Status (0.9.0, November 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
@@ -83,7 +83,7 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   AES-256-GCM under a per-profile key, kept in the system keyring or wrapped with a wallet
   password (scrypt); window lock after 5 minutes without use; `atesta-id-wallet password`.
 
-- **Unreleased: DPoP and wallet-initiated issuance**: DPoP-bound tokens (RFC 9449) on the token and
+- **0.9.0: DPoP, offers made for other wallets, UX from Lissi, six languages**: DPoP-bound tokens (RFC 9449) on the token and
   credential endpoints when the server advertises them, with server nonces (`--no-dpop` to turn it
   off); `issue --issuer URL [--credential ID]` without an offer; an offer tied to another wallet's
   OAuth client (Keycloak 26.7 `target client ... different from login client`, e.g. the PGTEC
@@ -101,6 +101,9 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   German, French and Luxembourgish (machine-made: German and French need a quick review by a native
   speaker, Luxembourgish a careful one). Smoother panel changes (the backdrop stays); a too short or
   mismatched new password asks again instead of ending the flow; notices centred on the page.
+  Security review (November 2026): shared-hosting issuer names, no logos from local addresses,
+  http://localhost only with ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP=1. CI on every branch and pull request
+  with ruff, bandit and pip-audit; Dependabot.
 
 ## Next: roadmap to the pilot (TRL 6)
 
