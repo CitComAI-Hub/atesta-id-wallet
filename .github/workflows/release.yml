@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Qt libraries (bundled into the AppImage)
@@ -68,7 +68,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install ".[gui]" "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
@@ -135,7 +135,7 @@ jobs:
         run: sha256sum * > SHA256SUMS && cat SHA256SUMS
       # Signed provenance (Sigstore): 'gh attestation verify FILE --repo CitComAI-Hub/atesta-id-wallet'.
       # GitHub only offers it on public repositories (or private ones with Enterprise Cloud).
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         if: ${{ !github.event.repository.private }}
         with:
           subject-path: release/*
