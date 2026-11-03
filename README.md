@@ -15,8 +15,8 @@ SD-JWT VC. It is **not** a certified EUDI Wallet under eIDAS 2.0: that needs a p
 by a Member State, certification at assurance level high (with a secure hardware key store,
 WSCD) and wallet attestations, which are out of scope for this prototype.
 
-> **Status: prototype (TRL 5), version 0.8.0.** Tested against Keycloak and the CITCOM
-> marketplace. Desktop window (Qt) and command line, in English, Spanish and Danish. Linux is the
+> **Status: prototype (TRL 5), version 0.8.0.** Tested against Keycloak, the CITCOM
+> marketplace and the PGTEC onboarding portal. Desktop window (Qt) and command line, in English, Spanish and Danish. Linux is the
 > tested platform; the Windows builds are new and not yet tested by hand on real machines;
 > macOS is untested. Read [docs/SECURITY.md](docs/SECURITY.md) before using it with real data.
 
@@ -108,6 +108,12 @@ that issuer before. After you accept, it asks for your Keycloak username and pas
 It remembers the username but never stores the password, and only sends the password over HTTPS
 to the authorization server's own domain. It checks the credential's signature and key binding
 before storing it, and shows it with the name and colours the issuer publishes.
+
+Some issuer pages make their QR codes for one specific wallet: Keycloak 26.7 ties each offer to
+the OAuth client that created it, and the PGTEC onboarding portal, for example, makes them for
+Lissi. Scan them as usual: the wallet then asks the same issuer for the same credential directly,
+with the login you just typed, so you sign in only once. This works when your account is
+entitled to that credential.
 
 **2. Sign in to a verifier.** Click the login link, or press **Scan QR** and take a screenshot
 of the login QR code. Before anything is sent, the wallet shows:
@@ -279,7 +285,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[gui]"
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests
 ```
 
-The tests run offline (about 100 tests, a few seconds). They use local fake Keycloak, issuer and
+The tests run offline (about 130 tests, a few seconds). They use local fake Keycloak, issuer and
 verifier servers, and drive the GUI headless. The GUI tests are skipped if PySide6 is not
 installed. `tests/test_offline.py` covers the flows end to end; `tests/test_hardening.py` holds
 the regression tests for the security review of 0.5.1; `tests/test_packaging.py` covers the

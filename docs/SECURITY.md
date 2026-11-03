@@ -13,7 +13,7 @@ It describes version 0.8.0.
 | Activity history | `history.enc` | Encrypted, `0600`. Records who received what; it is personal data too. |
 | Profile data key | System keyring, or `vault.json` wrapped with the wallet password | See *Encryption at rest*. |
 | Trusted CA certificates | `trusted_cas/*.pem` | Public certificates: not encrypted, `0600`. |
-| Keycloak password | Never stored | Typed into the window or the terminal, sent only over HTTPS to the authorization server's host. Kept in memory until that login ends; if the offer turns out to be tied to another wallet, it is sent once more to the same host for the retry without the offer, then dropped. |
+| Keycloak password | Never stored | Typed into the window or the terminal, sent only over HTTPS to the authorization server's host. Kept in memory until that login ends; if the offer is tied to another wallet, it is sent once more to the same host for the retry without the offer (see *Issuance*). |
 | Backups | File chosen by the user | AES-256-GCM, key derived from a password with scrypt (N=2¹⁵, r=8, p=1). Restore rejects archive entries outside the profile (no path traversal, no links). |
 
 ## Encryption at rest
@@ -112,6 +112,28 @@ name to look like a trusted one or inject links.
   host as the `authorization_endpoint`. External IdPs need `--browser-login`.
 - The authorization code flow uses PKCE (S256) and a `state` that must come back unchanged. If
   the response names its issuer (`iss`, RFC 9207), it must be the expected one.
+- **DPoP** (RFC 9449): when the authorization server advertises ES256 in
+  `dpop_signing_alg_values_supported`, the access token is bound to a key made for that issuance
+  only (not the holder key, so the issuer cannot link it to the credentials). Every request
+  carries a fresh proof (`jti`, `htm`, `htu` without query, `iat`; `ath` at the credential
+  endpoint), and server nonces are kept per endpoint. A stolen access token is useless without
+  that key. `--no-dpop` turns it off.
+- **Offers tied to another wallet.** Keycloak 26.7 binds every offer made through
+  `create-credential-offer` to the OAuth client that created it, and refuses it at the token
+  endpoint when another client signed in (`Credential offer target client ... different from
+  login client`). Only on that exact error, the wallet asks the same issuer for the same
+  credential configurations the user accepted, without `issuer_state` (wallet-initiated), so the
+  server authorizes by scope and only issues what the account is entitled to. Nothing new is
+  accepted on the user's behalf: the issuer, the credentials and the consent are those of the
+  offer.
+  - The retry uses a new HTTP session: Keycloak reuses the client session of an SSO login and
+    keeps its `issuer_state` note, so the same cookies would hit the same offer.
+  - The username and password typed for the first attempt are replayed once, only to the same
+    host, for that retry. They stay in memory until the login ends and are never written
+    anywhere. One-time codes (OTP) are asked again. With `--browser-login` the browser keeps its
+    own session and the retry fails the same way.
+  - The detection depends on Keycloak's error text: if it changes, the wallet shows the error
+    instead of retrying.
 - Before storing a credential, the wallet:
   - parses the SD-JWT strictly: duplicate disclosures, a disclosure that would overwrite a
     visible claim and the reserved names `_sd` / `...` are rejected;
