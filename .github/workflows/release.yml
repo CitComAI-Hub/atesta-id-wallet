@@ -135,7 +135,7 @@ jobs:
         run: sha256sum * > SHA256SUMS && cat SHA256SUMS
       # Signed provenance (Sigstore): 'gh attestation verify FILE --repo CitComAI-Hub/atesta-id-wallet'.
       # GitHub only offers it on public repositories (or private ones with Enterprise Cloud).
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         if: ${{ !github.event.repository.private }}
         with:
           subject-path: release/*
