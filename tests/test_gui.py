@@ -375,4 +375,5 @@ class ContrastTests(unittest.TestCase):
                                          (t.warning, t.warning_soft), (t.danger, t.danger_soft),
                                          (t.danger, t.surface), (t.on_danger, t.danger)):
                     self.assertGreaterEqual(self.ratio(text, background), 4.5, (text, background))
-                self.assertGreaterEqual(self.ratio(t.input_border, t.surface), 3, "field edges")
+                for background in (t.surface, t.surface_alt, t.window):  # fields, option boxes
+                    self.assertGreaterEqual(self.ratio(t.input_border, background), 3, "field edges")

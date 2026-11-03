@@ -291,6 +291,7 @@ class MainWindow(QMainWindow):
         self.profile_combo = QComboBox()
         self.profile_combo.setToolTip(tr("Each profile is a separate identity"))
         keyboard_focus_ring(self.profile_combo)
+        self.profile_combo.setAccessibleName(tr("Profile"))
         self.profile_combo.addItems(list_profiles())
         self.profile_combo.setCurrentText(storage.PROFILE)
         self.profile_combo.currentTextChanged.connect(self.switch_profile)
@@ -417,9 +418,9 @@ class MainWindow(QMainWindow):
                       tr("Some pages have a button or link that opens your wallet instead of a QR code. Register "
                          "this application to open them (you can do it later in Settings → General).")),
             "protect": ("lock", tr("Protect your wallet"),
-                        tr("Your credentials are encrypted on this computer. A <b>wallet password</b> locks the app, "
-                           "and a <b>backup</b> (Settings → Backup) is the only way to recover them if you lose "
-                           "this computer.")),
+                        tr("Your credentials are encrypted on this computer. A <b>wallet password</b> locks the app. "
+                           "A <b>backup</b> (Settings → Backup) is the only way to get them back if you lose this "
+                           "computer.")),
         }
         name = steps[index]
         icon, title, body = texts[name]

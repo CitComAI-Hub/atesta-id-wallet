@@ -141,8 +141,9 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 9. [ ] Final app icon for *Atesta ID Wallet* (replace `packaging/app-icon.svg`, run `make_icons.py`).
        Done: issuer logo (`display.logo`) on the cards.
 10. [ ] Danish, German and French reviewed by native speakers; Luxembourgish carefully.
-11. [ ] **UX**: expert review done ([docs/UX-REVIEW.md](docs/UX-REVIEW.md): 19 problems fixed, texts in plain
-       words, keyboard and contrast to WCAG AA). Done since: plain words for the roles. Pending there:
+11. [ ] **UX**: expert review and a measured second round ([docs/UX-REVIEW.md](docs/UX-REVIEW.md): 28 problems
+       fixed, WCAG 2.2 AA checks, readability, task cost), automated in `tests/test_ux.py` (every push) and
+       `.github/workflows/ux.yml` (every night, report with screenshots). Pending there: help in the app,
        scanning by screenshot, text size, a screen reader test, technical sections of Settings. Then a
        usability test with 5–8 people of the pilot profile (part of item 7).
 

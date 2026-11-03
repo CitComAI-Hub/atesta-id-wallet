@@ -161,17 +161,47 @@ class Sheet(QFrame):
         return widget
 
     def add_buttons(self, *buttons: QPushButton) -> None:
-        row = QHBoxLayout()
-        row.setSpacing(10)
-        row.addStretch()
-        for widget in buttons:
-            row.addWidget(widget)
+        """In a row, right-aligned; one under the other, full width, when the row does not fit (long translations)."""
+        margins = self.layout_.contentsMargins()
+        available = self.width() - margins.left() - margins.right()
+        needed = sum(b.sizeHint().width() for b in buttons) + 10 * (len(buttons) - 1)
         self.layout_.addSpacing(8)
-        self.layout_.addLayout(row)
+        if needed <= available:
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            row.addStretch()
+            for widget in buttons:
+                row.addWidget(widget)
+            self.layout_.addLayout(row)
+            return
+        column = QVBoxLayout()
+        column.setSpacing(8)
+        for widget in reversed(buttons):  # the main action (last in the row) on top
+            column.addWidget(widget)
+        self.layout_.addLayout(column)
 
     def focus(self) -> None:
-        if self._focus is not None:
-            self._focus.setFocus()
+        """The focus goes inside the panel, or Tab would go on through the page behind it (no ring: not the keyboard)."""
+        target = self._focus or next(iter(self._focus_chain()), None)
+        (target or self).setFocus(Qt.OtherFocusReason)  # nothing to press (progress): the panel holds it
+
+    def _focus_chain(self) -> list[QWidget]:
+        chain = [w for w in self.findChildren(QWidget)
+                 if w.isVisibleTo(self) and w.isEnabled() and w.focusPolicy() & Qt.TabFocus
+                 and not (isinstance(w, QRadioButton) and not w.isChecked())]  # one stop per group of options
+        return sorted(chain, key=lambda w: (w.mapTo(self, w.rect().topLeft()).y() // 8,
+                                            w.mapTo(self, w.rect().topLeft()).x()))
+
+    def focusNextPrevChild(self, forward: bool) -> bool:  # noqa: N802
+        """Tab and Shift+Tab go round the panel's own controls, never to the page behind it (WCAG 2.4.3)."""
+        chain = self._focus_chain()
+        if not chain:
+            return True
+        current = QApplication.focusWidget()
+        index = chain.index(current) if current in chain else -1
+        target = chain[(index + (1 if forward else -1)) % len(chain)]
+        target.setFocus(Qt.TabFocusReason if forward else Qt.BacktabFocusReason)
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +316,7 @@ class TextSheet(Sheet):
         else:
             self.field = QLineEdit(default)
             self.field.setPlaceholderText(placeholder)
+        self.field.setAccessibleName(title)  # the panel's title is the field's label
         self.add(self.field)
         cancel = button(tr("Cancel"))
         cancel.clicked.connect(lambda: on_answer(None))
@@ -308,6 +339,8 @@ class LoginSheet(Sheet):
         self.user = QLineEdit(username or "")
         self.user.setPlaceholderText(tr("Username or email"))
         self.password = password_field(tr("Password"))
+        self.user.setAccessibleName(tr("Username"))
+        self.password.setAccessibleName(tr("Password"))
         if ask_username:
             form.addWidget(label(tr("Username"), "claimName"))
             form.addWidget(self.user)
@@ -368,12 +401,15 @@ class ChooseSheet(Sheet):
             layout = QHBoxLayout(box)
             layout.setContentsMargins(12, 10, 12, 10)
             radio = keyboard_focus_ring(QRadioButton())
+            radio.setAccessibleName(credential_name(record))
             radio.setChecked(index == 0)
             group.addButton(radio, index)
             layout.addWidget(radio)
             text = QVBoxLayout()
             text.setSpacing(0)
             text.addWidget(label(credential_name(record), "sectionTitle"))
+            radio.setAccessibleDescription(" · ".join(p for p in (credential_holder(record),
+                                                                   credential_issuer_name(record)) if p))
             details = " · ".join(p for p in (credential_holder(record), credential_issuer_name(record),
                                              tr("Expired") if is_expired(record) else "") if p)
             text.addWidget(label(details, "caption"))
@@ -508,14 +544,9 @@ class ScanSheet(Sheet):
         paste.clicked.connect(on_paste)
         cancel = button(tr("Cancel"), "ghost")
         cancel.clicked.connect(on_cancel)
-        row = QHBoxLayout()
-        row.addWidget(image)
-        row.addWidget(paste)
-        row.addStretch()
-        row.addWidget(cancel)
-        self.layout_.addSpacing(8)
-        self.layout_.addLayout(row)
+        self.add_buttons(cancel, paste, image)
         self.on_escape = on_cancel
+        self._focus = image
 
 
 def _notice(tone: str, icon: str, title: str, text: str) -> QWidget:

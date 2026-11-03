@@ -103,10 +103,13 @@ class WalletPage(Page):
         self.header, row = _header(tr("Wallet"))
         row.setContentsMargins(18, 0, 18, 0)  # aligned with the cards (which leave room for their shadow)
         self.search = QLineEdit()
+        self.search.setObjectName("search")  # recognised by its icon and text: subtle edge (theme.input_border)
         self.search.setPlaceholderText(tr("Search"))
+        self.search.setAccessibleName(tr("Search credentials"))
         self.search.setClearButtonEnabled(True)
         self.search.setFixedWidth(220)
-        self.search.addAction(theme.icon("search", theme.current().text_muted, 16), QLineEdit.LeadingPosition)
+        glass = self.search.addAction(theme.icon("search", theme.current().text_muted, 16), QLineEdit.LeadingPosition)
+        glass.setText(tr("Search credentials"))
         self.search.textChanged.connect(self.refresh)
         row.addWidget(self.search, alignment=Qt.AlignVCenter)
         self.scan_button = button(tr("Scan QR"), "primary", "scan-line")
@@ -125,9 +128,9 @@ class WalletPage(Page):
 
         self.empty = EmptyState(
             "plus", tr("Your wallet is empty"),
-            tr("Open the page of the organisation that gives you the credential (for example, the link in your "
-               "welcome email, or Verifiable Credentials → Issue to wallet in your account page). Then press Scan QR "
-               "and take a screenshot of the QR code."),
+            tr("Open the page of the organisation that gives you the credential, such as the link in your welcome "
+               "email. In your account page, it is under Verifiable Credentials → Issue to wallet. Then press Scan "
+               "QR and take a screenshot of the QR code."),
             action=self._empty_action(),
         )
         self.root.addWidget(self.empty, 1)

@@ -1,0 +1,39 @@
+# UX audit of every screen in the six languages and both themes (tests/test_ux.py with
+# ATESTA_UX_FULL=1) every night; each push runs a shorter one through checks.yml. The report and the
+# screenshots are kept as an artifact, also when a budget fails.
+name: UX audit
+
+on:
+  schedule:
+    - cron: "7 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Qt libraries
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: pip install ".[gui]"
+      - name: Budgets
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ATESTA_UX_FULL: "1"
+        run: python -m unittest discover -s tests -p test_ux.py -v
+      - name: Report and screenshots
+        if: always()
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/ux_audit.py ux-report
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ux-report
+          path: ux-report/

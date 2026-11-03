@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import binascii
 import html
+import os
 import time
 from typing import Any, TypeVar
 
@@ -31,6 +32,7 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QFont,
+    QFontMetrics,
     QImageReader,
     QLinearGradient,
     QPainter,
@@ -134,8 +136,8 @@ def button(text: str, kind: str | None = None, icon: str | None = None) -> QPush
     if icon:
         t = theme.current()
         color = {"primary": t.on_accent, "danger": t.danger, "dangerFilled": t.on_danger}.get(kind or "", t.text)
-        widget.setIcon(theme.icon(icon, color, 18))
-        widget.setIconSize(QSize(18, 18))
+        widget.setIcon(theme.icon(icon, color, 18, gap=theme.BUTTON_ICON_GAP))
+        widget.setIconSize(QSize(18 + theme.BUTTON_ICON_GAP, 18))
     return widget
 
 
@@ -469,6 +471,11 @@ class Spinner(QWidget):
 def pill(text: str, color: str, background: str) -> QLabel:
     widget = label(text, "pill")
     widget.setStyleSheet(f"QLabel#pill {{ color: {color}; background: {background}; }}")
+    # Sized from its own font: the layout may measure it before the style sheet (12 px bold, 8 px padding) applies.
+    font = QFont(widget.font())
+    font.setPixelSize(12)
+    font.setBold(True)
+    widget.setMinimumWidth(QFontMetrics(font).horizontalAdvance(text) + 2 * 8 + 6)
     widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
     return widget
 
@@ -595,7 +602,13 @@ class Toast(QLabel):
         self._timer.start(ms)
 
 
+# False skips the fades: ATESTA_ID_WALLET_REDUCE_MOTION=1, and the UX audit (it measures settled screens).
+ANIMATIONS = os.environ.get("ATESTA_ID_WALLET_REDUCE_MOTION", "") not in ("1", "true")
+
+
 def fade_in(widget: QWidget, ms: int = 160) -> None:
+    if not ANIMATIONS:
+        return
     effect = QGraphicsOpacityEffect(widget)
     widget.setGraphicsEffect(effect)
     animation = QPropertyAnimation(effect, b"opacity", widget)

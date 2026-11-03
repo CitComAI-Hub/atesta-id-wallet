@@ -85,9 +85,9 @@ based on its app store description and its user FAQ, not a full walk through the
 
 - No role names: no "issuer", "verifier" or "relying party"; the other side is a *digital service*
   or an *organisation*, and Lissi speaks of *Nachweise* (proofs) more than of credentials. → applied
-  to the consent (item 7 above); proposed for the rest (pending 1).
+  to the consent (item 7 above) and to the rest of the window (pending 1, done).
 - Credentials explained by examples: "certificates, member cards, employee passes, or licences". →
-  proposed for the first-run guide.
+  done: the first step of the guide.
 - Organisations as *contacts* with a history of what was shared. → already in the wallet since 0.9
   (Activity per contact).
 - Backup explained by its purpose: "if you switch devices, … backup and restore so you can recover
@@ -96,8 +96,106 @@ based on its app store description and its user FAQ, not a full walk through the
 Sources: [Lissi for users (FAQ)](https://www.lissi.id/for-users),
 [Lissi ID-Wallet on the App Store](https://apps.apple.com/de/app/lissi-id-wallet/id6475958390).
 
-## How to repeat it
+## Second round: measured, and automated (November 2026)
 
-The screens were rendered offscreen with sample data (credentials, history, every panel). The
-script is not in the repository yet; adding it under `tests/` (or `packaging/`) would let every
-release produce the screenshots for the documentation and for a quick visual check.
+The first round was an expert review of screenshots. The second one measures, with professional
+metrics, and turns each measure into a test with a budget, so that a regression fails in CI.
+
+### What is measured, and how
+
+| Area | Metric | Standard | How |
+|---|---|---|---|
+| Accessibility | Text contrast **as painted** (pixels, not theme values) | WCAG 2.2 1.4.3 (4.5:1, 3:1 large) | Every label and button of every screen; background = most common colour, text = the pixel that differs most |
+| | Contrast of the edges of fields, checkboxes and options | WCAG 1.4.11 (3:1) | The painted top edge of each field; the indicator rect from the Qt style |
+| | Accessible name of every control | WCAG 4.1.2 | Name, text, or label of the field |
+| | Target size | WCAG 2.5.8 (24×24 px, or spacing) | Every interactive widget, with the spacing exception |
+| | Focus kept inside open panels | WCAG 2.4.3 | Real Tab key presses (QTest) |
+| | Every control reachable with Tab | WCAG 2.1.1 | Same; a group of options counts as one stop (arrow keys inside) |
+| | Visible keyboard focus | WCAG 2.4.7 | Test: ring with Tab, not with a click or a panel opening |
+| Layout | Text cut off | — (i18n) | Size hint against the widget's size, in the 6 languages |
+| | Text under 12 px | legibility | Font size of every label |
+| Texts | Readability per language | Flesch Reading Ease (en), Fernández-Huerta (es), Flesch-Amstad (de), Kandel-Moles (fr), LIX (all) | The ~110 texts of 6 words or more the window can show, errors included |
+| | Sentence length | plain language: ≤ 25 words | Longest sentence per language |
+| | Jargon | per-language word list | Every window text, except a list for Settings → Trust/Advanced |
+| Tasks | Decisions, keystrokes, estimated time | Keystroke-Level Model (Card, Moran & Newell) | The real flows against the fake issuer and verifier, answering each panel as a person would |
+| Speed | Median response time | Nielsen: 0.1 s feels instant | Page change, opening a credential, a panel, rebuilding the window |
+
+### Results (after the fixes)
+
+384 screens rendered (32 screens × 6 languages × light and dark), 352 widgets per screen checked:
+**0 findings**. Lowest text contrast 4.56:1 (light) and 4.82:1 (dark), the selected item of the sidebar.
+
+| Language | LIX | Readability | Words per sentence | Longest sentence | Jargon |
+|---|---|---|---|---|---|
+| English | 29.4 (very easy) | Flesch 71.4 (fairly easy; plain English ≥ 60) | 10.0 | 22 | 0 |
+| Spanish | 35.8 (easy) | Fernández-Huerta 80.1 (fairly easy) | 9.9 | 22 | 0 |
+| Danish | 33.5 (easy) | — | 9.4 | 22 | 0 |
+| German | 35.6 (easy) | Flesch-Amstad 68.2 (medium-easy) | 9.1 | 23 | 0 |
+| French | 39.4 (easy) | Kandel-Moles 71.7 (fairly easy) | 10.1 | 22 | 0 |
+| Luxembourgish | 34.8 (easy) | — | 9.3 | 23 | 0 |
+
+| Task | Decisions | Keystrokes | Estimated time (KLM) |
+|---|---|---|---|
+| Receive a credential (with a collection code) | 3 | 5 | 11.5 s |
+| Sign in to a service with it | 3 | 0 | 8.0 s |
+
+Taking the screenshot of the QR code is outside the wallet and not counted.
+
+Response times: change page 16 ms, open a panel 16 ms, open a credential 39 ms, rebuild the window
+45 ms (all under 0.1 s).
+
+### Found and fixed in this round
+
+| # | Sev. | Problem | Fix |
+|---|---|---|---|
+| 20 | 4 | **Tab left every open panel** for the page behind it (25 of 32 screens): with the keyboard or a screen reader the panels were not modal | Tab and Shift+Tab go round the panel's own controls; panels without a default button (scan, progress) also take the focus |
+| 21 | 3 | Fields without an accessible name: every password panel, the collection code, the sign-in fields (they had a visible label, not associated) | Named after the panel's title or their label |
+| 22 | 3 | Checkboxes and options almost invisible in dark mode (dark box on dark panel, under 3:1), e.g. "I understand the risk…" | Drawn boxes with a 3:1 edge on every background, accent fill when checked |
+| 23 | 2 | Panel buttons did not fit in French, German, Spanish and Luxembourgish (scan panel, "Did it not open?") | A row of buttons that does not fit is stacked, the main action on top |
+| 24 | 2 | 11 px text (section captions of Settings, the "Expired" tag) | 12 px |
+| 25 | 2 | Two sentences of 27–32 words (empty wallet, "Protect your wallet") | Split |
+| 26 | 1 | The search field and its icon had no name | "Search credentials" |
+| 27 | 1 | The 3:1 field edge of round 1 made the search field and the drop-downs look heavy | They are recognised by their icon and arrow (WCAG 1.4.11 asks 3:1 of what *identifies* a control), so they keep the subtle edge at rest and the accent on hover and focus. Text fields in panels and checkboxes keep 3:1, and the audit measures every field's painted edge: the subtle one is only allowed with a leading icon or an arrow |
+| 28 | 1 | The icon of a button almost touched its text (Qt's fixed 4 px), unlike the sidebar and the search field | About 10 px on every button with an icon (`theme.BUTTON_ICON_GAP`) |
+
+The audit found two problems of its own while being built, both fixed: the dark theme was never
+applied (every "dark" result was the light theme), and padded labels were measured against their
+inner width. A self-test now plants faint text, an unnamed field, tiny targets and a squeezed button
+in a panel, and fails if the audit misses any of them.
+
+### Heuristic evaluation (Nielsen) and cognitive walkthrough
+
+What remains, by heuristic (severity 0–4; the measured items above are not repeated):
+
+| Heuristic | Finding | Sev. |
+|---|---|---|
+| 1 Visibility of system status | Good: progress, waiting for a QR code, results with what happened. After sharing, the browser comes back by itself, but the "Data shared" panel still waits for *Done* | 1 |
+| 2 Match with the real world | "Profile" appears 30 times, "key" 9, "certificate" 7 (mostly Settings). Profiles are an advanced idea: consider hiding them until a second one is created | 2 |
+| 4 Consistency | Every task ends with *Done*. For "Sign in" it could close by itself (decisions 3 → 2, ~2.7 s less) | 1 |
+| 6 Recognition rather than recall | The screenshot shortcut is shown in the panel (good); whether people manage it is for the user test | 3 (pending 2) |
+| 8 Minimalist design | Settings has 7 sections; Trust and Advanced are for technicians (pending 5) | 2 |
+| 10 Help and documentation | **There is no help in the app**: no link to a guide or to support from Settings or from the error panels | 2 |
+
+Cognitive walkthrough ("will the person know what to do, and understand what happened?"):
+
+- *Receive a credential*: the guide and the empty wallet say where to start; the offer names the
+  organisation and warns on the first time; the collection code says where it comes from; the
+  result shows the card and the account. Weak point: the screenshot step (pending 2).
+- *Sign in to a service*: the person is on a website, not in the wallet: they must open the wallet
+  and press *Scan QR* — or, with the links registered (offered in the guide), press the page's
+  button. The consent shows who, what and where, with a safe default (*Decline* has the focus).
+  Weak point: the wallet must be open, or the links registered.
+
+### Automation
+
+- `tests/ux_audit.py`: renders every screen and panel with sample data and measures it; also a report
+  generator: `python tests/ux_audit.py OUTDIR [--langs …] [--themes …]` writes the screenshots of
+  each language and theme and `report.md` with every table above.
+- `tests/test_ux.py`: the budgets (0 findings; LIX ≤ 42; readability ≥ 60 en/fr, ≥ 70 es, ≥ 55 de;
+  sentences ≤ 25 words; no jargon; ≤ 3 decisions per task; response times) — in every push, for
+  English (light, with the keyboard checks) and German (dark).
+- `.github/workflows/ux.yml`: every night, the six languages in both themes, and the report with
+  the screenshots as an artifact (also when a budget fails).
+
+What it cannot measure: whether people understand the screens and finish the tasks without help.
+That is still the usability test with 5–8 people of the pilot profile (with SUS at the end).

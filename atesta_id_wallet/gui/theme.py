@@ -36,7 +36,10 @@ class Theme:
     danger: str
     danger_soft: str
     on_danger: str
-    input_border: str  # 3:1 against the surface (WCAG 1.4.11): the edge of a field must be visible
+    # Edge of a text field and of a checkbox: 3:1 (WCAG 1.4.11), the only sign of where to type or tick.
+    # Fields that are recognised by something else (the search field by its icon and text, a drop-down
+    # by its arrow) keep the subtle 'border' at rest, and the accent on hover and with the focus.
+    input_border: str
     backdrop: str
 
 
@@ -48,7 +51,7 @@ LIGHT = Theme(
     success="#17773f", success_soft="#e1f5e9",  # text on the soft colours: at least 4.5:1 (WCAG AA)
     warning="#8a5a00", warning_soft="#fff3d1",
     danger="#b03030", danger_soft="#fde6e6", on_danger="#ffffff",
-    input_border="#8a91a1",
+    input_border="#7b8293",
     backdrop="rgba(16, 19, 30, 110)",
 )
 DARK = Theme(
@@ -59,7 +62,7 @@ DARK = Theme(
     success="#4cc58a", success_soft="#163526",
     warning="#f0c062", warning_soft="#3a2f13",
     danger="#f08a8a", danger_soft="#3d1c1f", on_danger="#0f1117",
-    input_border="#646b7e",
+    input_border="#6f7689",
     backdrop="rgba(0, 0, 0, 150)",
 )
 
@@ -115,13 +118,13 @@ def _svg(name: str) -> bytes:
     return (ICON_DIR / f"{name}.svg").read_bytes()
 
 
-def icon_pixmap(name: str, color: str, size: int = 20, stroke: float | None = None) -> QPixmap:
-    """Coloured Lucide icon (the SVGs use currentColor)."""
+def icon_pixmap(name: str, color: str, size: int = 20, stroke: float | None = None, gap: int = 0) -> QPixmap:
+    """Coloured Lucide icon (the SVGs use currentColor); 'gap' leaves that much transparent room on its right."""
     data = _svg(name).replace(b"currentColor", color.encode())
     if stroke is not None:
         data = data.replace(b'stroke-width="2"', f'stroke-width="{stroke}"'.encode())
     ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
-    pixmap = QPixmap(int(size * ratio), int(size * ratio))
+    pixmap = QPixmap(int((size + gap) * ratio), int(size * ratio))
     pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
     QSvgRenderer(QByteArray(data)).render(painter, QRectF(0, 0, size * ratio, size * ratio))
@@ -130,8 +133,13 @@ def icon_pixmap(name: str, color: str, size: int = 20, stroke: float | None = No
     return pixmap
 
 
-def icon(name: str, color: str, size: int = 20) -> QIcon:
-    return QIcon(icon_pixmap(name, color, size))
+def icon(name: str, color: str, size: int = 20, gap: int = 0) -> QIcon:
+    return QIcon(icon_pixmap(name, color, size, gap=gap))
+
+
+# Room between the icon of a button and its text: Qt leaves a fixed 4 px, the sidebar and the search
+# field about 10. The icon carries the rest as transparent pixels (the text stays the button's text).
+BUTTON_ICON_GAP = 6
 
 
 def palette(t: Theme) -> QPalette:
@@ -171,8 +179,17 @@ def _arrow_file(color: str) -> str:
     return path.as_posix()
 
 
+def _icon_file(name: str, color: str) -> str:
+    """A coloured icon on disk, for the style sheet (it only takes images by path)."""
+    path = _private_tmp() / f"{name}-{color.strip('#')}.svg"
+    if not path.exists():
+        path.write_bytes(_svg(name).replace(b"currentColor", color.encode()))
+    return path.as_posix()
+
+
 def stylesheet(t: Theme) -> str:
     arrow = _arrow_file(t.text_muted)
+    check = _icon_file("check", t.on_accent)
     return f"""
 * {{ outline: none; }}
 QWidget {{ color: {t.text}; font-size: 14px; }}
@@ -188,7 +205,7 @@ QToolTip {{ background: {t.surface}; color: {t.text}; border: 1px solid {t.borde
 }}
 #navButton:hover {{ background: {t.surface_alt}; color: {t.text}; }}
 #navButton:checked {{ background: {t.accent_soft}; color: {t.accent}; }}
-#sidebarCaption {{ color: {t.text_muted}; font-size: 11px; font-weight: 700; letter-spacing: 0.6px; }}
+#sidebarCaption {{ color: {t.text_muted}; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; }}
 
 #pageTitle {{ font-size: 26px; font-weight: 700; }}
 #pageSubtitle, .muted {{ color: {t.text_muted}; }}
@@ -231,8 +248,11 @@ QLineEdit {{
     padding: 9px 12px; selection-background-color: {t.accent};
 }}
 QLineEdit:focus {{ border: 2px solid {t.accent}; padding: 8px 11px; }}
+QLineEdit#search {{ border-color: {t.border}; }}
+QLineEdit#search:hover {{ border-color: {t.accent}; }}
+QLineEdit#search:focus {{ border: 2px solid {t.accent}; padding: 8px 11px; }}
 QComboBox {{
-    background: {t.surface}; border: 1px solid {t.input_border}; border-radius: 10px; padding: 7px 12px;
+    background: {t.surface}; border: 1px solid {t.border}; border-radius: 10px; padding: 7px 12px;
 }}
 QComboBox:hover {{ border-color: {t.accent}; }}
 QComboBox::drop-down {{ border: none; width: 28px; }}
@@ -242,6 +262,14 @@ QComboBox QAbstractItemView {{
     selection-color: {t.text}; padding: 4px;
 }}
 QCheckBox {{ spacing: 8px; }}
+QCheckBox::indicator {{
+    width: 18px; height: 18px; border: 2px solid {t.input_border}; border-radius: 5px; background: {t.surface};
+}}
+QCheckBox::indicator:checked {{ background: {t.accent}; border-color: {t.accent}; image: url("{check}"); }}
+QRadioButton::indicator {{
+    width: 16px; height: 16px; border: 2px solid {t.input_border}; border-radius: 10px; background: {t.surface};
+}}
+QRadioButton::indicator:checked {{ border: 5px solid {t.accent}; width: 10px; height: 10px; }}
 QPlainTextEdit {{
     background: {t.surface_alt}; border: 1px solid {t.border}; border-radius: 10px; padding: 8px;
     font-family: monospace; font-size: 12px;
@@ -265,5 +293,5 @@ QScrollBar:horizontal {{ height: 0; }}
 #claimBox {{ background: {t.surface_alt}; border-radius: 12px; }}
 #claimName {{ color: {t.text_muted}; font-size: 12px; font-weight: 600; }}
 #toast {{ background: {t.text}; color: {t.window}; border-radius: 10px; padding: 10px 16px; font-weight: 600; }}
-#pill {{ border-radius: 9px; padding: 2px 8px; font-size: 11px; font-weight: 700; }}
+#pill {{ border-radius: 9px; padding: 2px 8px; font-size: 12px; font-weight: 700; }}
 """
