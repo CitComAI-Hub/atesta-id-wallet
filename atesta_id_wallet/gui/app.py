@@ -232,6 +232,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.overlay = Overlay(central)
         self.toast = Toast(central)
+        self.toast.area = lambda: self.stack.geometry()  # centred on the page, not on the sidebar
         self.reload()
         self._go(self._page_name)
 
@@ -762,19 +763,20 @@ class MainWindow(QMainWindow):
         self._choose_password(tr("Backup password"), tr("It encrypts the backup. You will need this password to "
                                                         "restore it; it cannot be recovered if you forget it."), write)
 
-    def _choose_password(self, title: str, body: str, action: Callable[[str], None]) -> None:
-        """Asks for a new password twice and calls action with it."""
+    def _choose_password(self, title: str, body: str, action: Callable[[str], None], error: str = "") -> None:
+        """Asks for a new password twice and calls action with it; a mistake asks again, it does not end the flow."""
         def first(password: str) -> None:
             if len(password) < vault.MIN_PASSWORD:
-                return self._result(False, tr("Password too short"),
-                                    tr("Use a password with at least {n} characters.", n=vault.MIN_PASSWORD))
+                return self._choose_password(title, body, action, tr(
+                    "Use a password with at least {n} characters.", n=vault.MIN_PASSWORD))
 
             def second(repeated: str) -> None:
                 if repeated != password:
-                    return self._result(False, tr("The passwords do not match"), tr("Try again."))
+                    return self._choose_password(title, body, action, tr("The passwords do not match. Try again."))
                 action(password)
             self._ask_text_then(tr("Repeat the password"), "", second, secret=True, icon="lock")
-        self._ask_text_then(title, body, first, secret=True, icon="lock")
+        shown = f"<span style='color:{theme.current().danger}'><b>{error}</b></span><br>{body}" if error else body
+        self._ask_text_then(title, shown, first, secret=True, icon="lock")
 
     def restore(self) -> None:
         if not profile_is_empty():

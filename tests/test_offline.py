@@ -681,7 +681,8 @@ class I18nTests(unittest.TestCase):
         messages, plurals, dynamic = self.extract()
         self.assertEqual(dynamic, [], "tr() with an f-string: it would never match the catalog")
         self.assertGreater(len(messages), 300)
-        for code in ("es", "da"):
+        self.assertEqual(set(i18n.LANGUAGES), {"en", "es", "da", "de", "fr", "lb"})
+        for code in sorted(set(i18n.LANGUAGES) - {i18n.DEFAULT}):
             catalog = i18n.load_catalog(code)
             with self.subTest(code=code):
                 self.assertEqual(set(catalog["messages"]) - messages, set(), "unused entries")
@@ -697,6 +698,16 @@ class I18nTests(unittest.TestCase):
                         # {n} is optional; the other placeholders must be the same as in the source
                         self.assertEqual(self.fields(form) - {"n"}, self.fields(source) - {"n"}, singular)
 
+    def test_french_singular_for_zero(self):
+        self.addCleanup(i18n.set_language, "es")
+        i18n.set_language("fr")
+        self.assertEqual(i18n.tr_n("{n} credential", "{n} credentials", 0), "0 attestation")
+        self.assertEqual(i18n.tr_n("{n} credential", "{n} credentials", 2), "2 attestations")
+        i18n.set_language("de")
+        self.assertEqual(i18n.tr_n("{n} credential", "{n} credentials", 0), "0 Nachweise")
+        self.assertEqual(i18n.system_language("lb_LU"), "lb")
+        self.assertEqual(i18n.system_language("fr_FR"), "fr")
+
     def test_fallback_plural_and_formatting(self):
         i18n.set_language("en")
         self.assertEqual(i18n.tr("Wallet"), "Wallet")
@@ -707,14 +718,15 @@ class I18nTests(unittest.TestCase):
         self.assertEqual(i18n.tr("Settings"), "Indstillinger")
         self.assertEqual(i18n.tr_n("{n} credential", "{n} credentials", 1), "1 legitimation")
         self.assertEqual(i18n.tr("not in any catalog"), "not in any catalog")  # falls back to English
-        self.assertEqual(i18n.set_language("fr"), "en")
+        self.assertEqual(i18n.set_language("pt"), "en")
 
     def test_system_language(self):
         saved = {k: os.environ.pop(k, None) for k in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG")}
-        self.addCleanup(lambda: [os.environ.__setitem__(k, v) for k, v in saved.items() if v is not None])
+        self.addCleanup(lambda: [os.environ.__setitem__(k, v) if v is not None else os.environ.pop(k, None)
+                                 for k, v in saved.items()])
         os.environ["LANG"] = "da_DK.UTF-8"
         self.assertEqual(i18n.system_language(), "da")
-        os.environ["LANGUAGE"] = "fr:es"
+        os.environ["LANGUAGE"] = "pt:es"
         self.assertEqual(i18n.system_language(), "es")
         self.assertEqual(i18n.system_language("es_ES"), "es")
         self.assertEqual(i18n.resolve("auto", "en_GB"), "en")
@@ -1346,6 +1358,33 @@ class GuiFlowTests(unittest.TestCase):
         self.assertIn("compartido una vez · rechazado una vez", page.contact_summary.text())
         self.window._nav("activity")  # the sidebar shows everything again
         self.assertIsNone(page.contact)
+
+    def test_bad_new_password_asks_again(self):
+        chosen = []
+        self.window._choose_password("Nueva", "Cuerpo", chosen.append)
+        self.window.overlay.sheet.field.setText("123")
+        self.window.overlay.sheet.field.returnPressed.emit()
+        sheet = self.window.overlay.sheet
+        self.assertEqual(type(sheet).__name__, "TextSheet")  # asked again, not closed
+        self.assertIn("al menos", sheet.body.text())
+        sheet.field.setText("correct horse")
+        sheet.field.returnPressed.emit()
+        self.window.overlay.sheet.field.setText("other horse")
+        self.window.overlay.sheet.field.returnPressed.emit()
+        self.assertIn("no coinciden", self.window.overlay.sheet.body.text())
+        self.assertEqual(chosen, [])
+
+    def test_backdrop_stays_between_panels(self):
+        self.window.show()
+        self.window._onboarding_step(0)
+        self.app.processEvents()
+        self.window.overlay.sheet.findChildren(gui.QPushButton)[-1].click()  # Next
+        self.assertTrue(self.window.overlay.isVisible())
+        self.app.processEvents()
+        self.assertTrue(self.window.overlay.isVisible())
+        self.window._close_sheet()
+        self.app.processEvents()
+        self.assertFalse(self.window.overlay.isVisible())
 
     def test_onboarding_only_once(self):
         self.window.maybe_onboard()

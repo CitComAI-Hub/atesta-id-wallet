@@ -16,7 +16,7 @@ by a Member State, certification at assurance level high (with a secure hardware
 WSCD) and wallet attestations, which are out of scope for this prototype.
 
 > **Status: prototype (TRL 5), version 0.8.0.** Tested against Keycloak, the CITCOM
-> marketplace and the PGTEC onboarding portal. Desktop window (Qt) and command line, in English, Spanish and Danish. Linux is the
+> marketplace and the PGTEC onboarding portal. Desktop window (Qt) and command line, in English, Spanish, Danish, German, French and Luxembourgish. Linux is the
 > tested platform; the Windows builds are new and not yet tested by hand on real machines;
 > macOS is untested. Read [docs/SECURITY.md](docs/SECURITY.md) before using it with real data.
 
@@ -302,7 +302,7 @@ Builds and releases: [docs/RELEASING.md](docs/RELEASING.md). Manual checks on Wi
 [docs/TESTING-WINDOWS.md](docs/TESTING-WINDOWS.md).
 
 Code, comments and documentation are in English; user-facing text is English in the code and
-translated through the catalogs (Spanish, Danish).
+translated through the catalogs (Spanish, Danish, German, French, Luxembourgish).
 
 ## Credits
 

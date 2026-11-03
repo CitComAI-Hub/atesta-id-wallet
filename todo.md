@@ -7,14 +7,14 @@
 - **Platforms**: Linux (any distro) + Windows; macOS later (needs a signed .app bundle).
 - **UI**: PySide6 (Qt) on top of the protocol code; the CLI stays for debugging and automation.
 - **Language**: code, comments and documentation in English; the app in English (source and
-  fallback), Spanish and Danish, chosen automatically from the system or by hand (Settings /
+  fallback), Spanish, Danish, German, French and Luxembourgish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
 ## Status (0.8.0, October 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
-GUI, a CLI, three languages and an offline test suite (about 130 tests, GUI included).
+GUI, a CLI, six languages and an offline test suite (about 130 tests, GUI included).
 Release 0.6.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
 smoke-tested by CI (including a silent install/uninstall on Windows), but nobody outside the team
 has used it and nobody has tested it by hand on real Windows or macOS.
@@ -98,6 +98,9 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   passwords (doubling, up to 15 min); issued / valid-from dates; "request it from <known issuer>"
   when a verifier asks for a credential you lack; Activity per contact; three-step first start;
   Settings → About → Licenses.
+  German, French and Luxembourgish (machine-made: German and French need a quick review by a native
+  speaker, Luxembourgish a careful one). Smoother panel changes (the backdrop stays); a too short or
+  mismatched new password asks again instead of ending the flow; notices centred on the page.
 
 ## Next: roadmap to the pilot (TRL 6)
 

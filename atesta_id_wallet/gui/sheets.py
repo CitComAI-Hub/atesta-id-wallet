@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from typing import Any, Callable
 
-from PySide6.QtCore import QEvent, QObject, QSize, Qt
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -91,7 +91,13 @@ class Overlay(QWidget):
     def close_sheet(self) -> None:
         if self.sheet is not None:
             self._discard()
-        self.hide()
+        # Hidden on the next turn of the event loop, and only if no other panel came in the meantime: a
+        # flow that goes from one panel to the next keeps the dimmed backdrop instead of flashing it.
+        QTimer.singleShot(0, self, self._hide_if_empty)  # cancelled if the overlay is destroyed first
+
+    def _hide_if_empty(self) -> None:
+        if self.sheet is None:
+            self.hide()
 
     def keyPressEvent(self, event: Any) -> None:  # noqa: N802
         if event.key() == Qt.Key_Escape and self.sheet is not None and self.sheet.on_escape:

@@ -468,7 +468,7 @@ def build_parser() -> argparse.ArgumentParser:
     password.add_argument("action", nargs="?", choices=["set", "remove"])
     password.set_defaults(func=cmd_password)
 
-    language = sub.add_parser("language", help=tr("Show or change the language (auto, en, es, da)"))
+    language = sub.add_parser("language", help=tr("Show or change the language (auto, en, es, da, de, fr, lb)"))
     language.add_argument("code", nargs="?", choices=(i18n.AUTO, *i18n.LANGUAGES))
     language.set_defaults(func=cmd_language)
 

@@ -11,6 +11,8 @@ from typing import Any
 
 from PySide6.QtCore import (
     QBuffer,
+    QEvent,
+    QObject,
     QByteArray,
     QDateTime,
     QEasingCurve,
@@ -499,12 +501,27 @@ class Toast(QLabel):
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.hide)
+        parent.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        # After the window is rebuilt (language, profile, password) its new content gets its real size
+        # only later: follow it instead of staying where the provisional size put the notice.
+        if watched is self.parentWidget() and event.type() == QEvent.Resize:
+            self._place()
+        return False
+
+    # Area of the parent to centre on (the content, not the sidebar); the whole parent if unset.
+    area: Any = None
+
+    def _place(self) -> None:
+        parent = self.parentWidget()
+        box = self.area() if callable(self.area) else parent.rect()
+        self.move(box.x() + (box.width() - self.width()) // 2, parent.height() - self.height() - 28)
 
     def show_message(self, text: str, ms: int = 2800) -> None:
         self.setText(text)
         self.adjustSize()
-        parent = self.parentWidget()
-        self.move((parent.width() - self.width()) // 2, parent.height() - self.height() - 28)
+        self._place()
         self.raise_()
         self.show()
         self._timer.start(ms)

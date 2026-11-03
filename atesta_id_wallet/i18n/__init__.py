@@ -15,7 +15,9 @@ import os
 from pathlib import Path
 from typing import Any
 
-LANGUAGES = {"en": "English", "es": "Español", "da": "Dansk"}  # each language's name in that language
+LANGUAGES = {  # each language's name in that language
+    "en": "English", "es": "Español", "da": "Dansk", "de": "Deutsch", "fr": "Français", "lb": "Lëtzebuergesch",
+}
 DEFAULT = "en"
 AUTO = "auto"
 
@@ -52,7 +54,8 @@ def system_language(hint: str | None = None) -> str:
         candidates.append(locale.getlocale()[0])
     except ValueError:
         pass
-    names = {"spanish": "es", "español": "es", "danish": "da", "dansk": "da", "english": "en"}
+    names = {"spanish": "es", "español": "es", "danish": "da", "dansk": "da", "english": "en", "german": "de",
+             "deutsch": "de", "french": "fr", "français": "fr", "luxembourgish": "lb", "lëtzebuergesch": "lb"}
     for candidate in candidates:
         for part in (candidate or "").split(":"):  # LANGUAGE may be a list: "da:en"
             code = part.strip().lower().replace("-", "_")
@@ -79,7 +82,8 @@ def tr(text: str, **values: Any) -> str:
 def tr_n(singular: str, plural: str, n: int, **values: Any) -> str:
     """Singular or plural depending on n; {n} is available in the text."""
     forms = _plurals.get(singular)
-    text = (forms[0] if n == 1 else forms[1]) if forms else (singular if n == 1 else plural)
+    one = n in (0, 1) if _current == "fr" else n == 1  # French: "0 attestation", like 1
+    text = (forms[0] if one else forms[1]) if forms else (singular if n == 1 else plural)
     return text.format(n=n, **values)
 
 
