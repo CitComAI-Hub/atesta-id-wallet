@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_offline as base  # noqa: E402  (sets ATESTA_ID_WALLET_HOME, the test keyring and the language)
+import helpers as base  # noqa: E402  (sets ATESTA_ID_WALLET_HOME, the test keyring and the language)
 
 import requests  # noqa: E402
 

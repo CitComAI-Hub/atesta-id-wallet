@@ -148,7 +148,7 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 - [ ] Digital Credentials API (browser-mediated presentation), when browsers support it on desktop
 - [ ] Redact secrets (codes, tokens) from the verbose log shown in *Settings → Advanced*
 - [ ] External security review before end-user distribution
-- [ ] Split `tests/test_offline.py` (1000+ lines) by module
+- [x] Split `tests/test_offline.py` (1000+ lines) by module: `tests/helpers.py` + one module per area
 
 ## Pending decision: avoid the second login when receiving a credential
 

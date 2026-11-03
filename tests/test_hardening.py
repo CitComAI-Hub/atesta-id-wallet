@@ -13,7 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_offline as base  # noqa: E402  (sets ATESTA_ID_WALLET_HOME and the test language)
+import helpers as base  # noqa: E402  (sets ATESTA_ID_WALLET_HOME and the test language)
+import requests  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 
 from atesta_id_wallet import cli, common, desktop, i18n, jose, sdjwt, storage, vci, vp  # noqa: E402
@@ -293,7 +294,7 @@ class IssuerMetadataTests(unittest.TestCase):
 
     def issue(self):
         offer = f"openid-credential-offer://?credential_offer_uri={base.FakeIssuer.base}/offer"
-        return vci.issue(base.requests.Session(), offer, vci.IssueOptions(), base.ScriptedPrompter(texts=["1234"]))
+        return vci.issue(requests.Session(), offer, vci.IssueOptions(), base.ScriptedPrompter(texts=["1234"]))
 
     def test_issuer_metadata_of_another_issuer(self):
         self.patch["/.well-known/openid-credential-issuer"] = {"credential_issuer": "https://other.example"}

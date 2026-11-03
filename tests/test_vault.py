@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_offline as base  # noqa: E402  (sets ATESTA_ID_WALLET_HOME, the test keyring and the language)
+import helpers as base  # noqa: E402  (sets ATESTA_ID_WALLET_HOME, the test keyring and the language)
 
 from atesta_id_wallet import cli, common, storage, vault  # noqa: E402
 
