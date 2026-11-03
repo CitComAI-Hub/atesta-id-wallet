@@ -193,7 +193,8 @@ class ProgressSheet(Sheet):
 class ResultSheet(Sheet):
     def __init__(self, ok: bool, title: str, body: str, on_close: Callable[[], None], *,
                  details: str = "", icon: str | None = None, tone: str | None = None,
-                 extra: QWidget | None = None, action: tuple[str, Callable[[], None]] | None = None):
+                 extra: QWidget | None = None, action: tuple[str, Callable[[], None]] | None = None,
+                 secondary: tuple[str, Callable[[], None]] | None = None):
         super().__init__(icon=icon or ("circle-check" if ok else "circle-x"),
                          tone=tone or ("ok" if ok else "danger"), title=title, body=body)
         if extra is not None:
@@ -208,6 +209,10 @@ class ResultSheet(Sheet):
             self.add(text)
         close = button(tr("Done") if ok else tr("Close"), None if action else "primary")
         close.clicked.connect(on_close)
+        if secondary:  # a discreet way out, e.g. undo what just happened
+            other = button(secondary[0], "ghost")
+            other.clicked.connect(secondary[1])
+            self.add(other)
         if action:
             act = button(action[0], "primary")
             act.clicked.connect(action[1])

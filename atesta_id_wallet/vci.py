@@ -33,6 +33,7 @@ from .common import (
     _last_deep_link,
     humanize,
     b64u,
+    b64u_decode,
     debug,
     host_of,
     is_local_host,
@@ -727,6 +728,29 @@ class IssuedCredential:
     configuration_id: str
     path: Path
     claims: dict[str, Any] | None  # None if the format is not SD-JWT
+    account: str | None = None  # the issuer account it was issued for, if the login said so
+
+
+def account_of(token: dict[str, Any]) -> str | None:
+    """
+    'user (email)' from the id_token of the token response, to show which account signed in (in the
+    browser it may be a session that was already open). Display only: it came straight from the token
+    endpoint over TLS (OIDC Core §3.1.3.7), and nothing is decided with it.
+    """
+    id_token = token.get("id_token")
+    if not isinstance(id_token, str) or id_token.count(".") != 2:
+        return None
+    try:
+        claims = json.loads(b64u_decode(id_token.split(".")[1]))
+    except (ValueError, binascii.Error):
+        return None
+    if not isinstance(claims, dict):
+        return None
+    names = [v for v in (claims.get("preferred_username") or claims.get("name"), claims.get("email"))
+             if isinstance(v, str) and v.strip()]
+    if len(names) == 2 and names[0].lower() == names[1].lower():
+        names = names[:1]
+    return f"{names[0]} ({names[1]})" if len(names) == 2 else (names[0] if names else None)
 
 
 def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: Prompter) -> list[IssuedCredential]:
@@ -883,6 +907,9 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
         config.setdefault("issuers", {})[issuer] = remembered
         save_config(config)
     log(tr("Access token received."))
+    account = account_of(token)
+    if account:
+        log(tr("Signed in as {account}.", account=account))
     debug(f"Token scope: {token.get('scope')}")
 
     issued: list[IssuedCredential] = []
@@ -904,12 +931,15 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                                    display=_stored_display(displays[config_id], logos.get(config_id)))
             debug(f"Credential stored in {path}")
             claims = parse_sd_jwt(raw_credential).claims if fmt in SD_JWT_FORMATS else None
-            issued.append(IssuedCredential(config_id, path, claims))
+            issued.append(IssuedCredential(config_id, path, claims, account))
     config = load_config()
     config.setdefault("issuers", {}).setdefault(issuer, {})
     save_config(config)
-    add_history({"type": "issued", "party": issuer_name, "party_id": issuer,
-                 "credentials": [displays[c.configuration_id]["name"] for c in issued]})
+    event = {"type": "issued", "party": issuer_name, "party_id": issuer,
+             "credentials": [displays[c.configuration_id]["name"] for c in issued]}
+    if account:
+        event["account"] = account
+    add_history(event)
     return issued
 
 

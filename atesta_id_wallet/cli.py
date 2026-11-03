@@ -90,6 +90,9 @@ def cmd_issue(args: argparse.Namespace) -> int:
         if credential.claims is not None:
             print(json.dumps(credential.claims, indent=2, ensure_ascii=False))
         print("\n" + tr("✔ {credential} added to the wallet.", credential=credential.configuration_id))
+    if issued and issued[0].account:
+        print(tr("Issued for the account {account}. If it is not yours, delete it with "
+                 "'atesta-id-wallet remove'.", account=issued[0].account))
     return 0
 
 

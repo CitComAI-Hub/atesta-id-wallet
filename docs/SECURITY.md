@@ -125,6 +125,9 @@ name to look like a trusted one or inject links.
   in the browser's SSO session for this client, so later logins would fail too (`prompt=login`
   does not clear it). The credentials are asked for by scope, which Keycloak grants only to an
   account entitled to them, as it does for the offer. `--in-app-login` turns this off.
+  The browser may reuse a session that was already open, perhaps someone else's on a shared
+  computer: after issuance the wallet says which account it was issued for (`preferred_username`
+  and `email` of the `id_token` from the token endpoint; display only) and offers to delete it.
 - In the wallet's own login, the password is only submitted, over HTTPS, to a form on the same
   host as the `authorization_endpoint`. External IdPs need `--browser-login`.
 - The authorization code flow uses PKCE (S256) and a `state` that must come back unchanged. If

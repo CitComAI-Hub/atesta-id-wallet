@@ -74,6 +74,26 @@ class LoopbackTests(unittest.TestCase):
             loop.wait(threading.Event(), timeout=1)
 
 
+def id_token(claims):
+    return "e30." + common.b64u(json.dumps(claims).encode()) + ".sig"
+
+
+class AccountTests(unittest.TestCase):
+    def test_user_and_email(self):
+        token = {"id_token": id_token({"preferred_username": "alice", "email": "alice@example.org"})}
+        self.assertEqual(vci.account_of(token), "alice (alice@example.org)")
+
+    def test_same_name_once(self):
+        self.assertEqual(vci.account_of({"id_token": id_token({"preferred_username": "a@x.org", "email": "A@x.org"})}),
+                         "a@x.org")
+        self.assertEqual(vci.account_of({"id_token": id_token({"email": "a@x.org"})}), "a@x.org")
+
+    def test_nothing_usable(self):
+        for token in ({}, {"id_token": 3}, {"id_token": "a.b"}, {"id_token": "a.!!.c"},
+                      {"id_token": "e30." + common.b64u(b"[1]") + ".s"}, {"id_token": id_token({"sub": "1"})}):
+            self.assertIsNone(vci.account_of(token), token)
+
+
 class OpenBrowserTests(unittest.TestCase):
     def test_without_console(self):
         """Windowed builds have no stdout/stderr (no file descriptors 1 and 2): the browser still opens."""
@@ -237,6 +257,31 @@ class GuiBrowserWaitTests(unittest.TestCase):
         buttons["Cancelar"].click()
         self.pump(lambda: not self.window.busy)
         self.assertFalse(self.window.busy)
+
+    def test_issued_shows_the_account_and_can_be_undone(self):
+        record = {"_path": "/x/c1.enc", "configuration_id": "Legal", "display": {"name": "Legal person"},
+                  "issuer": "https://kc.example"}
+        self.window.records = [record]
+        self.window.reload = lambda: None
+        deleted = []
+        self.addCleanup(setattr, base.gui, "delete_credential", base.gui.delete_credential)
+        base.gui.delete_credential = deleted.append
+        self.addCleanup(setattr, base.gui, "CredentialCard", base.gui.CredentialCard)
+        base.gui.CredentialCard = lambda *a, **k: None
+        self.window._issued([vci.IssuedCredential("Legal", Path("/x/c1.enc"), {}, "alice (alice@example.org)")])
+        sheet = self.window.overlay.sheet
+        self.assertIn("alice (alice@example.org)", sheet.body.text())
+        buttons = {b.text(): b for b in sheet.findChildren(base.gui.QPushButton)}
+        buttons["¿No es tu cuenta? Elimínala"].click()
+        confirm = self.window.overlay.sheet
+        {b.text(): b for b in confirm.findChildren(base.gui.QPushButton)}["Eliminar"].click()
+        self.assertEqual(deleted, [record])
+
+    def test_issued_without_account(self):
+        self.window.reload = lambda: None
+        self.window._issued([vci.IssuedCredential("Legal", Path("/x/none.enc"), {})])
+        buttons = [b.text() for b in self.window.overlay.sheet.findChildren(base.gui.QPushButton)]
+        self.assertNotIn("¿No es tu cuenta? Elimínala", buttons)
 
     def test_back_to_progress_when_the_browser_returns(self):
         self.run_wait(lambda stop: "http://127.0.0.1:1/callback?code=C")

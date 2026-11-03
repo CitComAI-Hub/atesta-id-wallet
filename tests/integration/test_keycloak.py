@@ -151,6 +151,8 @@ class KeycloakIssuance(unittest.TestCase):
 
     def assert_issued(self, issued):
         self.assertEqual([c.configuration_id for c in issued], [CONFIG])
+        # Which account it was issued for: known after a login, not for pre-authorized offers.
+        self.assertIn(issued[0].account, (f"{USER} ({EMAIL})", None))
         self.assertEqual(issued[0].claims.get("email"), EMAIL)
         self.assertEqual(issued[0].claims.get("vct"), CONFIG)
         self.assertEqual(len(storage.load_credentials()), 1)
@@ -190,6 +192,7 @@ class KeycloakIssuance(unittest.TestCase):
         options = vci.IssueOptions(open_browser=False)
         self.assert_issued(vci.issue_from_issuer(requests.Session(), ISSUER, [CONFIG], options, self.answers))
         self.assertEqual((self.answers.logins, self.answers.browser.logins), (0, 1))
+        self.assertEqual(storage.load_history()[0].get("account"), f"{USER} ({EMAIL})")
         remembered = storage.load_config()["issuers"][ISSUER]
         self.assertEqual((remembered["client_id"], remembered["redirect_uri"]),
                          (vci.WALLET_CLIENT_ID, vci.LOOPBACK_REDIRECT))

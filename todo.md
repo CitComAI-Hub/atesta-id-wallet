@@ -167,8 +167,8 @@ even if the browser already has one. Options (decide with whoever administers Ke
 - [ ] **GUI for wallet-initiated issuance** ("Request a credential" from a known issuer); today only
       `issue --issuer` in the CLI.
 - [ ] **Register `atesta-id-wallet`** in each issuer realm (public, standard flow only, PKCE S256,
-      redirect `http://127.0.0.1/callback`, `oid4vci.enabled`, the credential scopes as optional
-      scopes): CITCOM connectors (dataspace-on-upv), PGTEC (ask its admin). No wallet change needed.
+      redirect `http://127.0.0.1/callback`, `oid4vci.enabled`, `profile` and `email` as default scopes
+      so the wallet can say which account signed in, the credential scopes as optional scopes): CITCOM connectors (dataspace-on-upv), PGTEC (ask its admin). No wallet change needed.
 
 ## Open questions
 

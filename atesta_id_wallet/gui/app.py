@@ -551,8 +551,14 @@ class MainWindow(QMainWindow):
         added = [r for r in self.records if any(Path(r["_path"]) == c.path for c in issued)]
         names = ", ".join(credential_name(r) for r in added) or tr("the credential")
         card = CredentialCard(added[0], width=280, interactive=False) if added else None
-        self._result(True, tr("Credential added"), tr("<b>{names}</b> is now in your wallet.", names=esc(names)),
-                     extra=card)
+        body = tr("<b>{names}</b> is now in your wallet.", names=esc(names))
+        account = next((c.account for c in issued if c.account), None)
+        secondary = None
+        if account and added:
+            # The browser may have used a session that was already open, perhaps someone else's.
+            body += "<br>" + tr("Issued for the account <b>{account}</b>.", account=esc(account))
+            secondary = (tr("Not your account? Delete it"), lambda: self.confirm_delete(*added))
+        self._result(True, tr("Credential added"), body, extra=card, secondary=secondary)
 
     def _presented(self, result: tuple[Any, str | None]) -> None:
         prepared, redirect_uri = result
@@ -720,15 +726,17 @@ class MainWindow(QMainWindow):
 
     # -- page actions ---------------------------------------------------------------
 
-    def confirm_delete(self, record: dict[str, Any]) -> None:
+    def confirm_delete(self, *records: dict[str, Any]) -> None:
         def delete() -> None:
-            delete_credential(record)
+            for record in records:
+                delete_credential(record)
             self.reload()
             self._go("wallet")
             self.toast.show_message(tr("Credential deleted"))
         self._confirm(tr("Delete this credential?"),
                       tr("<b>{credential}</b> will be deleted from this computer. To get it back you will have to ask "
-                         "the issuer again (or restore a backup).", credential=esc(credential_name(record))), delete,
+                         "the issuer again (or restore a backup).",
+                         credential=esc(", ".join(credential_name(r) for r in records))), delete,
                       confirm_text=tr("Delete"), danger=True, icon="trash-2")
 
     def new_profile(self) -> None:
