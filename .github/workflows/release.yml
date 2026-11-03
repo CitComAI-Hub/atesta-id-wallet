@@ -57,7 +57,7 @@ jobs:
           ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-deb" atesta-id-wallet-gui --smoke-test
           ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-deb" atesta-id-wallet --version
           sudo apt-get remove -y atesta-id-wallet
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: dist/release/*
@@ -111,7 +111,7 @@ jobs:
           # The uninstaller relaunches itself from %TEMP%: -Wait returns before it is done.
           for ($i = 0; $i -lt 60 -and (Test-Path "HKCU:\Software\Classes\openid4vp"); $i++) { Start-Sleep 1 }
           if (Test-Path "HKCU:\Software\Classes\openid4vp") { throw "Link handler left after uninstalling" }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/release/*
