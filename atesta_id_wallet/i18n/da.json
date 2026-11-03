@@ -410,7 +410,6 @@
     "Unverified identity": "Ikke-verificeret identitet",
     "Update from the git repository (installation with install.sh), or check for a new version (packaged application)": "Opdatér fra git-repositoriet (installation med install.sh), eller tjek for en ny version (pakket program)",
     "Updating from {path}…": "Opdaterer fra {path}…",
-    "Use a password with at least 8 characters.": "Brug en adgangskode på mindst 8 tegn.",
     "Use a password with at least {n} characters.": "Brug en adgangskode på mindst {n} tegn.",
     "Use authorization_code even if there is a pre-authorized_code.": "Brug authorization_code, selv om der er en pre-authorized_code.",
     "Use this one": "Brug denne",

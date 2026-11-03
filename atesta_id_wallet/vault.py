@@ -31,7 +31,9 @@ from .i18n import tr
 FILE_MAGIC = b"ATESTAF1"  # encrypted file, format 1
 KEYRING_SERVICE = "atesta-id-wallet"
 VAULT_FILE = "vault.json"
-MIN_PASSWORD = 8
+# The wallet files can be copied and attacked offline: scrypt slows each guess, but only length
+# makes the space big enough.
+MIN_PASSWORD = 12
 SCRYPT = {"n": 2**15, "r": 8, "p": 1}
 
 _keys: dict[Path, bytes] = {}  # unlocked data keys, by profile folder
@@ -94,7 +96,7 @@ def mode(profile: Path) -> str | None:
     return meta["mode"] if meta else None
 
 
-def _check_password(password: str) -> None:
+def check_new_password(password: str) -> None:
     if len(password) < MIN_PASSWORD:
         raise WalletError(tr("Use a password with at least {n} characters.", n=MIN_PASSWORD))
 
@@ -114,7 +116,7 @@ def _protect(vault_id: str, key: bytes, password: str | None) -> dict[str, Any]:
         keyring.set_password(KEYRING_SERVICE, vault_id, b64u(key))
         meta["mode"] = "keyring"
     else:
-        _check_password(password)
+        check_new_password(password)
         salt, nonce = secrets.token_bytes(16), secrets.token_bytes(12)
         wrapped = AESGCM(_derive(password, salt)).encrypt(nonce, key, vault_id.encode("ascii"))
         meta.update(mode="password", kdf={"name": "scrypt", "salt": b64u(salt), **SCRYPT},

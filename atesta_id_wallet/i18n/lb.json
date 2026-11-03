@@ -410,7 +410,6 @@
     "Unverified identity": "Net verifizéiert Identitéit",
     "Update from the git repository (installation with install.sh), or check for a new version (packaged application)": "Aus dem git-Repository aktualiséieren (Installatioun mat install.sh) oder no enger neier Versioun sichen (gepackte Applikatioun)",
     "Updating from {path}…": "Aktualiséierung aus {path}…",
-    "Use a password with at least 8 characters.": "Benotz e Passwuert mat mindestens 8 Zeechen.",
     "Use a password with at least {n} characters.": "Benotz e Passwuert mat mindestens {n} Zeechen.",
     "Use authorization_code even if there is a pre-authorized_code.": "authorization_code benotzen, och wann et e pre-authorized_code gëtt.",
     "Use this one": "Dësen benotzen",

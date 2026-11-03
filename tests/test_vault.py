@@ -3,6 +3,7 @@
 import getpass
 import io
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -118,8 +119,13 @@ class PasswordTests(VaultTestCase):
         self.assertEqual(len(storage.load_credentials()), 1)
 
     def test_short_password_is_refused(self):
-        with self.assertRaisesRegex(common.WalletError, "al menos 8"):
-            vault.set_password(storage.DATA_DIR, "1234")
+        with self.assertRaisesRegex(common.WalletError, "al menos 12"):
+            vault.set_password(storage.DATA_DIR, "eleven chrs")
+
+    def test_short_backup_password_is_refused(self):
+        storage.HolderKey.load_or_create()
+        with self.assertRaisesRegex(common.WalletError, "al menos 12"):
+            storage.write_backup(Path(tempfile.mkdtemp()) / "short.atesta", "eleven chrs")
 
     def test_without_keyring_a_password_is_required(self):
         self.without_keyring()

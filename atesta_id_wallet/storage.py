@@ -421,8 +421,7 @@ def write_backup(out: Path, password: str) -> None:
     """Encrypted backup (scrypt + AES-256-GCM) of the active profile, key included."""
     if not KEY_FILE.exists():
         raise WalletError(tr("The profile '{profile}' is empty; there is nothing to back up.", profile=PROFILE))
-    if len(password) < 8:
-        raise WalletError(tr("Use a password with at least 8 characters."))
+    vault.check_new_password(password)
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
         for name, data in _backup_entries():

@@ -34,7 +34,7 @@ another. The data key is kept in one of two ways:
   After 3 wrong passwords each new one doubles a wait (15 s, 30 s, ... up to 15 minutes), kept in
   `settings.json` so that restarting does not reset it; a right password clears it. This only slows
   down guessing through the wallet: whoever copies the files attacks scrypt offline, so a long
-  password is what matters.
+  password is what matters. Wallet and backup passwords need at least 12 characters.
 
 Without a usable keyring (headless systems, some minimal desktops) a wallet password is required:
 the data is never stored in clear text. Unlocked keys live in the process memory until it locks
