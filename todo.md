@@ -142,7 +142,7 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
        Done: issuer logo (`display.logo`) on the cards.
 10. [ ] Danish, German and French reviewed by native speakers; Luxembourgish carefully.
 11. [ ] **UX**: expert review done ([docs/UX-REVIEW.md](docs/UX-REVIEW.md): 19 problems fixed, texts in plain
-       words, keyboard and contrast to WCAG AA). Pending there: words for the roles (issuer, credential),
+       words, keyboard and contrast to WCAG AA). Done since: plain words for the roles. Pending there:
        scanning by screenshot, text size, a screen reader test, technical sections of Settings. Then a
        usability test with 5–8 people of the pilot profile (part of item 7).
 

@@ -266,7 +266,8 @@ class _Loopback:
         if stop.is_set():
             raise Cancelled()
         raise WalletError(tr("Timed out waiting for the browser redirect."),
-                          hint=tr("Signing in in the browser took too long. Start again from the issuer's page."))
+                          hint=tr("Signing in in the browser took too long. Start again from the page where you asked for the "
+                                  "credential."))
 
     def close(self) -> None:
         self.server.server_close()
@@ -404,8 +405,9 @@ def headless_login(session: requests.Session, auth_url: str, redirect_uri: str,
             error = _page_error(page)
             raise WalletError(tr("Keycloak shows a page the wallet cannot complete{error}. Try --browser-login.",
                                  error=f": {error}" if error else ""),
-                              hint=tr("The sign-in page asks for something the wallet cannot fill in. Ask the issuer "
-                                      "for help and send them the technical details."))
+                              hint=tr("The sign-in page asks for something the wallet cannot fill in. Ask the "
+                                      "organisation that gives the credential for help, and send them the technical "
+                                      "details."))
         url, method, data = target, "POST", fields
     raise WalletError(tr("Too many pages during login."))
 
@@ -701,7 +703,7 @@ def request_credential(
 
     if "transaction_id" in data and "credentials" not in data and "credential" not in data:
         raise WalletError(tr("The issuer answered with deferred issuance (transaction_id), which is not supported."),
-                          hint=tr("The issuer will prepare this credential later, and this wallet cannot collect it "
+                          hint=tr("The organisation will prepare this credential later, and this wallet cannot collect it "
                                   "that way yet."))
     credentials = data.get("credentials")
     if credentials is None and "credential" in data:
@@ -1175,7 +1177,7 @@ def verify_issued_credential(
     elif not any(_verify_jws(sd.issuer_jwt, k) for k in keys):
         raise WalletError(tr("The credential's signature does not match the issuer's keys; it is not stored."),
                           hint=tr("The credential received could not be checked, so it was not saved. Contact "
-                                  "the issuer and send them the technical details."))
+                                  "the organisation that gives it and send them the technical details."))
     elif bound:
         log(tr("Valid issuer signature ({iss}).", iss=iss))
     else:
@@ -1187,4 +1189,4 @@ def verify_issued_credential(
     elif (cnf.get("x"), cnf.get("y")) != (holder.public_jwk["x"], holder.public_jwk["y"]):
         raise WalletError(tr("The credential is bound to another key, not this wallet's; it is not stored."),
                           hint=tr("The credential received could not be checked, so it was not saved. Contact "
-                                  "the issuer and send them the technical details."))
+                                  "the organisation that gives it and send them the technical details."))

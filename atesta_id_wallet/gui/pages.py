@@ -125,8 +125,8 @@ class WalletPage(Page):
 
         self.empty = EmptyState(
             "plus", tr("Your wallet is empty"),
-            tr("Open the page where the issuer gives you the credential (for example, the link in your welcome "
-               "email, or Verifiable Credentials → Issue to wallet in your account page). Then press Scan QR "
+            tr("Open the page of the organisation that gives you the credential (for example, the link in your "
+               "welcome email, or Verifiable Credentials → Issue to wallet in your account page). Then press Scan QR "
                "and take a screenshot of the QR code."),
             action=self._empty_action(),
         )
@@ -274,7 +274,7 @@ class CredentialPage(Page):
         right.addWidget(label(tr("Details"), "sectionTitle"))
         payload = sd.payload if sd else {}
         details = [
-            (tr("Issuer"), _issuer_text(record)),
+            (tr("Issued by"), _issuer_text(record)),
 
             *([(tr("Issued"), _date(payload["iat"]))] if isinstance(payload.get("iat"), (int, float)) else []),
             (tr("Received"), _date(record.get("stored_at"))),

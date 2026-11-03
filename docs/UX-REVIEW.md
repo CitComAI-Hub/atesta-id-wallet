@@ -49,13 +49,14 @@ catalogs (native review still pending, `todo.md` item 10).
 
 ## Pending: decisions and larger changes
 
-1. **Words for the roles** (sev. 3). Besides "verifier" (now "service" in the consent), the window
-   still says *issuer*/*emisor* and *credential*/*credencial*. Lissi avoids the role names
-   altogether ("digital services", "organisations") and calls credentials by what they are
-   ("certificates, member cards, employee passes, licences"). Proposal: keep "credential" (the
-   pilot users get it with that name) but explain it once with examples in the first-run guide,
-   and replace "issuer" with "the organisation that gave it to you" where it is not a label. Needs a
-   decision before the catalogs are touched again.
+1. ~~**Words for the roles**~~ (sev. 3) — **done**: "credential" is kept (it is the word the pilot
+   users see in Keycloak and in the issuers' emails) and explained once, with examples, in the first
+   step of the guide ("like a digital card that says something about you: a membership card, an
+   employee pass, a certificate"). "Issuer" no longer appears in sentences: the organisation's name
+   where the wallet knows it ("First credential from CITCOM TEF", "ask CITCOM TEF for it again"),
+   otherwise "the organisation that gives you the credential"; as a label, "Issued by". The other
+   side is always "the service" in the window. Settings → Trust and the command line keep "issuer"
+   and "verifier" (technical audience; see 5).
 2. **Screenshot to scan** (sev. 3, to confirm in the user test). Taking a screenshot of a QR code
    on the same computer is not obvious for someone who is not technical, and Print Screen behaves
    differently on each desktop. Ideas: a short animation the first time; "Paste link" as visible as

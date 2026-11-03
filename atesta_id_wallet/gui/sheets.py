@@ -342,9 +342,9 @@ class OfferSheet(Sheet):
             layout.addWidget(IconBubble("id-card", t.accent, t.surface, 36))
             layout.addWidget(label(name, "sectionTitle", wrap=True), 1)
             self.add(row)
-        self.add(label(tr("Issuer: {issuer}", issuer=host_of(offer.issuer)), "caption", selectable=True))
+        self.add(label(tr("Website: {host}", host=host_of(offer.issuer)), "caption", selectable=True))
         if not offer.known:
-            self.add(_notice("warn", "shield-alert", tr("This is the first time you use this issuer"),
+            self.add(_notice("warn", "shield-alert", tr("First credential from {issuer}", issuer=offer.issuer_name),
                              tr("Accept only if you were asking for this credential on its website.")))
         decline = button(tr("Decline"))
         decline.clicked.connect(lambda: on_answer(False))

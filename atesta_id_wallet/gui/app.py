@@ -58,6 +58,7 @@ from ..storage import (
     HolderKey,
     add_trusted_ca,
     create_profile,
+    credential_issuer_name,
     credential_name,
     delete_credential,
     list_profiles,
@@ -405,11 +406,12 @@ class MainWindow(QMainWindow):
         steps = steps or ["welcome", "first-credential", "protect"]
         texts = {
             "welcome": ("wallet", tr("Welcome to Atesta ID Wallet"),
-                        tr("Keep your verifiable credentials on this computer and use them to sign in to data space "
-                           "services. Nothing is shared without your approval, and you see exactly what.")),
+                        tr("A credential is like a digital card that says something about you: a membership card, an "
+                           "employee pass, a certificate. Keep yours on this computer and use them to sign in to data "
+                           "space services. Nothing is shared without your approval, and you see exactly what.")),
             "first-credential": ("scan-line", tr("Get your first credential"),
-                                 tr("Open the page where the issuer gives you the credential (for example, the link "
-                                    "in your welcome email). Press <b>Scan QR</b> and take a screenshot of the QR "
+                                 tr("Open the page of the organisation that gives you the credential (for example, "
+                                    "the link in your welcome email). Press <b>Scan QR</b> and take a screenshot of the QR "
                                     "code: the wallet finds it by itself.")),
             "links": ("link", tr("Open wallet links with this application"),
                       tr("Some pages have a button or link that opens your wallet instead of a QR code. Register "
@@ -648,7 +650,7 @@ class MainWindow(QMainWindow):
             return
         if isinstance(exc, NoMatchingCredential):
             # Can an issuer this profile already used give it? Then offer to ask for it right away.
-            return self._run(tr("Looking for an issuer that gives it…"),
+            return self._run(tr("Looking for where you can get it…"),
                              lambda: known_issuer_for(requests.Session(), exc.wanted),
                              lambda found: self._missing_credential(exc, found), "present")
         receiving = self._flow == "issue"
@@ -659,8 +661,8 @@ class MainWindow(QMainWindow):
         if isinstance(exc, WalletError):
             title = tr("Could not receive the credential") if receiving else tr("Could not share your data")
             body = exc.hint or (
-                tr("The issuer's service answered in a way the wallet did not expect. Try again later; if it keeps "
-                   "happening, send the technical details to the issuer.") if receiving else
+                tr("The service that gives the credential answered in a way the wallet did not expect. Try again "
+                   "later; if it keeps happening, send the technical details to the organisation that gives it.") if receiving else
                 tr("The request could not be processed, and nothing was sent. Reload the page with the QR code and "
                    "try again; if it keeps happening, send the technical details to the service."))
             return self._result(False, title, esc(body), details=str(exc))
@@ -671,11 +673,12 @@ class MainWindow(QMainWindow):
                      details=f"{type(exc).__name__}: {exc}\n\n{trace}")
 
     def _missing_credential(self, exc: NoMatchingCredential, found: tuple[str, str, str] | None) -> None:
-        verifier = esc(exc.verifier or tr("The verifier"))
+        verifier = esc(exc.verifier or tr("The service"))
         wanted = esc(", ".join(humanize(w.rstrip("/").rsplit("/", 1)[-1]) for w in exc.wanted))
         if not found:
             return self._result(False, tr("You do not have the requested credential"),
-                                tr("<b>{verifier}</b> asks for: {wanted}. Get it from its issuer first and try again.",
+                                tr("<b>{verifier}</b> asks for: {wanted}. Get it first from the organisation that gives it, and "
+                                   "try again.",
                                    verifier=verifier, wanted=wanted),
                                 icon="wallet", tone="warn", details=exc.detail)
         issuer, config_id, name = found
@@ -687,7 +690,7 @@ class MainWindow(QMainWindow):
                       self._issued)
         self._result(False, tr("You do not have the requested credential"),
                      tr("<b>{verifier}</b> asks for: {wanted}. <b>{issuer}</b>, which you have used before, gives it: "
-                        "ask for it now, then scan the login QR code again.",
+                        "ask for it now, then scan the sign-in QR code again.",
                         verifier=verifier, wanted=wanted, issuer=esc(name)),
                      icon="wallet", tone="warn", details=exc.detail,
                      action=(tr("Request it from {issuer}", issuer=name), request))
@@ -730,8 +733,8 @@ class MainWindow(QMainWindow):
     def _ask_text(self, request: Ask) -> None:
         prompt, default = request.args
         if "tx_code" in prompt:
-            title, body = tr("Transaction code"), tr("The issuer has sent you a code (by email, SMS or on its website) "
-                                                     "to collect the credential.")
+            title, body = tr("Collection code"), tr("The organisation that gives you the credential has sent you a "
+                                                    "code (by email, SMS or on its website) to collect it.")
         else:
             title, body = prompt, ""
         reply = self._reply(request)
@@ -785,8 +788,9 @@ class MainWindow(QMainWindow):
             self.toast.show_message(tr("Credential deleted"))
         self._confirm(tr("Delete this credential?"),
                       tr("<b>{credential}</b> will be deleted from this computer. To get it back you will have to ask "
-                         "the issuer again (or restore a backup).",
-                         credential=esc(", ".join(credential_name(r) for r in records))), delete,
+                         "{issuer} for it again (or restore a backup).",
+                         credential=esc(", ".join(credential_name(r) for r in records)),
+                         issuer=esc(", ".join(dict.fromkeys(credential_issuer_name(r) for r in records)))), delete,
                       confirm_text=tr("Delete"), danger=True, icon="trash-2")
 
     def new_profile(self) -> None:
