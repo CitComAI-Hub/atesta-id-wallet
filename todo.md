@@ -10,12 +10,12 @@
   fallback), Spanish, Danish, German, French and Luxembourgish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
-## Status (0.9.0, November 2026)
+## Status (0.10.0, November 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
-GUI, a CLI, six languages and an offline test suite (149 tests, GUI included).
-Release 0.9.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
+GUI, a CLI, six languages, an offline test suite (179 tests, GUI included) and nightly tests
+against real Keycloak 26.6, 26.7 and latest. Release 0.10.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
 smoke-tested by CI (including a silent install/uninstall on Windows), but nobody outside the team
 has used it and nobody has tested it by hand on real Windows or macOS.
 
@@ -98,6 +98,15 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   passwords (doubling, up to 15 min); issued / valid-from dates; "request it from <known issuer>"
   when a verifier asks for a credential you lack; Activity per contact; three-step first start;
   Settings → About → Licenses.
+- **0.10.0: login in the browser, hardening**: when the issuer has the client `atesta-id-wallet`
+  (public, PKCE, redirect `http://127.0.0.1/callback`), the wallet signs in through the browser and
+  waits on a free loopback port: the password never reaches the wallet (`--in-app-login` to turn it
+  off; without the client nothing changes). After issuance it says which account the credential was
+  issued for, with "Not your account? Delete it". Wallet and backup passwords: at least 12
+  characters. Found by mypy and fuzzing, now clear errors: links with a bad host, a broken verifier
+  `redirect_uri` after an accepted presentation, malformed DCQL queries, `history` with an event
+  without a type. Opening the browser no longer fails in the windowed builds. Releases carry a
+  CycloneDX SBOM per build. Tests split by area; Keycloak integration tests and fuzzing every night.
   German, French and Luxembourgish (machine-made: German and French need a quick review by a native
   speaker, Luxembourgish a careful one). Smoother panel changes (the backdrop stays); a too short or
   mismatched new password asks again instead of ending the flow; notices centred on the page.
