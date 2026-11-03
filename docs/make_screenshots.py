@@ -43,17 +43,44 @@ keyring.set_keyring(MemoryKeyring())
 
 from atesta_id_wallet import common, i18n, storage  # noqa: E402
 
-# (name, issuer name, issuer URL, colour or None, claims): all made up.
+# (name, issuer name, issuer URL, colour or None, claims, logo monogram or None): all made up.
 CREDENTIALS = [
     ("Data Space Membership", "Valencia Data Space", "https://dataspace.example", "#0f766e",
-     {"given_name": "Alex", "family_name": "García", "membership": "Provider", "since": "2026-03-01"}),
+     {"given_name": "Alex", "family_name": "García", "membership": "Provider", "since": "2026-03-01"}, "DS"),
     ("University Degree", "Example University", "https://university.example", "#8b1e3f",
-     {"given_name": "Alex", "family_name": "García", "degree": "MSc Computer Science", "year": 2024}),
+     {"given_name": "Alex", "family_name": "García", "degree": "MSc Computer Science", "year": 2024}, "EU"),
     ("Employee Badge", "Example Corp", "https://corp.example", "#1f4fd1",
-     {"given_name": "Alex", "family_name": "García", "email": "alex.garcia@corp.example", "role": "Engineer"}),
+     {"given_name": "Alex", "family_name": "García", "email": "alex.garcia@corp.example", "role": "Engineer"}, "EC"),
     ("Legal Person Credential", "Marketplace Keycloak", "https://keycloak.example/realms/market", None,
-     {"email": "alex.garcia@corp.example", "organization": "Example Corp"}),
+     {"email": "alex.garcia@corp.example", "organization": "Example Corp"}, None),  # no logo: generic icon
 ]
+
+
+def monogram(text: str, colour: str) -> str:
+    """A made-up logo (PNG, base64): the initials in the issuer's colour."""
+    import base64
+
+    from PySide6.QtCore import QBuffer, QIODevice, QRectF, Qt
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter
+
+    image = QImage(96, 96, QImage.Format_ARGB32)
+    image.fill(Qt.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QColor(colour))
+    painter.drawRoundedRect(QRectF(4, 4, 88, 88), 22, 22)
+    font = QFont()
+    font.setPixelSize(40)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.setPen(QColor("#ffffff"))
+    painter.drawText(QRectF(0, 0, 96, 96), Qt.AlignCenter, text)
+    painter.end()
+    buffer = QBuffer()
+    buffer.open(QIODevice.WriteOnly)
+    image.save(buffer, "PNG")
+    return base64.b64encode(bytes(buffer.data())).decode("ascii")
 
 
 def credential(issuer_key: storage.HolderKey, issuer: str, claims: dict) -> str:
@@ -63,11 +90,13 @@ def credential(issuer_key: storage.HolderKey, issuer: str, claims: dict) -> str:
 
 
 def fill_profile() -> None:
-    for name, issuer_name, issuer, colour, claims in reversed(CREDENTIALS):
+    for name, issuer_name, issuer, colour, claims, logo in reversed(CREDENTIALS):
         issuer_key = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
         display = {"name": name, "issuer_name": issuer_name}
         if colour:
             display["background_color"] = colour
+        if logo:
+            display.update(logo=monogram(logo, colour or "#4f46e5"), logo_type="image/png")
         claims = {"vct": f"{issuer}/{name.replace(' ', '')}", **claims}
         storage.save_credential(credential(issuer_key, issuer, claims), fmt="dc+sd-jwt", issuer=issuer,
                                 configuration_id=name.replace(" ", ""), display=display)
