@@ -14,8 +14,8 @@
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
-GUI, a CLI, six languages and an offline test suite (about 130 tests, GUI included).
-Release 0.6.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
+GUI, a CLI, six languages and an offline test suite (149 tests, GUI included).
+Release 0.9.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
 smoke-tested by CI (including a silent install/uninstall on Windows), but nobody outside the team
 has used it and nobody has tested it by hand on real Windows or macOS.
 
