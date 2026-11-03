@@ -77,6 +77,7 @@ def cmd_issue(args: argparse.Namespace) -> int:
         authorization_details=args.authorization_details,
         force_auth_code=args.force_auth_code,
         browser_login=args.browser_login,
+        in_app_login=args.in_app_login,
         open_browser=not args.no_browser,
         dpop=not args.no_dpop,
     )
@@ -386,7 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
                        help=tr("With --issuer: credential_configuration_id to request (repeatable)."))
     issue.add_argument("--client-id",
                        help=tr("OAuth client_id for authorization_code (default: the last one that worked with "
-                               "that issuer, or account-console)."))
+                               "that issuer, else atesta-id-wallet if the issuer has it, else account-console)."))
     issue.add_argument("--redirect-uri",
                        help=tr("Registered redirect_uri (default: <realm>/account/oid4vci-callback)."))
     issue.add_argument("--client-id-pre", help=tr("Optional client_id for pre-authorized_code."))
@@ -398,6 +399,9 @@ def build_parser() -> argparse.ArgumentParser:
     issue.add_argument("--username", help=tr("Keycloak username (asked for if missing)."))
     issue.add_argument("--browser-login", action="store_true",
                        help=tr("Log in in the browser and paste the redirect URL by hand."))
+    issue.add_argument("--in-app-login", action="store_true",
+                       help=tr("Type the password in the wallet even if the issuer allows signing in through "
+                               "the browser."))
     issue.add_argument("--no-browser", action="store_true", help=tr("Do not open the browser."))
     issue.add_argument("--no-dpop", action="store_true",
                        help=tr("Do not bind the access token with DPoP even if the server supports it."))

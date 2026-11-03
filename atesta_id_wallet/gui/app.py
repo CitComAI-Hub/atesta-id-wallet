@@ -153,6 +153,15 @@ class GuiPrompter(Prompter):
     def notice(self, message: str) -> None:
         self._ask("notice", message)
 
+    def wait_for_browser(self, host: str, url: str, wait: Callable[[threading.Event], str]) -> str:
+        # The panel does not block this thread, which waits for the browser; Cancel sets stop.
+        stop = threading.Event()
+        self.bridge.ask.emit(Ask("browser", (host, url, stop)))
+        try:
+            return wait(stop)
+        finally:
+            self.bridge.ask.emit(Ask("progress", ()))
+
     def choose_credential(self, query_id: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
         return candidates[0] if len(candidates) == 1 else self._ask("choose", query_id, candidates)
 
@@ -684,6 +693,25 @@ class MainWindow(QMainWindow):
         reply = self._reply(request)
         self._sheet(ResultSheet(True, tr("Notice"), esc(request.args[0]), lambda: reply(True), icon="info",
                                 tone="accent"))
+
+    def _ask_browser(self, request: Ask) -> None:
+        host, url, stop = request.args
+
+        def answer(again: bool) -> None:
+            if again:
+                webbrowser.open(url)
+            else:
+                stop.set()
+                self._show_progress()
+
+        self._sheet(ConfirmSheet(
+            tr("Continue in your browser"),
+            tr("Sign in to <b>{host}</b> in the browser window that has just opened. The wallet carries on by "
+               "itself when you finish; your password stays in the browser.", host=esc(host)),
+            answer, confirm_text=tr("Open the browser again"), icon="lock"))
+
+    def _ask_progress(self, request: Ask) -> None:
+        self._show_progress()
 
     def _ask_choose(self, request: Ask) -> None:
         query_id, candidates = request.args

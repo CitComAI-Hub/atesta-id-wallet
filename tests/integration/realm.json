@@ -144,6 +144,23 @@
       "optionalClientScopes": [
         "TestCredential"
       ]
+    },
+    {
+      "clientId": "atesta-id-wallet",
+      "name": "Atesta ID Wallet",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1/callback"
+      ],
+      "attributes": {
+        "oid4vci.enabled": "true",
+        "pkce.code.challenge.method": "S256"
+      },
+      "optionalClientScopes": [
+        "TestCredential"
+      ]
     }
   ],
   "users": [

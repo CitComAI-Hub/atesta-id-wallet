@@ -11,8 +11,9 @@ from __future__ import annotations
 import getpass
 import json
 import sys
+import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from .common import WalletError, confirm
 from .i18n import N_, tr
@@ -81,6 +82,16 @@ class Prompter:
         if ask_username:
             username = self.text(tr("Keycloak username or email"), default=username)
         return username or "", self.secret(tr("Password for {host}", host=host))
+
+    def wait_for_browser(self, host: str, url: str, wait: Callable[[threading.Event], str]) -> str:
+        """
+        The user signs in to host in the browser (already opened at url, if allowed). wait(stop)
+        blocks until the browser comes back to the wallet and returns that URL; setting stop
+        cancels it. The GUI replaces this with a panel that can open the page again or cancel.
+        """
+        self.notice(tr("Sign in to {host} in your browser. If it did not open, open this URL:\n\n{url}",
+                       host=host, url=url))
+        return wait(threading.Event())
 
     def text(self, prompt: str, *, default: str | None = None) -> str:
         raise NotImplementedError

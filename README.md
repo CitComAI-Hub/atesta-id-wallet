@@ -105,9 +105,12 @@ If you see a link, click it and the wallet opens. If you see a QR code, press **
 take a screenshot (Print Screen, or Win+Shift+S on Windows). The wallet detects the QR by itself.
 
 The wallet first shows who is offering which credential, and warns you if you have never used
-that issuer before. After you accept, it asks for your Keycloak username and password together.
-It remembers the username but never stores the password, and only sends the password over HTTPS
-to the authorization server's own domain. It checks the credential's signature and key binding
+that issuer before. After you accept, you sign in to the issuer. If the issuer has registered the
+wallet (OAuth client `atesta-id-wallet`), that happens in your browser, so your password is never
+typed into the wallet, and the wallet carries on by itself when the browser comes back. Otherwise
+the wallet asks for your Keycloak username and password together. It remembers the username but
+never stores the password, and only sends the password over HTTPS to the authorization server's
+own domain. It checks the credential's signature and key binding
 before storing it, and shows it with the name, colours and logo the issuer publishes.
 
 Some issuer pages make their QR codes for one specific wallet: Keycloak 26.6 and 26.7 tie each offer to
@@ -207,8 +210,12 @@ changes. See [docs/SECURITY.md](docs/SECURITY.md).
 
 - `issue --browser-login`: log in to Keycloak in the browser instead of the wallet. You need
   this when Keycloak uses an external IdP, WebAuthn, etc.
-- `issue --client-id ID --redirect-uri http://localhost:8765/callback`: use a dedicated OAuth
-  client registered for wallets. The wallet captures the code automatically.
+- `issue --in-app-login`: type the password in the wallet even if the issuer has the wallet's own
+  client (`atesta-id-wallet`, public, PKCE, redirect URI `http://127.0.0.1/callback`; Keycloak
+  accepts any port on 127.0.0.1). Without this option the wallet checks for that client before
+  each login and, if it is there, signs in through the browser.
+- `issue --client-id ID --redirect-uri http://localhost:8765/callback`: use another OAuth client
+  registered for wallets. The wallet captures the code automatically.
 - `issue --issuer URL [--credential ID]`: ask the issuer for a credential without an offer
   (wallet-initiated). You must already be entitled to that credential at the issuer. Scanning a
   QR code made for another wallet does this by itself: Keycloak ties each offer to the OAuth

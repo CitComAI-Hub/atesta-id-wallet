@@ -13,11 +13,12 @@ import os
 import re
 import secrets
 import sys
+import threading
 import time
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 import requests
@@ -49,6 +50,12 @@ from .ui import OfferSummary, Prompter, TerminalPrompter
 
 
 PRE_AUTH_GRANT = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
+# The wallet's own OAuth client. An issuer that registers it (public, PKCE, redirect URI below; Keycloak
+# accepts any port on 127.0.0.1, RFC 8252 §7.3) gets the login in the user's browser, so the password
+# is never typed into the wallet. Elsewhere the wallet falls back to account-console and its own login.
+WALLET_CLIENT_ID = "atesta-id-wallet"
+LOOPBACK_REDIRECT = "http://127.0.0.1/callback"
+DEFAULT_CLIENT_ID = "account-console"
 
 
 class DPoP:
@@ -136,6 +143,9 @@ class _LoginReplay(Prompter):
     def notice(self, message: str) -> None:
         self.ui.notice(message)
 
+    def wait_for_browser(self, host: str, url: str, wait: Callable[[threading.Event], str]) -> str:
+        return self.ui.wait_for_browser(host, url, wait)
+
     def choose_credential(self, query_id: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
         return self.ui.choose_credential(query_id, candidates)
 
@@ -208,35 +218,54 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def _wait_local_callback(redirect_uri: str, timeout: int = 300) -> str:
-    """Short-lived HTTP server for redirect_uri http://localhost:PORT/..."""
-    parts = urlsplit(redirect_uri)
-    result: dict[str, str] = {}
+class _Loopback:
+    """
+    Short-lived HTTP server on the loopback interface for a redirect_uri http://127.0.0.1[:PORT]/path.
+    Without a port it takes a free one (RFC 8252 §7.3); redirect_uri is then the address to use.
+    """
 
-    class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802
-            if urlsplit(self.path).path != (parts.path or "/"):  # p. ej. /favicon.ico
-                self.send_response(404)
+    def __init__(self, redirect_uri: str):
+        parts = urlsplit(redirect_uri)
+        path, result = parts.path or "/", {}
+        self.result: dict[str, str] = result
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                if urlsplit(self.path).path != path:  # e.g. /favicon.ico
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                result.setdefault("path", self.path)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                return
-            result["url"] = f"{parts.scheme}://{parts.netloc}{self.path}"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(f"<h3>{tr('Done. You can go back to the wallet.')}</h3>".encode("utf-8"))
+                self.wfile.write(f"<h3>{html.escape(tr('Done. You can go back to the wallet.'))}</h3>".encode("utf-8"))
 
-        def log_message(self, *args: Any) -> None:
-            pass
+            def log_message(self, *args: Any) -> None:
+                pass
 
-    server = http.server.HTTPServer((parts.hostname or "127.0.0.1", parts.port or 80), Handler)
-    server.timeout = 1
-    deadline = time.time() + timeout
-    while "url" not in result and time.time() < deadline:
-        server.handle_request()
-    server.server_close()
-    if "url" not in result:
+        self.server = http.server.HTTPServer((parts.hostname or "127.0.0.1", parts.port or 0), Handler)
+        self.server.timeout = 0.5
+        netloc = f"{parts.hostname}:{self.server.server_port}"
+        self.redirect_uri = f"{parts.scheme}://{netloc}{path}" + (f"?{parts.query}" if parts.query else "")
+        result["base"] = f"{parts.scheme}://{netloc}"
+
+    def wait(self, stop: threading.Event, timeout: int = 300) -> str:
+        """The URL the browser was sent back to; Cancelled if stop is set, WalletError after timeout."""
+        deadline = time.time() + timeout
+        try:
+            while "path" not in self.result and not stop.is_set() and time.time() < deadline:
+                self.server.handle_request()
+        finally:
+            self.server.server_close()
+        if "path" in self.result:
+            return self.result["base"] + self.result["path"]
+        if stop.is_set():
+            raise Cancelled()
         raise WalletError(tr("Timed out waiting for the browser redirect."))
-    return result["url"]
+
+    def close(self) -> None:
+        self.server.server_close()
 
 
 def _open_browser_quietly(url: str) -> None:
@@ -385,6 +414,46 @@ def authorization_code_flow(
 ) -> tuple[dict[str, Any], str | None]:
     """Returns the token and the username used to log in (if the login was done by the wallet)."""
     ui = ui or TerminalPrompter()
+    if not as_meta.get("authorization_endpoint"):
+        raise WalletError(tr("The authorization server metadata has no authorization_endpoint."))
+    target = urlsplit(redirect_uri)
+    # http://127.0.0.1 or localhost: the browser comes back to a server of the wallet (on a free port
+    # if none is given), so the login happens in the browser and the wallet never sees the password.
+    loopback = (_Loopback(redirect_uri) if target.scheme == "http" and target.hostname in ("localhost", "127.0.0.1")
+                else None)
+    if loopback:
+        redirect_uri = loopback.redirect_uri
+    try:
+        callback_url, username, verifier, state = _authorize(
+            session, as_meta, client_id=client_id, redirect_uri=redirect_uri, scopes=scopes,
+            issuer_state=issuer_state, authorization_details=authorization_details, open_browser=open_browser,
+            browser_login=browser_login, username=username, ui=ui, suggested_username=suggested_username,
+            loopback=loopback,
+        )
+    finally:
+        if loopback:
+            loopback.close()
+    return _redeem_code(session, as_meta, callback_url, state=state, verifier=verifier, client_id=client_id,
+                        redirect_uri=redirect_uri, username=username, dpop=dpop)
+
+
+def _authorize(
+    session: requests.Session,
+    as_meta: dict[str, Any],
+    *,
+    client_id: str,
+    redirect_uri: str,
+    scopes: list[str],
+    issuer_state: str | None,
+    authorization_details: list[dict[str, Any]] | None,
+    open_browser: bool,
+    browser_login: bool,
+    username: str | None,
+    ui: Prompter,
+    suggested_username: str | None,
+    loopback: _Loopback | None,
+) -> tuple[str, str | None, str, str]:
+    """Authorization request; returns (callback URL or code, username, PKCE verifier, state)."""
     verifier, challenge = _pkce_pair()
     state = b64u(secrets.token_bytes(16))
     params = {
@@ -402,14 +471,15 @@ def authorization_code_flow(
     if authorization_details:
         params["authorization_details"] = json.dumps(authorization_details, separators=(",", ":"))
 
-    if not as_meta.get("authorization_endpoint"):
-        raise WalletError(tr("The authorization server metadata has no authorization_endpoint."))
     auth_url = as_meta["authorization_endpoint"] + "?" + urlencode(params, quote_via=quote)
     debug(f"Authorization URL: {auth_url}")
 
-    target = urlsplit(redirect_uri)
-    local_redirect = target.scheme == "http" and target.hostname in ("localhost", "127.0.0.1")
-    if not browser_login and not local_redirect:
+    if loopback:
+        log(tr("Signing in to {host} in the browser.", host=host_of(auth_url)))
+        if open_browser:
+            _open_browser_quietly(auth_url)
+        return ui.wait_for_browser(host_of(auth_url), auth_url, loopback.wait), None, verifier, state
+    if not browser_login:
         log(tr("Signing in to Keycloak from the wallet (use --browser-login for the browser)."))
         callback_url, username = headless_login(
             session, auth_url, redirect_uri, username, ui, suggested_username=suggested_username
@@ -418,11 +488,6 @@ def authorization_code_flow(
         ui.notice(tr("Open this URL in the browser and sign in to Keycloak:\n\n{url}", url=auth_url))
         if open_browser:
             _open_browser_quietly(auth_url)
-
-    if local_redirect:
-        log(tr("Waiting for the redirect at {uri}…", uri=redirect_uri))
-        callback_url = _wait_local_callback(redirect_uri)
-    elif browser_login:
         ui.notice(tr(
             "After login the browser goes to a URL that starts with\n  {uri}?...code=...\n"
             "Copy it from the address bar and paste it here (if the page changes it right away, find it "
@@ -431,7 +496,13 @@ def authorization_code_flow(
         callback_url = ""
         while not callback_url:
             callback_url = ui.text(tr("Paste the redirect URL (or just the code)")).strip()
+    return callback_url, username, verifier, state
 
+
+def _redeem_code(session: requests.Session, as_meta: dict[str, Any], callback_url: str, *, state: str,
+                 verifier: str, client_id: str, redirect_uri: str, username: str | None,
+                 dpop: DPoP | None) -> tuple[dict[str, Any], str | None]:
+    """Checks the authorization response and exchanges its code for the token."""
     if "?" in callback_url or "#" in callback_url or "code=" in callback_url:
         query = urlsplit(callback_url).query or urlsplit(callback_url).fragment
         cb = parse_qs(query)
@@ -470,6 +541,38 @@ def authorization_code_flow(
     except WalletError as exc:
         exc.username = username  # type: ignore[attr-defined]  # who signed in, if the caller retries
         raise
+
+
+def wallet_client_available(session: requests.Session, as_meta: dict[str, Any]) -> bool:
+    """
+    Whether the authorization server knows the wallet's own client (WALLET_CLIENT_ID with a loopback
+    redirect). Asked without cookies or credentials: Keycloak answers an unknown client or redirect_uri
+    with an error page before any login, and a valid request with its login page.
+    """
+    endpoint = as_meta.get("authorization_endpoint")
+    if not endpoint:
+        return False
+    _, challenge = _pkce_pair()
+    probe = requests.Session()
+    probe.headers.update(session.headers)
+    probe.verify = session.verify
+    params = {"response_type": "code", "client_id": WALLET_CLIENT_ID, "scope": "openid",
+              "redirect_uri": LOOPBACK_REDIRECT.replace("127.0.0.1", "127.0.0.1:49152"),
+              "state": b64u(secrets.token_bytes(16)), "code_challenge": challenge, "code_challenge_method": "S256"}
+    try:
+        response = probe.get(endpoint, params=params, allow_redirects=False, timeout=10)
+    except requests.RequestException as exc:
+        debug(f"Own client check failed: {exc}")
+        return False
+    finally:
+        probe.close()
+    # A redirect back to the wallet carries an error (the request was refused); any other one is a
+    # login page elsewhere (e.g. an external identity provider).
+    location = response.headers.get("Location", "")
+    available = response.status_code == 200 or (response.is_redirect and not location.startswith("http://127.0.0.1"))
+    debug(f"Own client '{WALLET_CLIENT_ID}' at the authorization server: HTTP {response.status_code}, "
+          f"{'available' if available else 'not available'}")
+    return available
 
 
 def pre_authorized_flow(
@@ -609,6 +712,7 @@ class IssueOptions:
     force_auth_code: bool = False
     browser_login: bool = False
     open_browser: bool = True
+    in_app_login: bool = False  # never the browser login with the wallet's own client
     dpop: bool = True  # only if the authorization server advertises it
 
 
@@ -690,12 +794,16 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
         proof_iss = options.client_id_pre
     else:
         issuer_config = load_config().get("issuers", {}).get(issuer, {})
-        client_id = options.client_id or issuer_config.get("client_id") or "account-console"
-        redirect_uri = (
-            options.redirect_uri
-            or issuer_config.get("redirect_uri")
-            or f"{as_base.rstrip('/')}/account/oid4vci-callback"
-        )
+        # A client chosen by the user (option or remembered) is kept; otherwise the wallet's own client
+        # if this server has it (login in the browser), else account-console (login in the wallet).
+        remembered = issuer_config.get("client_id")
+        automatic = (None, DEFAULT_CLIENT_ID) + ((WALLET_CLIENT_ID,) if options.in_app_login else ())
+        client_id = options.client_id or (remembered if remembered not in automatic else None)
+        redirect_uri = options.redirect_uri or (issuer_config.get("redirect_uri") if client_id else None)
+        if not client_id and not options.in_app_login and wallet_client_available(session, as_meta):
+            client_id, redirect_uri = WALLET_CLIENT_ID, LOOPBACK_REDIRECT
+        client_id = client_id or DEFAULT_CLIENT_ID
+        redirect_uri = redirect_uri or f"{as_base.rstrip('/')}/account/oid4vci-callback"
         log(tr("Authorization code flow (client_id={client_id}).", client_id=client_id))
         scopes = [configs.get(c, {}).get("scope") for c in config_ids]
         details = None
@@ -725,6 +833,13 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
             )
 
         issuer_state = (grants.get("authorization_code") or {}).get("issuer_state")
+        if issuer_state and client_id == WALLET_CLIENT_ID:
+            # Offers are made by portals for their own client, not this one. Keycloak would refuse the
+            # offer and, worse, keep its issuer_state in the browser's SSO session for this client, so
+            # every later request would hit it too (prompt=login does not clear it). The same credentials
+            # are asked for by scope: Keycloak issues what the account is entitled to, as for the offer.
+            debug("Own client: the offer's issuer_state is not sent; the credentials are asked for by scope.")
+            issuer_state = None
         try:
             token, username = login(session, issuer_state)
         except WalletError as exc:

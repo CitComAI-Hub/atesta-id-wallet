@@ -115,6 +115,16 @@ name to look like a trusted one or inject links.
 - The offer must come over HTTPS (`credential_offer_uri`), and the metadata must belong to the
   issuer named in the offer: `credential_issuer` in the issuer metadata (OpenID4VCI 1.0) and
   `issuer` in the authorization server metadata (RFC 8414) must match. Every endpoint must be HTTPS.
+- **Login in the browser** (RFC 8252) when the issuer has the wallet's client `atesta-id-wallet`
+  (public, PKCE, redirect `http://127.0.0.1/callback`). The wallet checks for it with an
+  authorization request without cookies or credentials (Keycloak answers an unknown client or
+  redirect URI with an error page), then opens the browser and waits on 127.0.0.1, on a free port,
+  for the redirect; only that path is accepted, and `state` and PKCE apply as usual. The password,
+  OTP, WebAuthn or external IdP stay in the browser. With this client the offer's `issuer_state`
+  is not sent: offers are made for other clients, and Keycloak would both refuse it and keep it
+  in the browser's SSO session for this client, so later logins would fail too (`prompt=login`
+  does not clear it). The credentials are asked for by scope, which Keycloak grants only to an
+  account entitled to them, as it does for the offer. `--in-app-login` turns this off.
 - In the wallet's own login, the password is only submitted, over HTTPS, to a form on the same
   host as the `authorization_endpoint`. External IdPs need `--browser-login`.
 - The authorization code flow uses PKCE (S256) and a `state` that must come back unchanged. If

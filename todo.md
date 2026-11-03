@@ -118,7 +118,8 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
        wallet password with app lock. Still to check by hand on Windows (Credential Manager).
 5. [ ] **Trust list**: ship the CITCOM verifier CA (or trust list) with the app, so pilot verifiers
        show as trusted instead of "first time".
-6. [ ] **Second login when receiving a credential**: decide option A/B/C (below).
+6. [ ] **Second login when receiving a credential**: option B is in the wallet (0.10, below); the
+       issuers still have to register the `atesta-id-wallet` client (CITCOM realm, PGTEC).
 7. [ ] **Pilot plan**: who (number of users, roles), scenarios (receive, sign in, backup/restore,
        second device), what is measured (success rate, time, support requests), feedback form.
 8. [x] **First-run guide** in the GUI: what the wallet is, how to get a credential, why a password and
@@ -157,15 +158,17 @@ even if the browser already has one. Options (decide with whoever administers Ke
 - [ ] **A. Pre-authorized offers** (recommended): the page that generates the QR issues a
       `pre-authorized_code`. Keycloak already advertises it in `grant_types_supported`; the wallet
       supports it.
-- [ ] **B. Browser login**: a wallet client in Keycloak with a loopback redirect
-      (`http://127.0.0.1:PORT/callback`); reuses the browser session. The GUI option is missing.
+- [x] **B. Browser login** (0.10): when the issuer has the client `atesta-id-wallet` (public, PKCE,
+      redirect `http://127.0.0.1/callback`, any port), the wallet finds it by itself and signs in
+      through the browser, reusing its session; the password never reaches the wallet. GUI panel
+      "Continue in your browser"; `--in-app-login` turns it off. Covered by the Keycloak tests.
 - [ ] **C. Remember the wallet session** (no server changes): keep the SSO cookie in the profile.
       Only avoids later logins; the cookie gives access to the account while it is valid.
 - [ ] **GUI for wallet-initiated issuance** ("Request a credential" from a known issuer); today only
       `issue --issuer` in the CLI.
-- [ ] **Own Keycloak client per deployment** (`atesta-id-wallet`, public, PKCE, loopback redirect,
-      DPoP optional) instead of `account-console`: one client in the realm, no redeploy. Then
-      `--client-id atesta-id-wallet --redirect-uri http://localhost:8765/callback` (or remembered).
+- [ ] **Register `atesta-id-wallet`** in each issuer realm (public, standard flow only, PKCE S256,
+      redirect `http://127.0.0.1/callback`, `oid4vci.enabled`, the credential scopes as optional
+      scopes): CITCOM connectors (dataspace-on-upv), PGTEC (ask its admin). No wallet change needed.
 
 ## Open questions
 

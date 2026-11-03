@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -58,11 +59,51 @@ keyring.set_keyring(MemoryKeyring())
 i18n.set_language("en")
 
 
+class Browser:
+    """The user's browser: keeps its cookies (Keycloak's SSO session) and signs in as alice."""
+
+    def __init__(self):
+        self.session = requests.Session()
+        self.logins = 0  # login forms filled in
+        self.visits = 0
+
+    def visit(self, url):
+        self.visits += 1
+        browser = self
+
+        class Typist(ui.Prompter):
+            def login(self, host, username, *, ask_username):
+                browser.logins += 1
+                return USER, PASSWORD
+
+        location, _ = vci.headless_login(self.session, url, "http://127.0.0.1:", None, Typist())
+        self.session.get(location, timeout=20)  # back to the wallet's loopback server
+
+
 class Answers(ui.Prompter):
     """Accepts every offer and signs in as alice; records the logins and the wallet's log."""
 
     def __init__(self):
-        self.logins = 0
+        self.logins = 0  # passwords typed into the wallet
+        self.browser = Browser()
+
+    def wait_for_browser(self, host, url, wait):
+        errors = []
+
+        def run():
+            try:
+                self.browser.visit(url)
+            except Exception as exc:  # shown by the test, not lost in the thread
+                errors.append(exc)
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        try:
+            return wait(threading.Event())
+        finally:
+            thread.join(20)
+            if errors:
+                raise errors[0]
 
     def login(self, host, username, *, ask_username):
         self.logins += 1
@@ -143,6 +184,29 @@ class KeycloakIssuance(unittest.TestCase):
         with self.assertRaises(common.WalletError):
             vci.issue_from_issuer(requests.Session(), ISSUER, [CONFIG], options, self.answers)
         self.assertEqual(storage.load_credentials(), [])
+
+    def test_browser_login_with_the_wallet_client(self):
+        """The server knows atesta-id-wallet: the login happens in the browser, no password in the wallet."""
+        options = vci.IssueOptions(open_browser=False)
+        self.assert_issued(vci.issue_from_issuer(requests.Session(), ISSUER, [CONFIG], options, self.answers))
+        self.assertEqual((self.answers.logins, self.answers.browser.logins), (0, 1))
+        remembered = storage.load_config()["issuers"][ISSUER]
+        self.assertEqual((remembered["client_id"], remembered["redirect_uri"]),
+                         (vci.WALLET_CLIENT_ID, vci.LOOPBACK_REDIRECT))
+        # Next time the browser's SSO session signs in without asking.
+        self.assertEqual(len(vci.issue_from_issuer(requests.Session(), ISSUER, [CONFIG], options, self.answers)), 1)
+        self.assertEqual((self.answers.browser.logins, self.answers.browser.visits), (1, 2))
+
+    def test_browser_login_for_an_offer_made_by_another_client(self):
+        """
+        An issuer_state offer made by another client (atesta-test), as the account console makes them.
+        With its own client the wallet does not send the issuer_state: servers that bind offers would
+        refuse it and keep it in the browser's SSO session, breaking later logins too.
+        """
+        offer = create_offer("atesta-test", pre_authorized=False)
+        issued = vci.issue(requests.Session(), offer, vci.IssueOptions(open_browser=False), self.answers)
+        self.assert_issued(issued)
+        self.assertEqual((self.answers.logins, self.answers.browser.logins), (0, 1))
 
     def test_offer_bound_to_another_client(self):
         """
