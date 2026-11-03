@@ -13,7 +13,7 @@ It describes version 0.8.0.
 | Activity history | `history.enc` | Encrypted, `0600`. Records who received what; it is personal data too. |
 | Profile data key | System keyring, or `vault.json` wrapped with the wallet password | See *Encryption at rest*. |
 | Trusted CA certificates | `trusted_cas/*.pem` | Public certificates: not encrypted, `0600`. |
-| Keycloak password | Never stored | Typed into the window or the terminal, sent only over HTTPS to the authorization server's host. |
+| Keycloak password | Never stored | Typed into the window or the terminal, sent only over HTTPS to the authorization server's host. Kept in memory until that login ends; if the offer turns out to be tied to another wallet, it is sent once more to the same host for the retry without the offer, then dropped. |
 | Backups | File chosen by the user | AES-256-GCM, key derived from a password with scrypt (N=2¹⁵, r=8, p=1). Restore rejects archive entries outside the profile (no path traversal, no links). |
 
 ## Encryption at rest

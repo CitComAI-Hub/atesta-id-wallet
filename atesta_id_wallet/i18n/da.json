@@ -319,7 +319,7 @@
     "The offer does not name any credential_configuration_ids.": "Tilbuddet angiver ingen credential_configuration_ids.",
     "The offer does not say which credential_issuer it comes from.": "Tilbuddet angiver ikke, hvilken credential_issuer det kommer fra.",
     "The offer has no pre-authorized_code.": "Tilbuddet har ingen pre-authorized_code.",
-    "The offer was made for another wallet ({client}); sign in once more to receive the same credential directly.": "Tilbuddet blev lavet til en anden wallet ({client}); log ind igen for at modtage den samme legitimation direkte.",
+    "The offer was made for another wallet ({client}); asking the issuer directly for the same credential.": "Tilbuddet blev lavet til en anden wallet ({client}); den samme legitimation anmodes direkte hos udstederen.",
     "The passwords do not match": "Adgangskoderne er ikke ens",
     "The passwords do not match.": "Adgangskoderne er ikke ens.",
     "The profile '{name}' already exists.": "Profilen '{name}' findes allerede.",

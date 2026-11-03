@@ -87,7 +87,8 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   off); `issue --issuer URL [--credential ID]` without an offer; an offer tied to another wallet's
   OAuth client (Keycloak 26.7 `target client ... different from login client`, e.g. the PGTEC
   onboarding portal, made for Lissi) is retried without the offer in a new HTTP session (Keycloak keeps the
-  issuer_state note in the SSO client session): the user signs in a second time.
+  issuer_state note in the SSO client session), replaying the login of the first attempt
+  from memory: the user signs in once.
 
 ## Next: roadmap to the pilot (TRL 6)
 

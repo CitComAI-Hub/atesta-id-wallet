@@ -94,6 +94,51 @@ class DPoP:
         return response
 
 
+class _LoginReplay(Prompter):
+    """
+    Delegates to ui and keeps the last login of this issuance in memory, so that the retry of an
+    offer tied to another wallet does not ask again. Replayed once, only to the same host; dropped
+    when the issuance ends. Never written anywhere.
+    """
+
+    def __init__(self, ui: Prompter):
+        self.ui = ui
+        self.saved: tuple[str, str, str] | None = None  # host, username, password
+        self.armed = False
+
+    def login(self, host: str, username: str | None, *, ask_username: bool) -> tuple[str, str]:
+        if self.armed and self.saved and self.saved[0] == host:
+            self.armed = False
+            return self.saved[1], self.saved[2]
+        entered = self.ui.login(host, username, ask_username=ask_username)
+        self.saved = (host, *entered)
+        return entered
+
+    def forget(self) -> None:
+        self.saved, self.armed = None, False
+
+    def review_offer(self, offer: OfferSummary) -> bool:
+        return self.ui.review_offer(offer)
+
+    def text(self, prompt: str, *, default: str | None = None) -> str:
+        return self.ui.text(prompt, default=default)
+
+    def secret(self, prompt: str) -> str:
+        return self.ui.secret(prompt)
+
+    def confirm(self, question: str, *, default: bool = False) -> bool:
+        return self.ui.confirm(question, default=default)
+
+    def notice(self, message: str) -> None:
+        self.ui.notice(message)
+
+    def choose_credential(self, query_id: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+        return self.ui.choose_credential(query_id, candidates)
+
+    def consent(self, prepared: Any) -> bool:
+        return self.ui.consent(prepared)
+
+
 def _post(session: requests.Session, dpop: DPoP | None, url: str, *, access_token: str | None = None,
           **kwargs: Any) -> requests.Response:
     if dpop is None:
@@ -653,6 +698,8 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                 {"type": "openid_credential", "credential_configuration_id": c, "locations": [issuer]}
                 for c in config_ids
             ]
+        replay = _LoginReplay(ui)
+
         def login(http: requests.Session, issuer_state: str | None,
                   suggested: str | None = None) -> tuple[dict[str, Any], str | None]:
             return authorization_code_flow(
@@ -666,7 +713,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                 open_browser=options.open_browser,
                 browser_login=options.browser_login,
                 username=options.username,
-                ui=ui,
+                ui=replay,
                 suggested_username=suggested or issuer_config.get("username"),
                 dpop=dpop,
             )
@@ -683,12 +730,13 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
             # Same issuer and credentials the user just accepted, asked for without the offer: the
             # server authorizes by scope (the user must be entitled to them). In a new HTTP session:
             # Keycloak reuses the client session of an SSO login and keeps its issuer_state note, so
-            # the retry would hit the same offer. The user signs in once more.
-            log(tr("The offer was made for another wallet ({client}); sign in once more to receive the "
-                   "same credential directly.", client=bound.group(1)))
+            # the retry would hit the same offer. The login of the first attempt is replayed.
+            log(tr("The offer was made for another wallet ({client}); asking the issuer directly for the "
+                   "same credential.", client=bound.group(1)))
             fresh = requests.Session()
             fresh.headers.update(session.headers)
             fresh.verify = session.verify
+            replay.armed = True
             try:
                 token, retry_username = login(fresh, None, getattr(exc, "username", None))
             except WalletError as retry_exc:
@@ -697,6 +745,8 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                     "give the credential directly either: {error}", client=bound.group(1), error=retry_exc,
                 )) from retry_exc
             username = getattr(exc, "username", None) or retry_username
+        finally:
+            replay.forget()  # the password does not outlive the login
         proof_iss = client_id
         # Remember what worked (never the password).
         config = load_config()
