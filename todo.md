@@ -82,6 +82,11 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   AES-256-GCM under a per-profile key, kept in the system keyring or wrapped with a wallet
   password (scrypt); window lock after 5 minutes without use; `atesta-id-wallet password`.
 
+- **Unreleased: DPoP and wallet-initiated issuance**: DPoP-bound tokens (RFC 9449) on the token and
+  credential endpoints when the server advertises them, with server nonces (`--no-dpop` to turn it
+  off); `issue --issuer URL [--credential ID]` without an offer; a clear message when an offer is
+  tied to another wallet's OAuth client (Keycloak 26.7 `target client ... different from login client`).
+
 ## Next: roadmap to the pilot (TRL 6)
 
 1. [ ] **Windows code signing** (Authenticode certificate) to avoid the SmartScreen warning.
@@ -137,6 +142,11 @@ even if the browser already has one. Options (decide with whoever administers Ke
       (`http://127.0.0.1:PORT/callback`); reuses the browser session. The GUI option is missing.
 - [ ] **C. Remember the wallet session** (no server changes): keep the SSO cookie in the profile.
       Only avoids later logins; the cookie gives access to the account while it is valid.
+- [ ] **GUI for wallet-initiated issuance** ("Request a credential" from a known issuer); today only
+      `issue --issuer` in the CLI.
+- [ ] **Own Keycloak client per deployment** (`atesta-id-wallet`, public, PKCE, loopback redirect,
+      DPoP optional) instead of `account-console`: one client in the realm, no redeploy. Then
+      `--client-id atesta-id-wallet --redirect-uri http://localhost:8765/callback` (or remembered).
 
 ## Open questions
 

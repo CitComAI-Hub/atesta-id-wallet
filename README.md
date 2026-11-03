@@ -200,6 +200,12 @@ changes. See [docs/SECURITY.md](docs/SECURITY.md).
   this when Keycloak uses an external IdP, WebAuthn, etc.
 - `issue --client-id ID --redirect-uri http://localhost:8765/callback`: use a dedicated OAuth
   client registered for wallets. The wallet captures the code automatically.
+- `issue --issuer URL [--credential ID]`: ask the issuer for a credential without an offer
+  (wallet-initiated). Useful when the issuer's page only makes offers for another wallet:
+  Keycloak ties each offer to the OAuth client that created it. You must already be entitled to
+  that credential at the issuer.
+- `issue --no-dpop`: do not bind the access token with DPoP (RFC 9449). By default the wallet uses
+  DPoP whenever the authorization server advertises it, with a fresh key for every issuance.
 - `present --disclose-all`: disclose every claim, not only the requested ones.
 - `present --yes`: skip the confirmation. Refused for verifiers whose identity cannot be verified.
 - `present --allow-unverified`: accept unsigned requests. Confirmation is still required.

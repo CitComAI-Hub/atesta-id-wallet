@@ -54,7 +54,7 @@ from .storage import (
 )
 from .trust import load_trust_anchors
 from .ui import TerminalPrompter
-from .vci import IssueOptions, issue
+from .vci import IssueOptions, issue, issue_from_issuer
 from .vp import build_response, prepare_presentation, record_declined, send_presentation
 
 
@@ -65,7 +65,9 @@ WITHOUT_UNLOCK = ("reset", "profiles", "update", "language", "install-handler", 
 
 
 def cmd_issue(args: argparse.Namespace) -> int:
-    raw = args.offer or input(tr("Paste the OpenID4VCI offer (openid-credential-offer://...): "))
+    raw = None
+    if not args.issuer:
+        raw = args.offer or input(tr("Paste the OpenID4VCI offer (openid-credential-offer://...): "))
     options = IssueOptions(
         client_id=args.client_id,
         redirect_uri=args.redirect_uri,
@@ -76,8 +78,14 @@ def cmd_issue(args: argparse.Namespace) -> int:
         force_auth_code=args.force_auth_code,
         browser_login=args.browser_login,
         open_browser=not args.no_browser,
+        dpop=not args.no_dpop,
     )
-    for credential in issue(requests.Session(), raw, options, TerminalPrompter(args.yes)):
+    ui = TerminalPrompter(args.yes)
+    if args.issuer:
+        issued = issue_from_issuer(requests.Session(), args.issuer, args.credential or [], options, ui)
+    else:
+        issued = issue(requests.Session(), raw, options, ui)
+    for credential in issued:
         if credential.claims is not None:
             print(json.dumps(credential.claims, indent=2, ensure_ascii=False))
         print("\n" + tr("✔ {credential} added to the wallet.", credential=credential.configuration_id))
@@ -370,6 +378,10 @@ def build_parser() -> argparse.ArgumentParser:
     issue = sub.add_parser("issue", help=tr("Accept an openid-credential-offer:// offer"))
     issue.add_argument("--offer", help=tr("Offer (URI or JSON). If missing, it is asked for."))
     issue.add_argument("--offer-file", help=tr("File with the offer."))
+    issue.add_argument("--issuer", metavar="URL",
+                       help=tr("Ask this issuer for a credential without an offer (wallet-initiated)."))
+    issue.add_argument("--credential", action="append", metavar="ID",
+                       help=tr("With --issuer: credential_configuration_id to request (repeatable)."))
     issue.add_argument("--client-id",
                        help=tr("OAuth client_id for authorization_code (default: the last one that worked with "
                                "that issuer, or account-console)."))
@@ -385,6 +397,8 @@ def build_parser() -> argparse.ArgumentParser:
     issue.add_argument("--browser-login", action="store_true",
                        help=tr("Log in in the browser and paste the redirect URL by hand."))
     issue.add_argument("--no-browser", action="store_true", help=tr("Do not open the browser."))
+    issue.add_argument("--no-dpop", action="store_true",
+                       help=tr("Do not bind the access token with DPoP even if the server supports it."))
     issue.add_argument("--yes", "-y", action="store_true", help=tr("Do not ask for confirmation."))
     issue.set_defaults(func=cmd_issue)
 

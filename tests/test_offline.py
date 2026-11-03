@@ -2,6 +2,7 @@
 
 import base64
 import datetime
+import hashlib
 import getpass
 import http.server
 import json
@@ -954,6 +955,147 @@ class IssueFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(common.WalletError, "firma"):
             vci.issue(requests.Session(), self.offer, vci.IssueOptions(), ScriptedPrompter(texts=["1234"]))
         self.assertEqual(storage.load_credentials(), [])
+
+
+class FakeDPoPIssuer(FakeIssuer):
+    """Like FakeIssuer, but the token endpoint requires DPoP with a server nonce (RFC 9449)."""
+    seen: list = []
+
+    def _json(self, data, code=200, headers=None):
+        body = json.dumps(data).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):  # noqa: N802
+        if self.path == "/.well-known/oauth-authorization-server":
+            return self._json({"issuer": self.base, "token_endpoint": self.base + "/token",
+                               "jwks_uri": self.base + "/jwks", "dpop_signing_alg_values_supported": ["ES256"]})
+        return super().do_GET()
+
+    def _dpop(self, method, path, access_token=None):
+        proof = self.headers.get("DPoP")
+        if not proof:
+            return None
+        header, claims = common.jwt_decode_unverified(proof)
+        assert header["typ"] == "dpop+jwt" and jose._verify_jws(proof, jose.jwk_to_public_key(header["jwk"]))
+        assert claims["htm"] == method and claims["htu"] == self.base + path and claims["jti"]
+        if access_token:
+            assert claims["ath"] == common.b64u(hashlib.sha256(access_token.encode()).digest())
+        FakeDPoPIssuer.seen.append((path, claims.get("nonce")))
+        return header["jwk"], claims
+
+    def do_POST(self):  # noqa: N802
+        if self.path == "/token":
+            dpop = self._dpop("POST", "/token")
+            if dpop is None:
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                return self._json({"error": "invalid_request", "error_description": "DPoP proof is missing"}, 400)
+            if dpop[1].get("nonce") != "N1":
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                return self._json({"error": "use_dpop_nonce"}, 400, {"DPoP-Nonce": "N1"})
+            FakeDPoPIssuer.bound = jose.jwk_to_public_key(dpop[0]).public_numbers()
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            return self._json({"access_token": "AT", "token_type": "DPoP"})
+        if self.path == "/nonce":
+            return self._json({"c_nonce": "CN"}, 200, {"DPoP-Nonce": "N2"})
+        if self.path == "/credential":
+            assert self.headers.get("Authorization") == "DPoP AT"
+            jwk, _ = self._dpop("POST", "/credential", "AT")
+            assert jose.jwk_to_public_key(jwk).public_numbers() == FakeDPoPIssuer.bound
+        return super().do_POST()
+
+
+class DPoPTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = http.server.HTTPServer(("127.0.0.1", 0), FakeDPoPIssuer)
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        FakeIssuer.base = FakeDPoPIssuer.base = f"http://localhost:{cls.server.server_port}"
+        FakeIssuer.key = ec.generate_private_key(ec.SECP256R1())
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def setUp(self):
+        isolated_home(self)
+        FakeDPoPIssuer.seen = []
+        self.offer = f"openid-credential-offer://?credential_offer_uri={FakeDPoPIssuer.base}/offer"
+
+    def test_token_and_credential_bound_with_dpop(self):
+        issued = vci.issue(requests.Session(), self.offer, vci.IssueOptions(), ScriptedPrompter(texts=["1234"]))
+        self.assertEqual([c.configuration_id for c in issued], ["Legal"])
+        # Token: without nonce, retried with the server's; credential: the nonce from the nonce endpoint.
+        self.assertEqual(FakeDPoPIssuer.seen, [("/token", None), ("/token", "N1"), ("/credential", "N2")])
+
+    def test_no_dpop_option(self):
+        with self.assertRaisesRegex(common.WalletError, "DPoP proof is missing"):
+            vci.issue(requests.Session(), self.offer, vci.IssueOptions(dpop=False), ScriptedPrompter(texts=["1234"]))
+
+
+class WalletInitiatedTests(unittest.TestCase):
+    def setUp(self):
+        isolated_home(self)
+
+    def _capture(self, meta=None):
+        calls = []
+        original_issue, original_get = vci.issue, vci._get_first_json
+        vci.issue = lambda session, raw, options, ui: calls.append(json.loads(raw)) or []
+        vci._get_first_json = lambda session, urls: meta
+        self.addCleanup(setattr, vci, "issue", original_issue)
+        self.addCleanup(setattr, vci, "_get_first_json", original_get)
+        return calls
+
+    def test_builds_offer_without_issuer_state(self):
+        calls = self._capture({"credential_configurations_supported": {"ServiceCredential": {}}})
+        vci.issue_from_issuer(requests.Session(), "https://kc.example/realms/p/", [], vci.IssueOptions(),
+                              ScriptedPrompter())
+        self.assertEqual(calls, [{"credential_issuer": "https://kc.example/realms/p",
+                                  "credential_configuration_ids": ["ServiceCredential"],
+                                  "grants": {"authorization_code": {}}}])
+
+    def test_several_credentials_need_a_choice(self):
+        self._capture({"credential_configurations_supported": {"A": {}, "B": {}}})
+        with self.assertRaisesRegex(common.WalletError, "--credential: A, B"):
+            vci.issue_from_issuer(requests.Session(), "https://kc.example/realms/p", [], vci.IssueOptions(),
+                                  ScriptedPrompter())
+
+    def test_offer_for_another_client_explained(self):
+        def bound(*args, **kwargs):
+            raise common.WalletError("POST https://kc/token -> HTTP 400: {\"error\":\"invalid_authorization_details\","
+                                     "\"error_description\":\"Credential offer target client 'lissi' different "
+                                     "from login client 'account-console'\"}")
+
+        original = vci.authorization_code_flow
+        vci.authorization_code_flow = bound
+        self.addCleanup(setattr, vci, "authorization_code_flow", original)
+        server = http.server.HTTPServer(("127.0.0.1", 0), FakeIssuer)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        saved = FakeIssuer.base, FakeIssuer.key
+        self.addCleanup(lambda: (setattr(FakeIssuer, "base", saved[0]), setattr(FakeIssuer, "key", saved[1])))
+        FakeIssuer.base = f"http://localhost:{server.server_port}"
+        FakeIssuer.key = ec.generate_private_key(ec.SECP256R1())
+        offer = json.dumps({"credential_issuer": FakeIssuer.base, "credential_configuration_ids": ["Legal"],
+                            "grants": {"authorization_code": {"issuer_state": "x"}}})
+        original_meta = FakeIssuer.do_GET
+
+        def do_get(handler):
+            if handler.path == "/.well-known/oauth-authorization-server":
+                return handler._json({"issuer": FakeIssuer.base, "token_endpoint": FakeIssuer.base + "/token",
+                                      "authorization_endpoint": FakeIssuer.base + "/auth"})
+            return original_meta(handler)
+
+        FakeIssuer.do_GET = do_get
+        self.addCleanup(setattr, FakeIssuer, "do_GET", original_meta)
+        with self.assertRaisesRegex(common.WalletError, "'lissi'.*--issuer " + FakeIssuer.base):
+            vci.issue(requests.Session(), offer, vci.IssueOptions(), ScriptedPrompter())
 
 
 try:

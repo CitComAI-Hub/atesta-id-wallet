@@ -19,6 +19,7 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 import requests
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from .common import (
     Cancelled,
@@ -44,6 +45,65 @@ from .ui import OfferSummary, Prompter, TerminalPrompter
 
 
 PRE_AUTH_GRANT = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
+
+
+class DPoP:
+    """RFC 9449 proofs. The key lives only for one issuance: it binds the access token to this run."""
+
+    def __init__(self) -> None:
+        self.key = HolderKey(ec.generate_private_key(ec.SECP256R1()))
+        self.nonces: dict[str, str] = {}  # htu -> last DPoP-Nonce (the AS and the issuer may differ)
+
+    @staticmethod
+    def _htu(url: str) -> str:
+        parts = urlsplit(url)
+        return f"{parts.scheme}://{parts.netloc}{parts.path}"  # without query and fragment (§4.2)
+
+    def proof(self, method: str, url: str, access_token: str | None = None) -> str:
+        claims: dict[str, Any] = {
+            "jti": b64u(secrets.token_bytes(16)),
+            "htm": method,
+            "htu": self._htu(url),
+            "iat": int(time.time()),
+        }
+        nonce = self.nonces.get(self._htu(url))
+        if nonce:
+            claims["nonce"] = nonce
+        if access_token:
+            claims["ath"] = b64u(hashlib.sha256(access_token.encode("ascii")).digest())
+        return self.key.sign_jwt({"typ": "dpop+jwt", "jwk": self.key.public_jwk}, claims)
+
+    def remember(self, url: str, response: requests.Response) -> None:
+        nonce = response.headers.get("DPoP-Nonce")
+        if nonce:
+            self.nonces[self._htu(url)] = nonce
+
+    def post(self, session: requests.Session, url: str, *, access_token: str | None = None,
+             headers: dict[str, str] | None = None, **kwargs: Any) -> requests.Response:
+        """POST with a fresh proof; retries once if the server asks for a nonce (§8, §9)."""
+        for attempt in range(2):
+            response = session.post(url, headers={**(headers or {}), "DPoP": self.proof("POST", url, access_token)},
+                                    **kwargs)
+            self.remember(url, response)
+            asks_nonce = "use_dpop_nonce" in response.text or "use_dpop_nonce" in response.headers.get(
+                "WWW-Authenticate", "")
+            if attempt == 0 and response.status_code in (400, 401) and asks_nonce and "DPoP-Nonce" in response.headers:
+                debug("The server asked for a DPoP nonce; retrying.")
+                continue
+            return response
+        return response
+
+
+def _post(session: requests.Session, dpop: DPoP | None, url: str, *, access_token: str | None = None,
+          **kwargs: Any) -> requests.Response:
+    if dpop is None:
+        return session.post(url, **kwargs)
+    return dpop.post(session, url, access_token=access_token, **kwargs)
+
+
+def supports_dpop(as_meta: dict[str, Any]) -> bool:
+    algs = as_meta.get("dpop_signing_alg_values_supported")
+    return isinstance(algs, list) and "ES256" in algs
 
 
 def _well_known(base: str, suffix: str) -> list[str]:
@@ -272,6 +332,7 @@ def authorization_code_flow(
     username: str | None,
     ui: Prompter | None = None,
     suggested_username: str | None = None,
+    dpop: DPoP | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """Returns the token and the username used to log in (if the login was done by the wallet)."""
     ui = ui or TerminalPrompter()
@@ -342,7 +403,9 @@ def authorization_code_flow(
         raise WalletError(tr("No authorization code was received."))
 
     token_url = as_meta["token_endpoint"]
-    response = session.post(
+    response = _post(
+        session,
+        dpop,
         token_url,
         data={
             "grant_type": "authorization_code",
@@ -364,6 +427,7 @@ def pre_authorized_flow(
     client_id: str | None,
     tx_code: str | None,
     ui: Prompter | None = None,
+    dpop: DPoP | None = None,
 ) -> dict[str, Any]:
     if not isinstance(grant, dict) or not grant.get("pre-authorized_code"):
         raise WalletError(tr("The offer has no pre-authorized_code."))
@@ -378,14 +442,17 @@ def pre_authorized_flow(
     if client_id:
         data["client_id"] = client_id
     token_url = as_meta["token_endpoint"]
-    response = session.post(token_url, data=data, timeout=20)
+    response = _post(session, dpop, token_url, data=data, timeout=20)
     return _json(response, "POST", token_url)
 
 
-def _fetch_nonce(session: requests.Session, issuer_meta: dict[str, Any], token: dict[str, Any]) -> str | None:
+def _fetch_nonce(session: requests.Session, issuer_meta: dict[str, Any], token: dict[str, Any],
+                 dpop: DPoP | None = None) -> str | None:
     endpoint = issuer_meta.get("nonce_endpoint")
     if endpoint:
         response = session.post(endpoint, timeout=20)
+        if dpop is not None:
+            dpop.remember(issuer_meta["credential_endpoint"], response)  # its DPoP nonce, if any, is for that
         return _json(response, "POST", endpoint).get("c_nonce")
     return token.get("c_nonce")
 
@@ -398,11 +465,15 @@ def request_credential(
     configuration_id: str,
     *,
     proof_iss: str | None,
+    dpop: DPoP | None = None,
 ) -> list[str]:
     issuer = issuer_meta["credential_issuer"]
     endpoint = issuer_meta["credential_endpoint"]
+    # A DPoP-bound token is only accepted together with a proof made with the same key.
+    if str(token.get("token_type", "")).lower() != "dpop":
+        dpop = None
     headers = {
-        "Authorization": f"{token.get('token_type', 'Bearer')} {token['access_token']}",
+        "Authorization": f"{'DPoP' if dpop else token.get('token_type', 'Bearer')} {token['access_token']}",
         "Content-Type": "application/json",
     }
 
@@ -414,7 +485,7 @@ def request_credential(
         ):
             identifier = detail["credential_identifiers"][0]
 
-    nonce = _fetch_nonce(session, issuer_meta, token)
+    nonce = _fetch_nonce(session, issuer_meta, token, dpop)
     legacy_proof = False
     for attempt in range(3):
         claims: dict[str, Any] = {"aud": issuer, "iat": int(time.time())}
@@ -435,7 +506,8 @@ def request_credential(
             body["proofs"] = {"jwt": [proof]}
 
         debug(f"POST {endpoint} {json.dumps(body)[:200]}")
-        response = session.post(endpoint, headers=headers, json=body, timeout=30)
+        response = _post(session, dpop, endpoint, access_token=token["access_token"], headers=headers, json=body,
+                         timeout=30)
         if response.status_code < 400:
             data = _json(response, "POST", endpoint)
             break
@@ -445,7 +517,7 @@ def request_credential(
         except ValueError:
             pass
         if error.get("error") == "invalid_nonce" or error.get("c_nonce"):
-            nonce = error.get("c_nonce") or _fetch_nonce(session, issuer_meta, token)
+            nonce = error.get("c_nonce") or _fetch_nonce(session, issuer_meta, token, dpop)
             log(tr("The issuer asked for a new nonce; retrying."))
             continue
         if not legacy_proof and "proof" in response.text.lower() and attempt == 0:
@@ -484,6 +556,7 @@ class IssueOptions:
     force_auth_code: bool = False
     browser_login: bool = False
     open_browser: bool = True
+    dpop: bool = True  # only if the authorization server advertises it
 
 
 @dataclass
@@ -548,12 +621,16 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
         if name in as_meta:
             require_https(str(as_meta[name]), name)
 
+    dpop = DPoP() if options.dpop and supports_dpop(as_meta) else None
+    if dpop:
+        debug("DPoP: the access token will be bound to a key of this issuance.")
+
     grants = offer.get("grants") or {}
     if PRE_AUTH_GRANT in grants and not options.force_auth_code:
         log(tr("Pre-authorized code flow."))
         token = pre_authorized_flow(
             session, as_meta, grants[PRE_AUTH_GRANT], client_id=options.client_id_pre, tx_code=options.tx_code,
-            ui=ui,
+            ui=ui, dpop=dpop,
         )
         proof_iss = options.client_id_pre
     else:
@@ -572,20 +649,32 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                 {"type": "openid_credential", "credential_configuration_id": c, "locations": [issuer]}
                 for c in config_ids
             ]
-        token, username = authorization_code_flow(
-            session,
+        try:
+            token, username = authorization_code_flow(
+                session,
             as_meta,
-            client_id=client_id,
-            redirect_uri=redirect_uri,
-            scopes=[s for s in scopes if s],
-            issuer_state=(grants.get("authorization_code") or {}).get("issuer_state"),
-            authorization_details=details,
-            open_browser=options.open_browser,
-            browser_login=options.browser_login,
-            username=options.username,
-            ui=ui,
-            suggested_username=issuer_config.get("username"),
-        )
+                client_id=client_id,
+                redirect_uri=redirect_uri,
+                scopes=[s for s in scopes if s],
+                issuer_state=(grants.get("authorization_code") or {}).get("issuer_state"),
+                authorization_details=details,
+                open_browser=options.open_browser,
+                browser_login=options.browser_login,
+                username=options.username,
+                ui=ui,
+                suggested_username=issuer_config.get("username"),
+                dpop=dpop,
+            )
+        except WalletError as exc:
+            # Keycloak ties each offer to the OAuth client that created it (often another wallet's).
+            bound = re.search(r"offer target client '([^']+)' different from login client", str(exc))
+            if not bound:
+                raise
+            raise WalletError(tr(
+                "This offer was made for another wallet (OAuth client '{client}'), so this wallet cannot "
+                "redeem it. Ask the issuer for an offer for this wallet, or request the credential "
+                "directly: atesta-id-wallet issue --issuer {issuer}", client=bound.group(1), issuer=issuer,
+            )) from exc
         proof_iss = client_id
         # Remember what worked (never the password).
         config = load_config()
@@ -602,7 +691,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
         fmt = configs.get(config_id, {}).get("format", "unknown")
         log(tr("Requesting {credential} ({format})…", credential=config_id, format=fmt))
         for raw_credential in request_credential(
-            session, key, issuer_meta, token, config_id, proof_iss=proof_iss
+            session, key, issuer_meta, token, config_id, proof_iss=proof_iss, dpop=dpop
         ):
             if fmt in SD_JWT_FORMATS:
                 verify_issued_credential(session, raw_credential, key, issuer, as_meta)
@@ -617,6 +706,25 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     add_history({"type": "issued", "party": issuer_name, "party_id": issuer,
                  "credentials": [displays[c.configuration_id]["name"] for c in issued]})
     return issued
+
+
+def issue_from_issuer(session: requests.Session, issuer: str, config_ids: list[str], options: IssueOptions,
+                      ui: Prompter) -> list[IssuedCredential]:
+    """Wallet-initiated issuance (OpenID4VCI 1.0 §3.3.3): no offer, just the issuer and the credential."""
+    issuer = issuer.strip().rstrip("/")
+    require_https(issuer, "credential_issuer")
+    if not config_ids:
+        meta = _get_first_json(session, _well_known(issuer, "openid-credential-issuer"))
+        available = sorted((meta.get("credential_configurations_supported") or {}).keys())
+        if len(available) != 1:
+            raise WalletError(tr("Choose a credential with --credential: {ids}",
+                                 ids=", ".join(available) or "-"))
+        config_ids = available
+    # Authorization code without issuer_state: the server authorizes by scope (the user must be
+    # entitled to the credential) and the token is not tied to any other wallet's offer.
+    offer = {"credential_issuer": issuer, "credential_configuration_ids": config_ids,
+             "grants": {"authorization_code": {}}}
+    return issue(session, json.dumps(offer), options, ui)
 
 
 def pick_display(displays: Any, locales: tuple[str, ...] | None = None) -> dict[str, Any]:
