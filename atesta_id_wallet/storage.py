@@ -175,8 +175,14 @@ class TooManyAttempts(WalletError):
 
 
 def _failures() -> dict[str, Any]:
-    entry = (load_settings().get("unlock_failures") or {}).get(PROFILE) or {}
-    return entry if isinstance(entry, dict) else {}
+    failures = load_settings().get("unlock_failures")
+    entry = failures.get(PROFILE) if isinstance(failures, dict) else None
+    if not isinstance(entry, dict):
+        return {}
+    try:  # a hand-edited or damaged settings.json must not stop the wallet from opening
+        return {"count": int(entry.get("count", 0)), "until": float(entry.get("until", 0))}
+    except (TypeError, ValueError):
+        return {}
 
 
 def _save_failures(entry: dict[str, Any] | None) -> None:

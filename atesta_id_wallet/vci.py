@@ -34,6 +34,7 @@ from .common import (
     b64u,
     debug,
     host_of,
+    is_local_host,
     log,
     site_of,
     parse_json,
@@ -650,9 +651,11 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     configs = issuer_meta.get("credential_configurations_supported") or {}
     if not isinstance(configs, dict):
         configs = {}
-    issuer_name = pick_display(issuer_meta.get("display")).get("name") or site_of(issuer)
+    published_name = pick_display(issuer_meta.get("display")).get("name")
+    issuer_name = published_name or site_of(issuer)  # cards and history
     displays = {c: credential_display(configs.get(c, {}), c, issuer_name) for c in config_ids}
-    summary = OfferSummary(issuer, issuer_name, [displays[c]["name"] for c in config_ids],
+    # The review is where trust is decided: without a published name it shows the full host.
+    summary = OfferSummary(issuer, published_name or host_of(issuer), [displays[c]["name"] for c in config_ids],
                            known=issuer in load_config().get("issuers", {}))
     if not ui.review_offer(summary):
         raise Cancelled()
@@ -765,7 +768,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     # Logos are fetched only now, once the user accepted the offer, and stored with the credential:
     # showing the wallet never contacts anyone.
     issuer_logo = _logo_uri(pick_display(issuer_meta.get("display")))
-    logos = _Logos(session)
+    logos = _Logos(session, issuer)
     for config_id in config_ids:
         logos.want(config_id, displays[config_id].get("logo_uri") or issuer_logo)
     for config_id in config_ids:
@@ -866,7 +869,7 @@ def _logo_uri(entry: dict[str, Any]) -> str | None:
     return uri if isinstance(uri, str) else None
 
 
-def fetch_logo(session: requests.Session, uri: str) -> dict[str, str]:
+def fetch_logo(session: requests.Session, uri: str, issuer: str = "") -> dict[str, str]:
     """{"logo": base64, "logo_type": mime} for a small raster image, or {} (a logo is never required)."""
     try:
         if uri.startswith("data:"):
@@ -876,6 +879,10 @@ def fetch_logo(session: requests.Session, uri: str) -> dict[str, str]:
             data = base64.b64decode(payload, validate=True)
         else:
             require_https(uri, "logo")
+            # Not this computer or the local network: the address comes from the issuer's metadata.
+            if is_local_host(urlsplit(uri).hostname) and not is_local_host(urlsplit(issuer).hostname):
+                debug(f"Logo on a local address ignored: {uri[:80]}")
+                return {}
             with session.get(uri, timeout=10, stream=True, allow_redirects=False) as response:
                 if response.status_code != 200:
                     return {}
@@ -900,8 +907,9 @@ def _stored_display(display: dict[str, Any], logo: dict[str, str]) -> dict[str, 
 class _Logos:
     """Logo of each credential configuration, each address downloaded once."""
 
-    def __init__(self, session: requests.Session):
+    def __init__(self, session: requests.Session, issuer: str):
         self.session = session
+        self.issuer = issuer
         self.by_uri: dict[str, dict[str, str]] = {}
         self.by_config: dict[str, str] = {}
 
@@ -914,7 +922,7 @@ class _Logos:
         if not uri:
             return {}
         if uri not in self.by_uri:
-            self.by_uri[uri] = fetch_logo(self.session, uri)
+            self.by_uri[uri] = fetch_logo(self.session, uri, self.issuer)
         return self.by_uri[uri]
 
 

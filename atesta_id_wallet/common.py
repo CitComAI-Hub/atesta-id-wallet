@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
+import os
 import re
 import sys
 from typing import Any, Callable
@@ -69,6 +71,14 @@ def host_of(url: str) -> str:
 
 # Second-level labels under which a country code hands out domains (example.co.uk, example.com.es).
 _SECOND_LEVEL = {"ac", "co", "com", "edu", "gob", "gov", "net", "nom", "org"}
+# Shared hosting where anyone gets a subdomain: "github.io" would name every site on it, so for these
+# the full host is shown. (The proper source is the Public Suffix List; this covers the common ones.)
+_SHARED_HOSTING = {
+    "amazonaws.com", "appspot.com", "azurewebsites.net", "blogspot.com", "cloudfront.net", "duckdns.org",
+    "firebaseapp.com", "fly.dev", "github.io", "gitlab.io", "glitch.me", "herokuapp.com", "netlify.app",
+    "ngrok-free.app", "ngrok.app", "ngrok.io", "nip.io", "onrender.com", "pages.dev", "replit.dev",
+    "sslip.io", "trycloudflare.com", "vercel.app", "web.app", "workers.dev",
+}
 
 
 def site_of(url: str) -> str:
@@ -81,13 +91,33 @@ def site_of(url: str) -> str:
     if len(labels) <= 2 or host.replace(".", "").isdigit():
         return host
     keep = 3 if len(labels[-1]) == 2 and labels[-2] in _SECOND_LEVEL else 2
-    return ".".join(labels[-keep:])
+    site = ".".join(labels[-keep:])
+    return host if site in _SHARED_HOSTING else site
+
+
+def is_local_host(host: str | None) -> bool:
+    """This computer or the local network: localhost, loopback, private and link-local addresses."""
+    host = (host or "").lower().strip("[]")
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local or address.is_unspecified
+
+
+def local_http_allowed() -> bool:
+    """http://localhost only for development and the tests (ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP=1): otherwise a
+    QR code could make the wallet call services on this computer."""
+    return os.environ.get("ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP") == "1"
 
 
 def require_https(url: str, what: str) -> None:
-    """HTTPS is required except on localhost (tests)."""
+    """HTTPS is required; http://localhost only with ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP=1."""
     parts = urlsplit(url)
-    if parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in ("localhost", "127.0.0.1")):
+    if parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in ("localhost", "127.0.0.1")
+                                   and local_http_allowed()):
         return
     raise WalletError(tr("{what} must use https: {url}", what=what, url=url))
 

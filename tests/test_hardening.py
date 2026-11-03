@@ -418,3 +418,40 @@ class GuiSafetyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReviewNovember2026Tests(unittest.TestCase):
+    """Security review of the DPoP / logos / retry branch (November 2026)."""
+
+    def test_shared_hosting_is_not_named_after_the_platform(self):
+        self.assertEqual(common.site_of("https://evil.github.io/realms/x"), "evil.github.io")
+        self.assertEqual(common.site_of("https://kc.city.example.eu"), "example.eu")
+
+    def test_local_http_only_when_allowed(self):
+        saved = os.environ.pop("ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP", None)
+        self.addCleanup(lambda: os.environ.__setitem__("ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP", saved) if saved else None)
+        with self.assertRaises(common.WalletError):
+            common.require_https("http://localhost:8080/offer", "credential_offer_uri")
+        os.environ["ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP"] = "1"
+        common.require_https("http://localhost:8080/offer", "credential_offer_uri")
+
+    def test_logo_never_on_a_local_address_of_a_remote_issuer(self):
+        calls = []
+
+        class Session:
+            def get(self, *args, **kwargs):
+                calls.append(args)
+                raise AssertionError("must not be fetched")
+
+        for uri in ("https://127.0.0.1/logo.png", "https://192.168.1.10/l.png", "https://router.localhost/l.png",
+                    "https://[::1]/l.png", "https://169.254.169.254/latest/meta-data"):
+            self.assertEqual(vci.fetch_logo(Session(), uri, "https://kc.example.org/realms/x"), {}, uri)
+        self.assertEqual(calls, [])
+
+    def test_damaged_unlock_counter_does_not_block(self):
+        base.isolated_home(self)
+        storage.save_settings({"unlock_failures": {storage.PROFILE: {"count": "x", "until": "soon"}}})
+        self.assertEqual((storage.unlock_wait(), storage.attempts_before_wait()), (0, storage.FREE_ATTEMPTS))
+        storage.save_settings({"unlock_failures": ["nonsense"]})
+        self.assertEqual(storage.unlock_wait(), 0)
+

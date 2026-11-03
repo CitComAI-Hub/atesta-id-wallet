@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 os.environ["ATESTA_ID_WALLET_HOME"] = tempfile.mkdtemp(prefix="atesta-id-wallet-test-")
+os.environ["ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP"] = "1"  # the fake servers run on http://localhost
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import keyring  # noqa: E402

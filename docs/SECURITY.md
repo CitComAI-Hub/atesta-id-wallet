@@ -81,7 +81,9 @@ domain, so the wallet also decides how far it can **trust** that certificate:
 `response_uri` must equal the certificate's DNS name (OpenID4VP 1.0 §5.9.3). This stops an
 attacker from relaying a legitimate verifier's request and having your data posted elsewhere.
 `redirect_uri` verifiers must use their client_id as `response_uri`. HTTPS is required for every
-URL the wallet fetches or posts to, except `localhost` (tests).
+URL the wallet fetches or posts to. `http://localhost` is only accepted with
+`ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP=1` (development and tests): otherwise a QR code could make the wallet
+call services on this computer.
 
 **4. Replay protection and minimal disclosure.** Every presentation carries a Key-Binding JWT
 with the verifier's `nonce`, `aud = client_id` and the `sd_hash` of what is sent. Only the
@@ -97,7 +99,8 @@ A disclosure that the credential does not reference is never sent. Expired crede
 offered.
 
 **5. After the presentation.** The verifier may answer with a `redirect_uri` that the wallet opens
-in the browser. Only `https://` addresses (or `http://localhost`) are opened, never `file:`,
+in the browser. Only `https://` addresses (`http://localhost` only in development, see above) are
+opened, never `file:`,
 `javascript:` or other local schemes.
 
 **6. Untrusted text in the window.** Names, claim values and error messages come from issuers
@@ -122,6 +125,9 @@ name to look like a trusted one or inject links.
   carries a fresh proof (`jti`, `htm`, `htu` without query, `iat`; `ath` at the credential
   endpoint), and server nonces are kept per endpoint. A stolen access token is useless without
   that key. `--no-dpop` turns it off.
+- **Issuers without a published name** are shown by their domain on the cards, but by their full
+  host in the offer review, where trust is decided; on shared hosting (`*.github.io`, `*.pages.dev`,
+  ...) the full host everywhere, so a site there is not named after the platform.
 - **Offers tied to another wallet.** Keycloak 26.7 binds every offer made through
   `create-credential-offer` to the OAuth client that created it, and refuses it at the token
   endpoint when another client signed in (`Credential offer target client ... different from
@@ -152,7 +158,8 @@ name to look like a trusted one or inject links.
 - **Logos** published by the issuer (credential `display.logo`, else the issuer's) are fetched
   once, after the user accepted the offer, and stored encrypted with the credential: showing the
   wallet never contacts anyone, and declining an offer reveals nothing to a third-party logo host.
-  Only HTTPS or `data:` URIs, no redirects, at most 256 KiB, and only PNG, JPEG, GIF or WebP
+  Only HTTPS or `data:` URIs, never this computer or the local network (loopback, private and
+  link-local addresses), no redirects, at most 256 KiB, and only PNG, JPEG, GIF or WebP
   recognised by their first bytes (no SVG: scripts and external references). The window reads the
   image dimensions from the header and refuses images larger than 2048 px before decoding. A logo
   that fails any check is left out; the credential is stored anyway.
