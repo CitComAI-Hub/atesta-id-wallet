@@ -207,7 +207,7 @@ def qr_png(text: str, path: Path | None = None) -> bytes:
 
 class FakeWinreg:
     """Minimal in-memory winreg to test the link registration on Windows."""
-    HKEY_CURRENT_USER, REG_SZ = "HKCU", 1
+    HKEY_CURRENT_USER, HKEY_CLASSES_ROOT, REG_SZ = "HKCU", "HKCR", 1
 
     def __init__(self):
         self.keys = {}
@@ -231,6 +231,13 @@ class FakeWinreg:
 
     def SetValueEx(self, key, name, _reserved, _type, value):  # noqa: N802
         key.set(name, value)
+
+    def QueryValue(self, root, sub):  # noqa: N802
+        """Default value of a key; HKEY_CLASSES_ROOT shows the user's Software\\Classes."""
+        path = rf"Software\Classes\{sub}" if root == self.HKEY_CLASSES_ROOT else sub
+        if path not in self.keys:
+            raise FileNotFoundError(path)
+        return self.keys[path].get("", "")
 
     def DeleteKey(self, _root, path):  # noqa: N802
         if path not in self.keys or any(k.startswith(path + "\\") for k in self.keys):

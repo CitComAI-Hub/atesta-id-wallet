@@ -49,6 +49,7 @@ from ..desktop import (
     _screenshot_dirs,
     cmd_install_handler,
     decode_qr_image,
+    links_registered,
     route_input,
 )
 from ..i18n import tr, tr_n
@@ -375,42 +376,68 @@ class MainWindow(QMainWindow):
     # -- first start -----------------------------------------------------------
 
     def maybe_onboard(self) -> None:
-        """Three short steps the first time the wallet opens, empty; never again afterwards."""
+        """A few short steps the first time the wallet opens, empty; never again afterwards."""
         settings = load_settings()
         if settings.get("onboarded"):
             return
         settings["onboarded"] = True  # also for whoever already uses the wallet: only new users see it
         save_settings(settings)
         if storage.vault_state() == "open" and not self.records and not storage.load_history():
-            self._onboarding_step(0)
+            self._onboarding_step(0, self._onboarding_steps())
 
-    def _onboarding_step(self, index: int) -> None:
-        steps = (
-            ("wallet", tr("Welcome to Atesta ID Wallet"),
-             tr("Keep your verifiable credentials on this computer and use them to sign in to data space services. "
-                "Nothing is shared without your approval, and you see exactly what.")),
-            ("scan-line", tr("Get your first credential"),
-             tr("Open the page where the issuer gives you the credential (for example, the link in your welcome "
-                "email). Press <b>Scan QR</b> and take a screenshot of the QR code: the wallet finds it by itself.")),
-            ("lock", tr("Protect your wallet"),
-             tr("Your credentials are encrypted on this computer. A <b>wallet password</b> locks the app, and a "
-                "<b>backup</b> (Settings → Backup) is the only way to recover them if you lose this computer.")),
-        )
-        icon, title, body = steps[index]
+    def _onboarding_steps(self) -> list[str]:
+        """Decided once, at the start: registering the links in the middle must not renumber the steps."""
+        # The Windows installer and the .deb register the links; the .zip, the AppImage and a source
+        # install do not. Only offered when nothing opens them (another wallet's choice is respected).
+        links = links_registered() is False
+        return ["welcome", "first-credential", *(["links"] if links else []), "protect"]
+
+    def _onboarding_step(self, index: int, steps: list[str] | None = None) -> None:
+        steps = steps or ["welcome", "first-credential", "protect"]
+        texts = {
+            "welcome": ("wallet", tr("Welcome to Atesta ID Wallet"),
+                        tr("Keep your verifiable credentials on this computer and use them to sign in to data space "
+                           "services. Nothing is shared without your approval, and you see exactly what.")),
+            "first-credential": ("scan-line", tr("Get your first credential"),
+                                 tr("Open the page where the issuer gives you the credential (for example, the link "
+                                    "in your welcome email). Press <b>Scan QR</b> and take a screenshot of the QR "
+                                    "code: the wallet finds it by itself.")),
+            "links": ("link", tr("Open wallet links with this application"),
+                      tr("Some pages have a button or link that opens your wallet instead of a QR code. Register "
+                         "this application to open them (you can do it later in Settings → General).")),
+            "protect": ("lock", tr("Protect your wallet"),
+                        tr("Your credentials are encrypted on this computer. A <b>wallet password</b> locks the app, "
+                           "and a <b>backup</b> (Settings → Backup) is the only way to recover them if you lose "
+                           "this computer.")),
+        }
+        name = steps[index]
+        icon, title, body = texts[name]
         last = index == len(steps) - 1
         protected = vault.mode(storage.DATA_DIR) == "password"
 
         def answer(ok: bool) -> None:
             self._close_sheet()
-            if not last and ok:
-                self._onboarding_step(index + 1)
+            if name == "links":  # "Not now" only skips this step
+                def following() -> None:
+                    self._onboarding_step(index + 1, steps)
+                if ok:
+                    self.register_links(following)
+                else:
+                    following()
+            elif not last and ok:
+                self._onboarding_step(index + 1, steps)
             elif last and ok and not protected:
                 self.set_wallet_password()
 
+        if name == "links":
+            confirm, cancel = tr("Register"), tr("Not now")
+        elif not last:
+            confirm, cancel = tr("Next"), tr("Skip")
+        else:
+            confirm, cancel = (tr("Done") if protected else tr("Set a password…")), tr("Later")
         self._sheet(ConfirmSheet(
             title, body, answer, icon=icon, step=tr("Step {n} of {total}", n=index + 1, total=len(steps)),
-            confirm_text=tr("Next") if not last else (tr("Done") if protected else tr("Set a password…")),
-            cancel_text=tr("Skip") if not last else tr("Later")))
+            confirm_text=confirm, cancel_text=cancel))
 
     def _ask_text_then(self, title: str, body: str, action: Callable[[str], None], *, secret: bool = False,
                        placeholder: str = "", icon: str = "key-round", confirm_text: str | None = None) -> None:
@@ -883,12 +910,20 @@ class MainWindow(QMainWindow):
         theme.preference = preference
         self.apply_theme()  # rebuilds the window on the same page
 
-    def register_links(self) -> None:
+    def register_links(self, then: Callable[[], None] | None = None) -> None:
+        """Registers the links; 'then' runs afterwards (once the error, if any, is closed)."""
         try:
             cmd_install_handler(None)
         except (WalletError, OSError) as exc:
-            return self._result(False, tr("Could not register the links"), esc(exc))
+            def closed() -> None:
+                self._close_sheet()
+                if then:
+                    then()
+            self.last_result = (False, tr("Could not register the links"))
+            return self._sheet(ResultSheet(False, tr("Could not register the links"), esc(exc), closed))
         self.toast.show_message(tr("Links registered: they will open this application"))
+        if then:
+            then()
 
     # -- wallet lock ----------------------------------------------------------
 

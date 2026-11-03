@@ -363,6 +363,36 @@ def _uninstall_windows() -> bool:
     return removed
 
 
+def _windows_has_handler(scheme: str) -> bool:
+    if sys.platform != "win32":  # also tells type checkers that winreg exists below
+        return False
+    import winreg
+
+    try:  # HKEY_CLASSES_ROOT merges the user's (HKCU) and the machine's (HKLM) registrations
+        return bool(winreg.QueryValue(winreg.HKEY_CLASSES_ROOT, rf"{scheme}\shell\open\command"))
+    except OSError:
+        return False
+
+
+def _linux_has_handler(scheme: str) -> bool:
+    found = subprocess.run(["xdg-mime", "query", "default", f"x-scheme-handler/{scheme}"], check=False,
+                           capture_output=True, text=True, timeout=10)
+    return bool(found.stdout.strip())
+
+
+def links_registered() -> bool | None:
+    """Whether some application opens every wallet link (ours or another one); None if it cannot be
+    known or registered from here (macOS without a .app, no xdg-mime)."""
+    if sys.platform == "darwin":
+        return None
+    try:
+        check = _windows_has_handler if sys.platform == "win32" else _linux_has_handler
+        return all(check(scheme) for scheme in URI_SCHEMES)
+    except (OSError, subprocess.SubprocessError) as exc:
+        debug(f"Could not check the link handler: {exc}")
+        return None
+
+
 def cmd_install_handler(args: argparse.Namespace | None) -> int:
     gui = gui_available() and not getattr(args, "terminal", False)
     if sys.platform == "win32":

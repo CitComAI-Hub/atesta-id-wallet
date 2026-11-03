@@ -4,6 +4,7 @@ Run:  python -m unittest discover -s tests
 """
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -111,6 +112,43 @@ class WindowsHandlerTests(unittest.TestCase):
         self.assertIn(r"Software\Classes\openid-credential-offer", self.reg.keys)
         desktop.cmd_uninstall_handler(None)
         self.assertFalse(any("openid" in k for k in self.reg.keys))
+
+    def test_links_registered(self):
+        self.assertIs(desktop.links_registered(), False)
+        desktop.cmd_install_handler(None)
+        self.assertIs(desktop.links_registered(), True)
+        del self.reg.keys[r"Software\Classes\openid-credential-offer\shell\open\command"]
+        self.assertIs(desktop.links_registered(), False)  # every scheme is needed
+
+
+class LinuxHandlerQueryTests(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(setattr, sys, "platform", sys.platform)
+        sys.platform = "linux"
+        self.addCleanup(setattr, desktop.subprocess, "run", desktop.subprocess.run)
+
+    def answer(self, handlers):
+        def run(cmd, **_):
+            self.assertEqual(cmd[:3], ["xdg-mime", "query", "default"])
+            return subprocess.CompletedProcess(cmd, 0, stdout=handlers.get(cmd[3], "") + "\n", stderr="")
+        desktop.subprocess.run = run
+
+    def test_any_application_counts(self):
+        self.answer({"x-scheme-handler/openid4vp": "other-wallet.desktop",
+                     "x-scheme-handler/openid-credential-offer": "atesta-id-wallet.desktop"})
+        self.assertIs(desktop.links_registered(), True)
+
+    def test_missing_scheme(self):
+        self.answer({"x-scheme-handler/openid4vp": "atesta-id-wallet.desktop"})
+        self.assertIs(desktop.links_registered(), False)
+
+    def test_unknown_without_xdg_mime_or_on_macos(self):
+        def missing(cmd, **_):
+            raise FileNotFoundError(cmd[0])
+        desktop.subprocess.run = missing
+        self.assertIsNone(desktop.links_registered())
+        sys.platform = "darwin"
+        self.assertIsNone(desktop.links_registered())
 
 
 if __name__ == "__main__":

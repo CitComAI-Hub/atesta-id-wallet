@@ -463,7 +463,7 @@ class SettingsPage(Page):
         if sys.platform != "darwin":  # macOS needs a .app (see desktop.cmd_install_handler)
             general.append(_setting(tr("Wallet links"), tr("Open openid4vp:// and openid-credential-offer:// links "
                                                            "(QR codes on web pages) with this application."),
-                                    self._action(tr("Register"), w.register_links, "link")))
+                                    self._action(tr("Register"), lambda: w.register_links(), "link")))
         self._section(tr("General"), general)
         self._section(tr("Profile"), [
             _setting(tr("Active profile"), tr("Each profile is a separate identity, with its own key and credentials."),

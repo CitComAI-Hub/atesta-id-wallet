@@ -134,9 +134,10 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
        second device), what is measured (success rate, time, support requests), feedback form.
 8. [x] **First-run guide** in the GUI: what the wallet is, how to get a credential, why a password and
        a backup matter.
-       - [ ] Offer the wallet links in the guide where nothing registered them (Windows .zip, AppImage,
-             from source): "Open wallet links with this application" + button (= Settings → General →
-             Register). The Windows installer and the .deb already register them; not on macOS (no .app).
+       - [x] Offer the wallet links in the guide where nothing registered them (Windows .zip, AppImage,
+             from source): an extra step, "Open wallet links with this application", with *Register* /
+             *Not now* (= Settings → General → Register). Only when no application opens them (another
+             wallet's choice is respected); not on macOS (no .app) nor without `xdg-mime`.
 9. [ ] Final app icon for *Atesta ID Wallet* (replace `packaging/app-icon.svg`, run `make_icons.py`).
        Done: issuer logo (`display.logo`) on the cards.
 10. [ ] Danish, German and French reviewed by native speakers; Luxembourgish carefully.

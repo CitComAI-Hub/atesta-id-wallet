@@ -50,6 +50,9 @@ class GuiFlowTests(unittest.TestCase):
         # Never look at the user's real screenshots.
         self.addCleanup(setattr, gui, "_screenshot_dirs", gui._screenshot_dirs)
         gui._screenshot_dirs = lambda: []
+        # Nor at the links registered on this computer: they decide a step of the first-run guide.
+        self.addCleanup(setattr, gui, "links_registered", gui.links_registered)
+        gui.links_registered = lambda: True
         self.window = gui.MainWindow()
         self.asked, self.consent = [], True
         self.window._ask_offer = lambda request: self.asked.append("offer") or request.answer(True)
@@ -167,6 +170,50 @@ class GuiFlowTests(unittest.TestCase):
         self.window.maybe_onboard()
         self.assertIsNone(self.window.overlay.sheet)
         self.assertTrue(storage.load_settings()["onboarded"])
+
+    @staticmethod
+    def _labels(sheet):
+        return [w.text() for w in sheet.findChildren(type(sheet.title))]
+
+    def _guide_to_links_step(self, installer):
+        gui.links_registered = lambda: False
+        self.addCleanup(setattr, gui, "cmd_install_handler", gui.cmd_install_handler)
+        gui.cmd_install_handler = installer
+        self.window.maybe_onboard()
+        for _ in range(2):
+            self.window.overlay.sheet.findChildren(gui.QPushButton)[-1].click()  # Next
+        sheet = self.window.overlay.sheet
+        self.assertEqual(sheet.title.text(), i18n.tr("Open wallet links with this application"))
+        self.assertIn(i18n.tr("Step {n} of {total}", n=3, total=4), self._labels(sheet))
+        return sheet
+
+    def test_onboarding_offers_links_when_nothing_opens_them(self):
+        registered = []
+        sheet = self._guide_to_links_step(registered.append)
+        sheet.findChildren(gui.QPushButton)[-1].click()  # Register
+        self.assertEqual(registered, [None])
+        last = self.window.overlay.sheet
+        self.assertEqual(last.title.text(), i18n.tr("Protect your wallet"))
+        self.assertIn(i18n.tr("Step {n} of {total}", n=4, total=4), self._labels(last))
+
+    def test_onboarding_links_not_now_and_failure_continue(self):
+        registered = []
+        self._guide_to_links_step(registered.append).findChildren(gui.QPushButton)[0].click()  # Not now
+        self.assertEqual(registered, [])
+        self.assertEqual(self.window.overlay.sheet.title.text(), i18n.tr("Protect your wallet"))
+
+        def broken(_):
+            raise OSError("xdg-mime: not found")
+        storage.save_settings({})
+        self._guide_to_links_step(broken).findChildren(gui.QPushButton)[-1].click()
+        self.assertEqual(type(self.window.overlay.sheet).__name__, "ResultSheet")
+        self.window.overlay.sheet.findChildren(gui.QPushButton)[-1].click()  # Close
+        self.assertEqual(self.window.overlay.sheet.title.text(), i18n.tr("Protect your wallet"))
+
+    def test_onboarding_without_links_step(self):
+        self.window.maybe_onboard()  # links_registered() is True in setUp
+        labels = self._labels(self.window.overlay.sheet)
+        self.assertIn(i18n.tr("Step {n} of {total}", n=1, total=3), labels)
 
     def test_consent_declined_sends_nothing(self):
         holder = storage.HolderKey.load_or_create()
