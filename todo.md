@@ -84,8 +84,9 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 
 - **Unreleased: DPoP and wallet-initiated issuance**: DPoP-bound tokens (RFC 9449) on the token and
   credential endpoints when the server advertises them, with server nonces (`--no-dpop` to turn it
-  off); `issue --issuer URL [--credential ID]` without an offer; a clear message when an offer is
-  tied to another wallet's OAuth client (Keycloak 26.7 `target client ... different from login client`).
+  off); `issue --issuer URL [--credential ID]` without an offer; an offer tied to another wallet's
+  OAuth client (Keycloak 26.7 `target client ... different from login client`, e.g. the PGTEC
+  onboarding portal, made for Lissi) is retried without the offer, with no extra step for the user.
 
 ## Next: roadmap to the pilot (TRL 6)
 

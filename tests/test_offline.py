@@ -1065,14 +1065,23 @@ class WalletInitiatedTests(unittest.TestCase):
             vci.issue_from_issuer(requests.Session(), "https://kc.example/realms/p", [], vci.IssueOptions(),
                                   ScriptedPrompter())
 
-    def test_offer_for_another_client_explained(self):
-        def bound(*args, **kwargs):
-            raise common.WalletError("POST https://kc/token -> HTTP 400: {\"error\":\"invalid_authorization_details\","
-                                     "\"error_description\":\"Credential offer target client 'lissi' different "
-                                     "from login client 'account-console'\"}")
+    def _bound_offer(self, direct):
+        """FakeIssuer with an authorization_code offer that Keycloak ties to another wallet's client."""
+        calls = []
+
+        def flow(session, as_meta, *, issuer_state, **kwargs):
+            calls.append(issuer_state)
+            if issuer_state:
+                exc = common.WalletError(
+                    "POST https://kc/token -> HTTP 400: {\"error\":\"invalid_authorization_details\","
+                    "\"error_description\":\"Credential offer target client 'lissi' different "
+                    "from login client 'account-console'\"}")
+                exc.username = "joan"
+                raise exc
+            return direct()
 
         original = vci.authorization_code_flow
-        vci.authorization_code_flow = bound
+        vci.authorization_code_flow = flow
         self.addCleanup(setattr, vci, "authorization_code_flow", original)
         server = http.server.HTTPServer(("127.0.0.1", 0), FakeIssuer)
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -1082,21 +1091,39 @@ class WalletInitiatedTests(unittest.TestCase):
         self.addCleanup(lambda: (setattr(FakeIssuer, "base", saved[0]), setattr(FakeIssuer, "key", saved[1])))
         FakeIssuer.base = f"http://localhost:{server.server_port}"
         FakeIssuer.key = ec.generate_private_key(ec.SECP256R1())
-        offer = json.dumps({"credential_issuer": FakeIssuer.base, "credential_configuration_ids": ["Legal"],
-                            "grants": {"authorization_code": {"issuer_state": "x"}}})
-        original_meta = FakeIssuer.do_GET
+        original_get = FakeIssuer.do_GET
 
         def do_get(handler):
             if handler.path == "/.well-known/oauth-authorization-server":
                 return handler._json({"issuer": FakeIssuer.base, "token_endpoint": FakeIssuer.base + "/token",
-                                      "authorization_endpoint": FakeIssuer.base + "/auth"})
-            return original_meta(handler)
+                                      "authorization_endpoint": FakeIssuer.base + "/auth",
+                                      "jwks_uri": FakeIssuer.base + "/jwks"})
+            return original_get(handler)
 
         FakeIssuer.do_GET = do_get
-        self.addCleanup(setattr, FakeIssuer, "do_GET", original_meta)
-        with self.assertRaisesRegex(common.WalletError, "'lissi'.*--issuer " + FakeIssuer.base):
-            vci.issue(requests.Session(), offer, vci.IssueOptions(), ScriptedPrompter())
+        self.addCleanup(setattr, FakeIssuer, "do_GET", original_get)
+        offer = json.dumps({"credential_issuer": FakeIssuer.base, "credential_configuration_ids": ["Legal"],
+                            "grants": {"authorization_code": {"issuer_state": "x"}}})
+        return offer, calls
 
+    def test_offer_for_another_client_retried_without_offer(self):
+        offer, calls = self._bound_offer(lambda: ({"access_token": "AT", "token_type": "Bearer"}, None))
+        prompter = ScriptedPrompter()
+        issued = vci.issue(requests.Session(), offer, vci.IssueOptions(), prompter)
+        self.assertEqual(calls, ["x", None])  # the same credential, asked for without issuer_state
+        self.assertEqual([c.configuration_id for c in issued], ["Legal"])
+        self.assertEqual(sum("offer" in str(q).lower() or "primera vez" in str(q) for q in prompter.asked), 1)
+        self.assertEqual(storage.load_config()["issuers"][FakeIssuer.base]["username"], "joan")
+
+    def test_offer_for_another_client_and_no_direct_issuance(self):
+        def refused():
+            raise common.WalletError("User 'joan' does not have verifiable credential 'Legal'.")
+
+        offer, calls = self._bound_offer(refused)
+        with self.assertRaisesRegex(common.WalletError, "'lissi'.*does not have verifiable credential"):
+            vci.issue(requests.Session(), offer, vci.IssueOptions(), ScriptedPrompter())
+        self.assertEqual(calls, ["x", None])
+        self.assertEqual(storage.load_credentials(), [])
 
 try:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
