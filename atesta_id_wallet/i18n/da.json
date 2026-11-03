@@ -422,7 +422,6 @@
     "Valid from": "Gyldig fra",
     "Valid issuer signature ({iss}).": "Gyldig udstedersignatur ({iss}).",
     "Valid until": "Gyldig til",
-    "Verifiable credentials": "Verificerbare legitimationer",
     "Verifier authorities": "Verifikatormyndigheder",
     "Verifier: {name}": "Verifikator: {name}",
     "Verifiers forgotten": "Verifikatorer glemt",

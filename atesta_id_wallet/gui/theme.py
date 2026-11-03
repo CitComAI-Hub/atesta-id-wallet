@@ -178,7 +178,6 @@ QToolTip {{ background: {t.surface}; color: {t.text}; border: 1px solid {t.borde
 
 #sidebar {{ background: {t.surface}; border-right: 1px solid {t.border}; }}
 #appName {{ font-size: 16px; font-weight: 700; }}
-#appTagline {{ color: {t.text_muted}; font-size: 12px; }}
 #navButton {{
     text-align: left; padding: 10px 12px; border: none; border-radius: 10px;
     color: {t.text_muted}; font-weight: 600; background: transparent;

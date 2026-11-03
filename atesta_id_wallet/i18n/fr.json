@@ -422,7 +422,6 @@
     "Valid from": "Valide à partir du",
     "Valid issuer signature ({iss}).": "Signature de l’émetteur valide ({iss}).",
     "Valid until": "Valide jusqu’au",
-    "Verifiable credentials": "Attestations vérifiables",
     "Verifier authorities": "Autorités des vérificateurs",
     "Verifier: {name}": "Vérificateur : {name}",
     "Verifiers forgotten": "Vérificateurs oubliés",

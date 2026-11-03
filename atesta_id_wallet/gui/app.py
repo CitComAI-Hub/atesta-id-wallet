@@ -249,11 +249,7 @@ class MainWindow(QMainWindow):
         brand = QHBoxLayout()
         brand.setSpacing(10)
         brand.addWidget(IconBubble("wallet", t.on_accent, t.accent, 38))
-        names = QVBoxLayout()
-        names.setSpacing(0)
-        names.addWidget(label("Atesta ID Wallet", "appName"))
-        names.addWidget(label(tr("Verifiable credentials"), "appTagline", wrap=True))
-        brand.addLayout(names, 1)
+        brand.addWidget(label("Atesta ID Wallet", "appName"), 1, alignment=Qt.AlignVCenter)
         column.addLayout(brand)
         column.addSpacing(28)
 
