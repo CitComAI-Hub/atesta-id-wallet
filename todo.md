@@ -90,6 +90,7 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   onboarding portal, made for Lissi) is retried without the offer in a new HTTP session (Keycloak keeps the
   issuer_state note in the SSO client session), replaying the login of the first attempt
   from memory: the user signs in once.
+  Theme setting (automatic, light, dark) in *Settings → General*.
 
 ## Next: roadmap to the pilot (TRL 6)
 

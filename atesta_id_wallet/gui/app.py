@@ -200,7 +200,8 @@ class MainWindow(QMainWindow):
         self._watch_timer.timeout.connect(self._watch_tick)
         hints = QGuiApplication.styleHints()
         if hasattr(hints, "colorSchemeChanged"):
-            hints.colorSchemeChanged.connect(lambda *_: self.apply_theme())
+            hints.colorSchemeChanged.connect(lambda *_: theme.preference == "auto" and self.apply_theme())
+        theme.preference = load_settings().get("theme", "auto")
         self.apply_theme()
 
     # -- building -------------------------------------------------------------
@@ -771,6 +772,16 @@ class MainWindow(QMainWindow):
         self.toast.show_message(tr("Language: {language}", language=i18n.LANGUAGES[i18n.current()]))
 
 
+    def set_theme(self, preference: str) -> None:
+        """Saves the theme chosen in Settings and repaints the window with it."""
+        if preference not in theme.THEMES:
+            return
+        settings = load_settings()
+        settings["theme"] = preference
+        save_settings(settings)
+        theme.preference = preference
+        self.apply_theme()  # rebuilds the window on the same page
+
     def register_links(self) -> None:
         try:
             cmd_install_handler(None)
@@ -1020,6 +1031,7 @@ def listen_for_instances(window: MainWindow, name: str | None = None) -> QLocalS
 
 def main(argv: list[str] | None = None) -> int:
     i18n.set_language(i18n.resolve(load_settings().get("language"), QLocale.system().name()))
+    theme.preference = load_settings().get("theme", "auto")
     parser = argparse.ArgumentParser(prog="atesta-id-wallet-gui", description=tr("Atesta ID Wallet (graphical interface)."))
     parser.add_argument("entry", nargs="?", help=tr("openid4vp:// or openid-credential-offer:// link, or an image"))
     parser.add_argument("--profile", help=tr("Profile to use"))

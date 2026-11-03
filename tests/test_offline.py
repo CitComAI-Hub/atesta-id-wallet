@@ -1254,6 +1254,23 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(self.window.nav_buttons["wallet"].text().strip(), "Wallet")
         self.assertEqual(self.window.wallet_page.scan_button.text(), "Scan QR")
 
+    def test_theme_setting_is_persistent(self):
+        self.addCleanup(setattr, gui.theme, "preference", "auto")
+        forced = os.environ.pop("ATESTA_ID_WALLET_THEME", None)
+        if forced is not None:
+            self.addCleanup(os.environ.__setitem__, "ATESTA_ID_WALLET_THEME", forced)
+        self.window.set_theme("dark")
+        self.assertTrue(gui.theme.current().dark)
+        self.assertEqual(storage.load_settings()["theme"], "dark")
+        self.window.set_theme("light")
+        self.assertFalse(gui.theme.current().dark)
+        self.window.set_theme("nonsense")  # ignored
+        self.assertEqual(storage.load_settings()["theme"], "light")
+        gui.theme.preference = "auto"
+        other = gui.MainWindow()  # a new window (next start) reads it back from settings.json
+        self.addCleanup(other.close)
+        self.assertEqual(gui.theme.preference, "light")
+
     def test_scan_reads_clipboard(self):
         seen = []
         self.window.process = seen.append

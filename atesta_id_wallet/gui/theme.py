@@ -70,10 +70,17 @@ CARD_GRADIENTS = (
 )
 
 
+THEMES = ("auto", "light", "dark")
+# Settings → General → Theme ("theme" in settings.json); "auto" follows the system.
+preference = "auto"
+
+
 def system_is_dark() -> bool:
     forced = os.environ.get("ATESTA_ID_WALLET_THEME", "").lower()
     if forced in ("light", "dark"):
         return forced == "dark"
+    if preference in ("light", "dark"):
+        return preference == "dark"
     hints = QGuiApplication.styleHints()
     if hasattr(hints, "colorScheme"):
         return hints.colorScheme() == Qt.ColorScheme.Dark

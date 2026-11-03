@@ -383,7 +383,9 @@ class SettingsPage(Page):
         clear_layout(self.column)
         w = self.window_
 
-        general = [_setting(tr("Language"), tr("Automatic uses the language of your system."), self._language_combo())]
+        general = [_setting(tr("Language"), tr("Automatic uses the language of your system."), self._language_combo()),
+                   _setting(tr("Theme"), tr("Automatic follows the light or dark mode of your system."),
+                            self._theme_combo())]
         if sys.platform != "darwin":  # macOS needs a .app (see desktop.cmd_install_handler)
             general.append(_setting(tr("Wallet links"), tr("Open openid4vp:// and openid-credential-offer:// links "
                                                            "(QR codes on web pages) with this application."),
@@ -491,6 +493,15 @@ class SettingsPage(Page):
         combo.setCurrentIndex(max(0, combo.findData(load_settings().get("language", i18n.AUTO))))
         combo.setMinimumWidth(180)
         combo.currentIndexChanged.connect(lambda _index: self.window_.set_language(combo.currentData()))
+        return combo
+
+    def _theme_combo(self) -> QComboBox:
+        combo = QComboBox()
+        for code, name in (("auto", tr("Automatic")), ("light", tr("Light")), ("dark", tr("Dark"))):
+            combo.addItem(name, code)
+        combo.setCurrentIndex(max(0, combo.findData(theme.preference)))
+        combo.setMinimumWidth(180)
+        combo.currentIndexChanged.connect(lambda _index: self.window_.set_theme(combo.currentData()))
         return combo
 
     def _profile_combo(self) -> QComboBox:

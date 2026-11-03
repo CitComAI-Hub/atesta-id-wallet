@@ -95,7 +95,8 @@ Only one window runs at a time: a link clicked while the wallet is open goes to 
 
 Open **Atesta ID Wallet** from the applications menu. Your credentials appear as cards in
 **Wallet**. **Activity** shows what you received and what you shared with whom, and
-**Settings** holds the language, profiles, security (wallet password), backups and verifier trust.
+**Settings** holds the language, the theme (automatic, light or dark), profiles, security (wallet
+password), backups and verifier trust.
 
 <img src="docs/images/credential-light.png" alt="A credential opened: its card, its data and its details" width="820">
 
