@@ -653,9 +653,10 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                 {"type": "openid_credential", "credential_configuration_id": c, "locations": [issuer]}
                 for c in config_ids
             ]
-        def login(issuer_state: str | None) -> tuple[dict[str, Any], str | None]:
+        def login(http: requests.Session, issuer_state: str | None,
+                  suggested: str | None = None) -> tuple[dict[str, Any], str | None]:
             return authorization_code_flow(
-                session,
+                http,
                 as_meta,
                 client_id=client_id,
                 redirect_uri=redirect_uri,
@@ -666,13 +667,13 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                 browser_login=options.browser_login,
                 username=options.username,
                 ui=ui,
-                suggested_username=issuer_config.get("username"),
+                suggested_username=suggested or issuer_config.get("username"),
                 dpop=dpop,
             )
 
         issuer_state = (grants.get("authorization_code") or {}).get("issuer_state")
         try:
-            token, username = login(issuer_state)
+            token, username = login(session, issuer_state)
         except WalletError as exc:
             # Keycloak ties each offer to the OAuth client that created it (often another wallet's,
             # e.g. the PGTEC onboarding portal makes them for Lissi's client).
@@ -680,12 +681,16 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
             if not bound or not issuer_state:
                 raise
             # Same issuer and credentials the user just accepted, asked for without the offer: the
-            # server authorizes by scope (the user must be entitled to them). The SSO session of the
-            # first login is reused, so the password is not asked again.
-            log(tr("The offer was made for another wallet ({client}); asking the issuer directly for the "
-                   "same credential.", client=bound.group(1)))
+            # server authorizes by scope (the user must be entitled to them). In a new HTTP session:
+            # Keycloak reuses the client session of an SSO login and keeps its issuer_state note, so
+            # the retry would hit the same offer. The user signs in once more.
+            log(tr("The offer was made for another wallet ({client}); sign in once more to receive the "
+                   "same credential directly.", client=bound.group(1)))
+            fresh = requests.Session()
+            fresh.headers.update(session.headers)
+            fresh.verify = session.verify
             try:
-                token, retry_username = login(None)
+                token, retry_username = login(fresh, None, getattr(exc, "username", None))
             except WalletError as retry_exc:
                 raise WalletError(tr(
                     "This offer was made for another wallet (OAuth client '{client}') and the issuer did not "

@@ -1070,7 +1070,7 @@ class WalletInitiatedTests(unittest.TestCase):
         calls = []
 
         def flow(session, as_meta, *, issuer_state, **kwargs):
-            calls.append(issuer_state)
+            calls.append((issuer_state, session))
             if issuer_state:
                 exc = common.WalletError(
                     "POST https://kc/token -> HTTP 400: {\"error\":\"invalid_authorization_details\","
@@ -1109,8 +1109,13 @@ class WalletInitiatedTests(unittest.TestCase):
     def test_offer_for_another_client_retried_without_offer(self):
         offer, calls = self._bound_offer(lambda: ({"access_token": "AT", "token_type": "Bearer"}, None))
         prompter = ScriptedPrompter()
-        issued = vci.issue(requests.Session(), offer, vci.IssueOptions(), prompter)
-        self.assertEqual(calls, ["x", None])  # the same credential, asked for without issuer_state
+        first = requests.Session()
+        issued = vci.issue(first, offer, vci.IssueOptions(), prompter)
+        # The same credential, asked for without issuer_state and without the SSO cookie of the first
+        # login (Keycloak would reuse that client session and its issuer_state note).
+        self.assertEqual([state for state, _ in calls], ["x", None])
+        self.assertIs(calls[0][1], first)
+        self.assertIsNot(calls[1][1], first)
         self.assertEqual([c.configuration_id for c in issued], ["Legal"])
         self.assertEqual(sum("offer" in str(q).lower() or "primera vez" in str(q) for q in prompter.asked), 1)
         self.assertEqual(storage.load_config()["issuers"][FakeIssuer.base]["username"], "joan")
@@ -1122,7 +1127,7 @@ class WalletInitiatedTests(unittest.TestCase):
         offer, calls = self._bound_offer(refused)
         with self.assertRaisesRegex(common.WalletError, "'lissi'.*does not have verifiable credential"):
             vci.issue(requests.Session(), offer, vci.IssueOptions(), ScriptedPrompter())
-        self.assertEqual(calls, ["x", None])
+        self.assertEqual([state for state, _ in calls], ["x", None])
         self.assertEqual(storage.load_credentials(), [])
 
 try:

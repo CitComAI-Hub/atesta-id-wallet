@@ -319,7 +319,7 @@
     "The offer does not name any credential_configuration_ids.": "La oferta no indica ningún credential_configuration_ids.",
     "The offer does not say which credential_issuer it comes from.": "La oferta no indica de qué credential_issuer viene.",
     "The offer has no pre-authorized_code.": "La oferta no tiene pre-authorized_code.",
-    "The offer was made for another wallet ({client}); asking the issuer directly for the same credential.": "La oferta se generó para otra wallet ({client}); se pide la misma credencial directamente al emisor.",
+    "The offer was made for another wallet ({client}); sign in once more to receive the same credential directly.": "La oferta se generó para otra wallet ({client}); vuelve a iniciar sesión para recibir la misma credencial directamente.",
     "The passwords do not match": "Las contraseñas no coinciden",
     "The passwords do not match.": "Las contraseñas no coinciden.",
     "The profile '{name}' already exists.": "El perfil '{name}' ya existe.",

@@ -204,7 +204,7 @@ changes. See [docs/SECURITY.md](docs/SECURITY.md).
   (wallet-initiated). You must already be entitled to that credential at the issuer. Scanning a
   QR code made for another wallet does this by itself: Keycloak ties each offer to the OAuth
   client that created it (e.g. Lissi's), so the wallet asks for the same credential without the
-  offer, reusing the session of the first login.
+  offer (you sign in once more).
 - `issue --no-dpop`: do not bind the access token with DPoP (RFC 9449). By default the wallet uses
   DPoP whenever the authorization server advertises it, with a fresh key for every issuance.
 - `present --disclose-all`: disclose every claim, not only the requested ones.
