@@ -7,7 +7,7 @@ import base64
 import binascii
 import html
 import time
-from typing import Any
+from typing import Any, TypeVar
 
 from PySide6.QtCore import (
     QBuffer,
@@ -82,14 +82,58 @@ def label(text: str = "", name: str | None = None, *, wrap: bool = False, select
     return widget
 
 
+class _KeyboardFocus(QObject):
+    """
+    Qt has no :focus-visible. The focus ring is drawn only when the focus came from the keyboard
+    (Tab, Shift+Tab, a shortcut), not when a panel gives it to its default button or after a
+    click: the style sheet looks at the 'keyboardFocus' property this filter keeps up to date.
+    """
+
+    KEYBOARD = (Qt.TabFocusReason, Qt.BacktabFocusReason, Qt.ShortcutFocusReason)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() == QEvent.FocusIn:
+            _set_keyboard_focus(watched, event.reason() in self.KEYBOARD)
+        elif event.type() == QEvent.FocusOut:
+            _set_keyboard_focus(watched, False)
+        return False
+
+
+def _set_keyboard_focus(widget: Any, on: bool) -> None:
+    if bool(widget.property("keyboardFocus")) == on:
+        return
+    widget.setProperty("keyboardFocus", on)
+    widget.style().unpolish(widget)  # property selectors are only read when the widget is polished
+    widget.style().polish(widget)
+    widget.update()
+
+
+FocusableT = TypeVar("FocusableT", bound=QWidget)
+
+
+def keyboard_focus_ring(widget: FocusableT) -> FocusableT:
+    """Shows the focus ring of this widget only when it is reached with the keyboard."""
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    watcher = app.findChild(_KeyboardFocus, "keyboardFocus")  # one per application, destroyed with it
+    if watcher is None:
+        watcher = _KeyboardFocus(app)
+        watcher.setObjectName("keyboardFocus")
+    widget.installEventFilter(watcher)
+    return widget
+
+
 def button(text: str, kind: str | None = None, icon: str | None = None) -> QPushButton:
     widget = QPushButton(text)
     if kind:
         widget.setObjectName(kind)
     widget.setCursor(Qt.PointingHandCursor)
+    widget.setFocusPolicy(Qt.TabFocus)  # a click does not take the focus away from where the keyboard left it
+    keyboard_focus_ring(widget)
     if icon:
         t = theme.current()
-        color = {"primary": t.on_accent, "danger": t.danger, "dangerFilled": "#ffffff"}.get(kind or "", t.text)
+        color = {"primary": t.on_accent, "danger": t.danger, "dangerFilled": t.on_danger}.get(kind or "", t.text)
         widget.setIcon(theme.icon(icon, color, 18))
         widget.setIconSize(QSize(18, 18))
     return widget
@@ -248,6 +292,14 @@ class CredentialCard(QWidget):
         if interactive:
             self.setCursor(Qt.PointingHandCursor)
             self.setToolTip(tr("Show the credential's data"))
+            self.setFocusPolicy(Qt.StrongFocus)  # Tab reaches the cards; Enter or Space opens them
+            keyboard_focus_ring(self)
+        # Painted by hand: screen readers need the words.
+        parts = [credential_name(record), credential_issuer_name(record), credential_holder(record),
+                 tr("Expired") if is_expired(record) else ""]
+        self.setAccessibleName(", ".join(p for p in parts if p))
+        if interactive:
+            self.setAccessibleDescription(tr("Show the credential's data"))
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(24)
         shadow.setOffset(0, 6)
@@ -266,6 +318,12 @@ class CredentialCard(QWidget):
         self._shadow.setOffset(0, 6)
         super().leaveEvent(event)
 
+    def keyPressEvent(self, event: Any) -> None:  # noqa: N802
+        if self.interactive and event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self.clicked.emit()
+        else:
+            super().keyPressEvent(event)
+
     def mouseReleaseEvent(self, event: Any) -> None:  # noqa: N802
         if self.interactive and event.button() == Qt.LeftButton and self.rect().contains(event.position().toPoint()):
             self.clicked.emit()
@@ -276,6 +334,9 @@ class CredentialCard(QWidget):
         scale = w / self.WIDTH
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        expired = is_expired(self.record)
+        if expired:
+            painter.setOpacity(0.55)  # faded: it no longer works (the EXPIRED tag stays opaque)
         path = QPainterPath()
         path.addRoundedRect(QRectF(0, 0, w, h), 16 * scale, 16 * scale)
         gradient = QLinearGradient(0, 0, w, h)
@@ -336,16 +397,23 @@ class CredentialCard(QWidget):
         bottom = QRectF(pad, h - pad - 18 * scale, w - 2 * pad, 18 * scale)
         painter.drawText(bottom, Qt.AlignLeft | Qt.AlignVCenter,
                          painter.fontMetrics().elidedText(holder, Qt.ElideRight, int(w - 2 * pad - 80 * scale)))
-        if is_expired(self.record):
+        if expired:
+            painter.setOpacity(1.0)
             font.setPixelSize(round(11 * scale))
             font.setWeight(QFont.Bold)
             painter.setFont(font)
-            tag = QRectF(w - pad - 70 * scale, h - pad - 20 * scale, 70 * scale, 20 * scale)
+            tag_width = max(70 * scale, painter.fontMetrics().horizontalAdvance(tr("EXPIRED")) + 18 * scale)
+            tag = QRectF(w - pad - tag_width, h - pad - 20 * scale, tag_width, 20 * scale)
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(0, 0, 0, 90))
+            painter.setBrush(QColor(0, 0, 0, 150))
             painter.drawRoundedRect(tag, 10 * scale, 10 * scale)
             painter.setPen(QColor("#ffffff"))
             painter.drawText(tag, Qt.AlignCenter, tr("EXPIRED"))
+        if self.property("keyboardFocus"):  # focus ring, only when reached with the keyboard
+            painter.setOpacity(1.0)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor(theme.current().accent), 3))
+            painter.drawRoundedRect(QRectF(1.5, 1.5, w - 3, h - 3), 16 * scale, 16 * scale)
         painter.end()
 
 

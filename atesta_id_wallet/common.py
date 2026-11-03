@@ -14,7 +14,7 @@ from urllib.parse import SplitResult, quote, unquote, urlsplit
 
 import requests
 
-from .i18n import tr
+from .i18n import N_, tr
 
 
 __version__ = "0.10.0"
@@ -26,7 +26,14 @@ LOG_HANDLER: Callable[[str, bool], None] | None = None
 
 
 class WalletError(Exception):
-    pass
+    """
+    A problem the flow cannot get past. The message is technical (it goes to the log and to the
+    technical details); 'hint', when given, is what the window tells a non-technical user instead.
+    """
+
+    def __init__(self, message: str = "", *, hint: str | None = None):
+        super().__init__(message)
+        self.hint = hint
 
 
 class Cancelled(WalletError):
@@ -205,3 +212,24 @@ def humanize(identifier: str) -> str:
     """LegalPersonCredential -> Legal Person Credential; first_name -> First name."""
     spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|[_\-.]+", " ", identifier).strip()
     return spaced[:1].upper() + spaced[1:] if spaced else identifier
+
+
+# Names of common claims (SD-JWT VC, OpenID Connect, Keycloak) in the user's language.
+CLAIM_NAMES = {
+    "given_name": N_("First name"), "firstName": N_("First name"), "first_name": N_("First name"),
+    "family_name": N_("Last name"), "lastName": N_("Last name"), "last_name": N_("Last name"),
+    "name": N_("Name"), "email": N_("Email"), "email_verified": N_("Email verified"),
+    "username": N_("Username"), "preferred_username": N_("Username"),
+    "birthdate": N_("Date of birth"), "birth_date": N_("Date of birth"),
+    "phone_number": N_("Phone number"), "address": N_("Address"), "nationality": N_("Nationality"),
+    "organization": N_("Organisation"), "organisation": N_("Organisation"),
+    "legalName": N_("Legal name"), "legal_name": N_("Legal name"),
+    "vatID": N_("VAT number"), "vat_id": N_("VAT number"),
+    "role": N_("Role"), "roles": N_("Roles"), "groups": N_("Groups"),
+}
+
+
+def claim_label(name: str) -> str:
+    """'given_name' -> 'First name' (translated); other claims as readable words."""
+    known = CLAIM_NAMES.get(name)
+    return tr(known) if known else humanize(name)

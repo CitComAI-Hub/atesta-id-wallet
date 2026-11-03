@@ -80,7 +80,8 @@ def check_request_object(token: str, client_id: str) -> VerifierIdentity:
     prefix, value = split_client_id(client_id)
     identity = VerifierIdentity(client_id, prefix, value, value)
     if isinstance(payload.get("exp"), (int, float)) and payload["exp"] < time.time():
-        raise WalletError(tr("The verifier's request has expired; reload the QR code."))
+        raise WalletError(tr("The verifier's request has expired; reload the QR code."),
+                          hint=tr("The request has expired. Reload the page with the QR code and scan it again."))
     chain = _x5c_chain(header)
     if not chain:
         log(tr("Warning: the request object has no x5c; the verifier cannot be verified."))
@@ -120,7 +121,9 @@ def check_response_uri(identity: VerifierIdentity, response_uri: str) -> None:
     if identity.prefix == "x509_san_dns" and identity.trust != "trusted":
         if host_of(response_uri) != identity.value.lower():
             raise WalletError(tr("The request is signed by {signer} but asks to send the data to {target}. Aborting.",
-                                 signer=identity.value, target=host_of(response_uri)))
+                                 signer=identity.value, target=host_of(response_uri)),
+                              hint=tr("This request would send your data to a different website from the one asking "
+                                      "for it, so the wallet stopped. Nothing was sent."))
     elif identity.prefix == "redirect_uri" and response_uri != identity.value:
         raise WalletError(tr("response_uri ({uri}) does not match the client_id ({client_id}).", uri=response_uri,
                              client_id=identity.value))

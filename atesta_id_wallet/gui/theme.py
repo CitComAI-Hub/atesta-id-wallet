@@ -35,6 +35,8 @@ class Theme:
     warning_soft: str
     danger: str
     danger_soft: str
+    on_danger: str
+    input_border: str  # 3:1 against the surface (WCAG 1.4.11): the edge of a field must be visible
     backdrop: str
 
 
@@ -43,9 +45,10 @@ LIGHT = Theme(
     window="#f4f5f9", surface="#ffffff", surface_alt="#eef0f6", border="#e1e4ec",
     text="#141824", text_muted="#5d6577",
     accent="#5b5bd6", accent_hover="#4b4bc4", accent_soft="#ebebfc", on_accent="#ffffff",
-    success="#1d8a4e", success_soft="#e1f5e9",
+    success="#17773f", success_soft="#e1f5e9",  # text on the soft colours: at least 4.5:1 (WCAG AA)
     warning="#8a5a00", warning_soft="#fff3d1",
-    danger="#c53a3a", danger_soft="#fde6e6",
+    danger="#b03030", danger_soft="#fde6e6", on_danger="#ffffff",
+    input_border="#8a91a1",
     backdrop="rgba(16, 19, 30, 110)",
 )
 DARK = Theme(
@@ -55,7 +58,8 @@ DARK = Theme(
     accent="#8b8bf5", accent_hover="#a0a0ff", accent_soft="#262650", on_accent="#0f1117",
     success="#4cc58a", success_soft="#163526",
     warning="#f0c062", warning_soft="#3a2f13",
-    danger="#f08a8a", danger_soft="#3d1c1f",
+    danger="#f08a8a", danger_soft="#3d1c1f", on_danger="#0f1117",
+    input_border="#646b7e",
     backdrop="rgba(0, 0, 0, 150)",
 )
 
@@ -207,17 +211,28 @@ QPushButton#primary:hover {{ background: {t.accent_hover}; border-color: {t.acce
 QPushButton#primary:disabled {{ background: {t.surface_alt}; color: {t.text_muted}; border-color: {t.border}; }}
 QPushButton#danger {{ color: {t.danger}; }}
 QPushButton#danger:hover {{ background: {t.danger_soft}; border-color: {t.danger_soft}; }}
-QPushButton#dangerFilled {{ background: {t.danger}; color: #ffffff; border: 1px solid {t.danger}; }}
+QPushButton#dangerFilled {{ background: {t.danger}; color: {t.on_danger}; border: 1px solid {t.danger}; }}
 QPushButton#ghost {{ background: transparent; border: none; color: {t.text_muted}; padding: 6px 10px; }}
 QPushButton#ghost:hover {{ background: {t.surface_alt}; color: {t.text}; }}
+/* Focus ring (WCAG 2.4.7), only when the focus came from the keyboard: widgets.keyboard_focus_ring. */
+QPushButton[keyboardFocus="true"] {{ border: 2px solid {t.accent}; padding: 8px 15px; }}
+QPushButton#primary[keyboardFocus="true"], QPushButton#dangerFilled[keyboardFocus="true"] {{
+    border: 2px solid {t.text};
+}}
+QPushButton#ghost[keyboardFocus="true"] {{ border: 2px solid {t.accent}; padding: 4px 8px; }}
+#navButton[keyboardFocus="true"] {{ border: 2px solid {t.accent}; padding: 8px 10px; }}
+QComboBox[keyboardFocus="true"], QCheckBox[keyboardFocus="true"], QRadioButton[keyboardFocus="true"] {{
+    border: 2px solid {t.accent}; border-radius: 6px;
+}}
+#activityRow[keyboardFocus="true"] {{ background: {t.accent_soft}; border-radius: 10px; }}
 
 QLineEdit {{
-    background: {t.surface}; border: 1px solid {t.border}; border-radius: 10px;
+    background: {t.surface}; border: 1px solid {t.input_border}; border-radius: 10px;
     padding: 9px 12px; selection-background-color: {t.accent};
 }}
-QLineEdit:focus {{ border: 1px solid {t.accent}; }}
+QLineEdit:focus {{ border: 2px solid {t.accent}; padding: 8px 11px; }}
 QComboBox {{
-    background: {t.surface}; border: 1px solid {t.border}; border-radius: 10px; padding: 7px 12px;
+    background: {t.surface}; border: 1px solid {t.input_border}; border-radius: 10px; padding: 7px 12px;
 }}
 QComboBox:hover {{ border-color: {t.accent}; }}
 QComboBox::drop-down {{ border: none; width: 28px; }}

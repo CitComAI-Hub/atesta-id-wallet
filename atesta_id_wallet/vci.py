@@ -265,7 +265,8 @@ class _Loopback:
             return self.result["base"] + self.result["path"]
         if stop.is_set():
             raise Cancelled()
-        raise WalletError(tr("Timed out waiting for the browser redirect."))
+        raise WalletError(tr("Timed out waiting for the browser redirect."),
+                          hint=tr("Signing in in the browser took too long. Start again from the issuer's page."))
 
     def close(self) -> None:
         self.server.server_close()
@@ -377,10 +378,12 @@ def headless_login(session: requests.Session, auth_url: str, redirect_uri: str,
                 raise WalletError(tr(
                     "The login form would send the password to {target}, not to {host}. Aborting; if it is a "
                     "legitimate external identity provider, use --browser-login.", target=host_of(target), host=auth_host
-                ))
+                ), hint=tr("The sign-in page would send your password to another website, so the wallet stopped. "
+                           "Nothing was sent."))
             require_https(target, tr("The login form"))  # never the password in clear text
             if password_sent:
-                raise WalletError(tr("Login rejected: {error}", error=_page_error(page) or tr("wrong credentials")))
+                raise WalletError(tr("Login rejected: {error}", error=_page_error(page) or tr("wrong credentials")),
+                                  hint=tr("The username or password is not correct. Start again and check them."))
             ask_username = "username" in fields and not username
             entered, fields["password"] = ui.login(
                 auth_host, username or suggested_username, ask_username=ask_username
@@ -400,7 +403,9 @@ def headless_login(session: requests.Session, auth_url: str, redirect_uri: str,
         else:
             error = _page_error(page)
             raise WalletError(tr("Keycloak shows a page the wallet cannot complete{error}. Try --browser-login.",
-                                 error=f": {error}" if error else ""))
+                                 error=f": {error}" if error else ""),
+                              hint=tr("The sign-in page asks for something the wallet cannot fill in. Ask the issuer "
+                                      "for help and send them the technical details."))
         url, method, data = target, "POST", fields
     raise WalletError(tr("Too many pages during login."))
 
@@ -695,7 +700,9 @@ def request_credential(
         raise WalletError(tr("Could not get the credential after several attempts."))
 
     if "transaction_id" in data and "credentials" not in data and "credential" not in data:
-        raise WalletError(tr("The issuer answered with deferred issuance (transaction_id), which is not supported."))
+        raise WalletError(tr("The issuer answered with deferred issuance (transaction_id), which is not supported."),
+                          hint=tr("The issuer will prepare this credential later, and this wallet cannot collect it "
+                                  "that way yet."))
     credentials = data.get("credentials")
     if credentials is None and "credential" in data:
         credentials = [data["credential"]]
@@ -897,7 +904,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                 raise WalletError(tr(
                     "This offer was made for another wallet (OAuth client '{client}') and the issuer did not "
                     "give the credential directly either: {error}", client=bound.group(1), error=retry_exc,
-                )) from retry_exc
+                ), hint=retry_exc.hint) from retry_exc
             username = getattr(exc, "username", None) or retry_username
         finally:
             replay.forget()  # the password does not outlive the login
@@ -1166,7 +1173,9 @@ def verify_issued_credential(
     if not keys:
         log(tr("Warning: the issuer's public key was not found; the signature could not be verified."))
     elif not any(_verify_jws(sd.issuer_jwt, k) for k in keys):
-        raise WalletError(tr("The credential's signature does not match the issuer's keys; it is not stored."))
+        raise WalletError(tr("The credential's signature does not match the issuer's keys; it is not stored."),
+                          hint=tr("The credential received could not be checked, so it was not saved. Contact "
+                                  "the issuer and send them the technical details."))
     elif bound:
         log(tr("Valid issuer signature ({iss}).", iss=iss))
     else:
@@ -1176,4 +1185,6 @@ def verify_issued_credential(
     if cnf is None:
         log(tr("Warning: the credential is not bound to any key (no cnf); anyone who copies it can use it."))
     elif (cnf.get("x"), cnf.get("y")) != (holder.public_jwk["x"], holder.public_jwk["y"]):
-        raise WalletError(tr("The credential is bound to another key, not this wallet's; it is not stored."))
+        raise WalletError(tr("The credential is bound to another key, not this wallet's; it is not stored."),
+                          hint=tr("The credential received could not be checked, so it was not saved. Contact "
+                                  "the issuer and send them the technical details."))

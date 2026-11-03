@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QFrame,
@@ -25,25 +26,27 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..common import host_of, humanize
+from ..common import claim_label, host_of
 from ..i18n import N_, tr, tr_n
-from ..storage import credential_holder, credential_issuer_name, credential_name
+from ..storage import credential_holder, credential_issuer_name, credential_name, is_expired
 from ..ui import OfferSummary, consent_items
 from . import theme
-from .widgets import IconBubble, Spinner, button, esc, fade_in, label, password_field
+from .widgets import IconBubble, Spinner, button, esc, fade_in, keyboard_focus_ring, label, password_field
 
 # (icon, style, title, explanation) per verifier trust level.
 TRUST_COPY = {
-    "trusted": ("shield-check", "ok", N_("Trusted verifier"),
-                N_("Its certificate is issued by an authority you trust.")),
-    "pinned": ("shield-check", "ok", N_("Known verifier"),
-               N_("You have shared data with it before and its certificate has not changed.")),
-    "new": ("shield-alert", "warn", N_("First time with this verifier"),
-            N_("No trusted authority vouches for its identity. Check that the domain is the one you expect.")),
-    "changed": ("shield-x", "danger", N_("Its certificate has changed"),
-                N_("This may be a legitimate renewal or an impersonation. Do not continue if you are not sure.")),
-    "unverified": ("shield-x", "danger", N_("Unverified identity"),
-                   N_("The request is not signed: anyone could pretend to be this verifier.")),
+    "trusted": ("shield-check", "ok", N_("Trusted service"),
+                N_("An authority your wallet trusts confirms who this service is.")),
+    "pinned": ("shield-check", "ok", N_("Known service"),
+               N_("You have shared data with it before, and it is still the same service.")),
+    "new": ("shield-alert", "warn", N_("First time with this service"),
+            N_("Nobody has confirmed who this service is. Share only if you recognise the address below and you "
+               "were signing in there.")),
+    "changed": ("shield-x", "danger", N_("This service's identity has changed"),
+                N_("It may simply have renewed its certificate, or someone may be pretending to be it. Do not "
+                   "share unless you are sure.")),
+    "unverified": ("shield-x", "danger", N_("Identity not confirmed"),
+                   N_("The request is not signed: anyone could pretend to be this service.")),
 }
 
 
@@ -68,6 +71,10 @@ class Overlay(QWidget):
     def _discard(self) -> None:
         # deleteLater only acts back in the event loop: hide it now so it is not seen underneath.
         old = self.sheet
+        focused = QApplication.focusWidget()
+        if focused is not None and old.isAncestorOf(focused):
+            # Otherwise Qt hands the focus to the next widget in the chain (the first sidebar button).
+            self.parentWidget().setFocus()
         self._layout.removeWidget(old)
         old.hide()
         old.setParent(None)
@@ -175,7 +182,6 @@ class Sheet(QFrame):
 class ProgressSheet(Sheet):
     def __init__(self, title: str, detail: str = ""):
         super().__init__(width=420)
-        self.layout_.setAlignment(Qt.AlignHCenter)
         spinner = Spinner(44)
         self.layout_.addWidget(spinner, alignment=Qt.AlignHCenter)
         heading = label(title, "sheetTitle", wrap=True)
@@ -183,11 +189,12 @@ class ProgressSheet(Sheet):
         self.layout_.addWidget(heading)
         self.detail = label(detail, "sheetBody", wrap=True)
         self.detail.setAlignment(Qt.AlignCenter)
-        self.detail.setMinimumHeight(40)
+        self.detail.setVisible(bool(detail))
         self.layout_.addWidget(self.detail)
 
     def set_detail(self, text: str) -> None:
         self.detail.setText(text)
+        self.detail.setVisible(bool(text))
 
 
 class ResultSheet(Sheet):
@@ -354,19 +361,21 @@ class ChooseSheet(Sheet):
         super().__init__(icon="wallet", title=tr("Which credential do you want to use?"),
                          body=tr("Several credentials in your wallet match this request."))
         group = QButtonGroup(self)
+        candidates = sorted(candidates, key=is_expired)  # a valid one is preselected (stable: newest first)
         for index, record in enumerate(candidates):
             box = QFrame()
             box.setObjectName("claimBox")
             layout = QHBoxLayout(box)
             layout.setContentsMargins(12, 10, 12, 10)
-            radio = QRadioButton()
+            radio = keyboard_focus_ring(QRadioButton())
             radio.setChecked(index == 0)
             group.addButton(radio, index)
             layout.addWidget(radio)
             text = QVBoxLayout()
             text.setSpacing(0)
             text.addWidget(label(credential_name(record), "sectionTitle"))
-            details = " · ".join(p for p in (credential_holder(record), credential_issuer_name(record)) if p)
+            details = " · ".join(p for p in (credential_holder(record), credential_issuer_name(record),
+                                             tr("Expired") if is_expired(record) else "") if p)
             text.addWidget(label(details, "caption"))
             layout.addLayout(text, 1)
             box.mousePressEvent = lambda _e, r=radio: r.setChecked(True)  # the whole row is clickable
@@ -406,7 +415,7 @@ class ConsentSheet(Sheet):
             source = f"{credential_name(match.record)} · {credential_issuer_name(match.record)}"
             grid.addWidget(label(source, "caption", wrap=True), 0, 0, 1, 2)
             for row, (path, value) in enumerate(item.claims, start=1):
-                name = " › ".join(humanize(part) for part in path.split("."))
+                name = " › ".join(claim_label(part) for part in path.split("."))
                 grid.addWidget(label(name, "claimName"), row, 0, Qt.AlignTop)
                 grid.addWidget(label(value, "rowValue", wrap=True, selectable=True), row, 1)
             grid.setColumnStretch(1, 1)
@@ -424,7 +433,7 @@ class ConsentSheet(Sheet):
         self.add(label(tr_n("You will share {n} piece of data:", "You will share {n} pieces of data:", total),
                        "sectionTitle"))
         self.add(scroll)
-        destination = label(tr("It will be sent to {host}", host=host_of(prepared.response_uri)), "caption",
+        destination = label(tr("It will be sent to {host}", host=host_of(prepared.response_uri)), "sheetBody",
                             selectable=True)
         destination.setToolTip(prepared.response_uri)
         self.add(destination)
@@ -486,8 +495,8 @@ class ScanSheet(Sheet):
         super().__init__(icon="scan-line", title=tr("Waiting for a QR code"))
         shortcut = {"win32": tr("<b>Win + Shift + S</b>"), "darwin": tr("<b>Cmd + Ctrl + Shift + 4</b>")}.get(
             sys.platform, tr("<b>Print Screen</b>"))
-        body = label(tr("Take a screenshot of the QR code with {shortcut} or copy the link. We will detect it "
-                        "automatically.", shortcut=shortcut), "sheetBody", wrap=True, rich=True)
+        body = label(tr("Take a screenshot of the QR code with {shortcut}, or copy the link. The wallet finds it by "
+                        "itself.", shortcut=shortcut), "sheetBody", wrap=True, rich=True)
         self.add(body)
         waiting = QHBoxLayout()
         waiting.addWidget(Spinner(22))

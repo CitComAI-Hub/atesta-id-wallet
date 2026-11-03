@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import common, i18n, storage, updates, vault
-from ..common import __version__, host_of, humanize, site_of
+from ..common import __version__, claim_label, host_of, site_of
 from ..i18n import N_, tr, tr_n
 from ..storage import (
     credential_holder,
@@ -44,6 +44,7 @@ from .widgets import (
     button,
     hline,
     key_value_row,
+    keyboard_focus_ring,
     label,
     pill,
     relative_time,
@@ -125,7 +126,7 @@ class WalletPage(Page):
         self.empty = EmptyState(
             "plus", tr("Your wallet is empty"),
             tr("Open the page where the issuer gives you the credential (for example, the link in your welcome "
-               "email, or Verifiable Credentials → Issue to wallet in your Keycloak account). Then press Scan QR "
+               "email, or Verifiable Credentials → Issue to wallet in your account page). Then press Scan QR "
                "and take a screenshot of the QR code."),
             action=self._empty_action(),
         )
@@ -144,13 +145,17 @@ class WalletPage(Page):
         query = self.search.text().strip().lower()
         shown = [r for r in records if not query or query in " ".join(
             (credential_name(r), credential_issuer_name(r), credential_holder(r))).lower()]
+        shown.sort(key=is_expired)  # the ones that still work first (stable: newest first)
         for record in shown:
             card = CredentialCard(record)
             card.clicked.connect(lambda r=record: self.window_.open_credential(r))
             self.grid.addWidget(card)
         count = len(records)
-        self.header.subtitle.setText(tr_n("{n} credential · profile {profile}", "{n} credentials · profile {profile}",
-                                          count, profile=storage.PROFILE))
+        text = tr_n("{n} credential", "{n} credentials", count)
+        if len(list_profiles()) > 1:
+            text = tr_n("{n} credential · profile {profile}", "{n} credentials · profile {profile}", count,
+                        profile=storage.PROFILE)
+        self.header.subtitle.setText(text)
         self.search.setVisible(count > 0)
         self.scroll.setVisible(bool(shown))
         self.empty.setVisible(not records)
@@ -196,7 +201,7 @@ def _flatten(value: Any, prefix: str = "") -> list[tuple[str, str]]:
         for key, item in value.items():
             if key in ("_sd", "_sd_alg", "cnf", "iss", "vct", "iat", "exp", "nbf", "status", "vct#integrity"):
                 continue
-            rows += _flatten(item, f"{prefix} › {humanize(str(key))}" if prefix else humanize(str(key)))
+            rows += _flatten(item, f"{prefix} › {claim_label(str(key))}" if prefix else claim_label(str(key)))
         return rows
     if isinstance(value, list):
         if all(not isinstance(v, (dict, list)) for v in value):
@@ -270,15 +275,17 @@ class CredentialPage(Page):
         payload = sd.payload if sd else {}
         details = [
             (tr("Issuer"), _issuer_text(record)),
-            (tr("Type"), str(payload.get("vct") or record.get("credential_configuration_id") or "—")),
+
             *([(tr("Issued"), _date(payload["iat"]))] if isinstance(payload.get("iat"), (int, float)) else []),
             (tr("Received"), _date(record.get("stored_at"))),
             *([(tr("Valid from"), _not_before(payload["nbf"]))] if isinstance(payload.get("nbf"), (int, float)) else []),
             (tr("Valid until"), _date(payload.get("exp")) if payload.get("exp") else tr("Does not expire")),
-            (tr("Bound to this wallet's key"), tr("Yes") if (payload.get("cnf") or {}).get("jwk") else tr("No")),
-            (tr("Selective disclosure"), tr_n("{n} piece of data that is only shared when you approve it",
-                                              "{n} pieces of data that are only shared when you approve them, one by one",
-                                              len(sd.disclosures) if sd else 0)),
+            (tr("Protection against copies"),
+             tr("Only this wallet can use it") if (payload.get("cnf") or {}).get("jwk")
+             else tr("None: anyone with a copy could use it")),
+            (tr("Shared only with your approval"), tr_n("{n} piece of data", "{n} pieces of data",
+                                                       len(sd.disclosures) if sd else 0)),
+            (tr("Technical type"), str(payload.get("vct") or record.get("credential_configuration_id") or "—")),
         ]
         info = Panel((20, 6, 20, 6))
         for index, (key, value) in enumerate(details):
@@ -391,7 +398,7 @@ class ActivityPage(Page):
         text.addWidget(label(tr(template, party=party, credentials=credentials),
                              "sectionTitle", wrap=True))
         if event.get("claims"):
-            names = ", ".join(humanize(c.split(".")[-1]) for c in event["claims"])
+            names = ", ".join(claim_label(c.split(".")[-1]) for c in event["claims"])
             text.addWidget(label(tr("Data: {names}", names=names) if event.get("type") == "presented"
                                  else tr("Requested data: {names}", names=names), "caption", wrap=True))
         elif event.get("type") == "issued":
@@ -401,7 +408,16 @@ class ActivityPage(Page):
         if self.contact is None and event.get("party_id"):
             row.setCursor(Qt.PointingHandCursor)
             row.setToolTip(tr("Show everything with {party}", party=party))
+            row.setFocusPolicy(Qt.StrongFocus)
+            keyboard_focus_ring(row)
+            row.setObjectName("activityRow")
+            row.setAttribute(Qt.WA_StyledBackground)
+            row.setAccessibleName(tr(template, party=party, credentials=credentials))
+            row.setAccessibleDescription(tr("Show everything with {party}", party=party))
             row.mousePressEvent = lambda _e, pid=event["party_id"]: self.show_contact(pid)
+            row.keyPressEvent = lambda e, pid=event["party_id"], r=row: (
+                self.show_contact(pid) if e.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space)
+                else QWidget.keyPressEvent(r, e))
         return row
 
 
@@ -438,6 +454,11 @@ def _setting(title: str, description: str, *controls: QWidget) -> QWidget:
         text.addWidget(label(description, "caption", wrap=True))
     layout.addLayout(text, 1)
     for control in controls:
+        if not control.accessibleName() and not getattr(control, "text", lambda: "")():
+            control.setAccessibleName(title)
+        if description and not control.accessibleDescription():
+            control.setAccessibleDescription(description)
+        keyboard_focus_ring(control)
         layout.addWidget(control, alignment=Qt.AlignVCenter)
     return row
 
@@ -461,8 +482,8 @@ class SettingsPage(Page):
                    _setting(tr("Theme"), tr("Automatic follows the light or dark mode of your system."),
                             self._theme_combo())]
         if sys.platform != "darwin":  # macOS needs a .app (see desktop.cmd_install_handler)
-            general.append(_setting(tr("Wallet links"), tr("Open openid4vp:// and openid-credential-offer:// links "
-                                                           "(QR codes on web pages) with this application."),
+            general.append(_setting(tr("Wallet links"), tr("Let buttons and links on web pages open this "
+                                                           "application, instead of scanning their QR code."),
                                     self._action(tr("Register"), lambda: w.register_links(), "link")))
         self._section(tr("General"), general)
         self._section(tr("Profile"), [

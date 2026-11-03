@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import common, i18n, storage, updates, vault
-from ..common import Cancelled, WalletError, __version__
+from ..common import Cancelled, WalletError, __version__, humanize
 from ..desktop import (
     APP_ICON,
     IMAGE_SUFFIXES,
@@ -92,7 +92,7 @@ from .sheets import (
     ScanSheet,
     TextSheet,
 )
-from .widgets import CredentialCard, IconBubble, Toast, button, clear_logo_cache, esc, label
+from .widgets import CredentialCard, IconBubble, Toast, button, clear_logo_cache, esc, keyboard_focus_ring, label
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +197,7 @@ class MainWindow(QMainWindow):
         # which is still in the clipboard or in the recent screenshots.
         self._consumed: set[str] = set()
         self._page_name = "wallet"
+        self._flow = "issue"  # of the flow running (or the last one): "issue" or "present"; for its error messages
         self.available_release: updates.Release | None = None
         self._pending_entry: str | None = None  # link that arrived while the wallet was locked
         self._idle_timer = QTimer(self)
@@ -241,6 +242,10 @@ class MainWindow(QMainWindow):
         self.detail_page: CredentialPage | None = None
         row.addWidget(self.stack, 1)
         self.setCentralWidget(central)
+        # The window starts with the focus on itself, not on the first button: the focus ring is for
+        # people who press Tab (and a click on an empty area takes it away again).
+        central.setFocusPolicy(Qt.ClickFocus)
+        central.setFocus()
         self.overlay = Overlay(central)
         self.toast = Toast(central)
         self.toast.area = lambda: self.stack.geometry()  # centred on the page, not on the sidebar
@@ -272,6 +277,8 @@ class MainWindow(QMainWindow):
             nav.setObjectName("navButton")
             nav.setCheckable(True)
             nav.setCursor(Qt.PointingHandCursor)
+            nav.setFocusPolicy(Qt.TabFocus)
+            keyboard_focus_ring(nav)
             nav.setIcon(theme.icon(icon, t.text_muted, 18))
             nav.toggled.connect(lambda on, b=nav, i=icon: b.setIcon(theme.icon(i, t.accent if on else t.text_muted, 18)))
             nav.clicked.connect(lambda _=False, k=key: self._nav(k))
@@ -280,14 +287,16 @@ class MainWindow(QMainWindow):
             column.addWidget(nav)
         column.addStretch()
 
-        column.addWidget(label(tr("Profile").upper(), "sidebarCaption"))
-        column.addSpacing(4)
         self.profile_combo = QComboBox()
         self.profile_combo.setToolTip(tr("Each profile is a separate identity"))
+        keyboard_focus_ring(self.profile_combo)
         self.profile_combo.addItems(list_profiles())
         self.profile_combo.setCurrentText(storage.PROFILE)
         self.profile_combo.currentTextChanged.connect(self.switch_profile)
-        column.addWidget(self.profile_combo)
+        if len(list_profiles()) > 1:  # with a single profile the word only raises questions (Settings → Profile)
+            column.addWidget(label(tr("Profile").upper(), "sidebarCaption"))
+            column.addSpacing(4)
+            column.addWidget(self.profile_combo)
         if vault.mode(storage.DATA_DIR) == "password" and storage.vault_state() == "open":
             column.addSpacing(8)
             lock = button(tr("Lock"), None, "lock")
@@ -532,7 +541,9 @@ class MainWindow(QMainWindow):
         try:
             self.process(decode_qr_image(path, quiet=True))
         except WalletError as exc:
-            self._result(False, tr("No QR code found"), esc(exc))
+            self._result(False, tr("No QR code found"),
+                         tr("The image has no wallet QR code. Make sure the whole QR code is visible and sharp, "
+                            "and try again."), details=str(exc))
 
     def paste_link(self) -> None:
         self._stop_watch()
@@ -554,14 +565,16 @@ class MainWindow(QMainWindow):
         try:
             command, extra = route_input(entry)
         except WalletError as exc:
-            return self._result(False, tr("This is not a wallet QR code"), esc(exc))
+            return self._result(False, tr("This is not a wallet QR code"),
+                                tr("This QR code or link is not for a wallet. Look for the QR code the website shows "
+                                   "to receive a credential or to sign in with your wallet."), details=str(exc))
         raw = extra[1]
         self._consumed.add(raw.strip())
         if command == "issue":
             self._run(tr("Receiving the credential…"),
                       lambda: issue(requests.Session(), raw, IssueOptions(), self.prompter), self._issued)
         else:
-            self._run(tr("Reading the request…"), lambda: self._present(raw), self._presented)
+            self._run(tr("Reading the request…"), lambda: self._present(raw), self._presented, "present")
 
     def _present(self, raw: str) -> tuple[Any, str | None]:
         session = requests.Session()
@@ -600,8 +613,9 @@ class MainWindow(QMainWindow):
         if redirect_uri:  # send_presentation only returns web addresses
             webbrowser.open(redirect_uri)
 
-    def _run(self, title: str, task: Callable[[], Any], on_done: Callable[[Any], None]) -> None:
+    def _run(self, title: str, task: Callable[[], Any], on_done: Callable[[Any], None], flow: str = "issue") -> None:
         self.busy = True
+        self._flow = flow
         self.last_result = None
         self._progress_title = title
         self._show_progress()
@@ -636,18 +650,29 @@ class MainWindow(QMainWindow):
             # Can an issuer this profile already used give it? Then offer to ask for it right away.
             return self._run(tr("Looking for an issuer that gives it…"),
                              lambda: known_issuer_for(requests.Session(), exc.wanted),
-                             lambda found: self._missing_credential(exc, found))
+                             lambda found: self._missing_credential(exc, found), "present")
+        receiving = self._flow == "issue"
         if isinstance(exc, requests.RequestException):
-            return self._result(False, tr("Could not connect"), tr("Check your internet connection. ({error})",
-                                                                   error=esc(exc)))
+            return self._result(False, tr("Could not connect"),
+                                tr("The wallet could not reach the service. Check your internet connection and try "
+                                   "again in a moment."), details=str(exc))
         if isinstance(exc, WalletError):
-            return self._result(False, tr("Could not complete it"), esc(exc))
+            title = tr("Could not receive the credential") if receiving else tr("Could not share your data")
+            body = exc.hint or (
+                tr("The issuer's service answered in a way the wallet did not expect. Try again later; if it keeps "
+                   "happening, send the technical details to the issuer.") if receiving else
+                tr("The request could not be processed, and nothing was sent. Reload the page with the QR code and "
+                   "try again; if it keeps happening, send the technical details to the service."))
+            return self._result(False, title, esc(body), details=str(exc))
         self._on_log(trace, True)
-        self._result(False, tr("Unexpected error"), esc(f"{type(exc).__name__}: {exc}"), details=trace)
+        self._result(False, tr("Something went wrong"),
+                     tr("This is a problem in the wallet itself, and nothing was sent. Please tell the Atesta ID Wallet "
+                        "team and include the technical details."),
+                     details=f"{type(exc).__name__}: {exc}\n\n{trace}")
 
     def _missing_credential(self, exc: NoMatchingCredential, found: tuple[str, str, str] | None) -> None:
         verifier = esc(exc.verifier or tr("The verifier"))
-        wanted = esc(", ".join(exc.wanted))
+        wanted = esc(", ".join(humanize(w.rstrip("/").rsplit("/", 1)[-1]) for w in exc.wanted))
         if not found:
             return self._result(False, tr("You do not have the requested credential"),
                                 tr("<b>{verifier}</b> asks for: {wanted}. Get it from its issuer first and try again.",
@@ -669,10 +694,8 @@ class MainWindow(QMainWindow):
 
     @Slot(str, bool)
     def _on_log(self, message: str, is_debug: bool) -> None:
+        # Only in the technical log (Settings → Advanced): the protocol steps mean nothing to most people.
         self.log_text += ("· " if is_debug else "") + message + "\n"
-        sheet = self.overlay.sheet
-        if self.busy and not is_debug and isinstance(sheet, ProgressSheet):
-            sheet.set_detail(message)
 
     # -- questions from the flow --------------------------------------------------
 
@@ -774,9 +797,7 @@ class MainWindow(QMainWindow):
                 return self._result(False, tr("Could not create the profile"), esc(exc))
             set_profile(name.strip())
             _remember_profile(name.strip())
-            self._sync_profile_widgets()
-            self.reload()
-            self._go(self._page_name)
+            self._build()  # the sidebar shows the profile selector only with more than one
             self.toast.show_message(tr("Profile «{name}» created", name=name.strip()))
         self._ask_text_then(tr("New profile"), tr("A profile is a separate identity, with its own key and credentials "
                                                   "(for example, «work»)."), create, placeholder=tr("Profile name"),
@@ -792,9 +813,7 @@ class MainWindow(QMainWindow):
             remove_profile(name)
             set_profile(DEFAULT_PROFILE)
             _remember_profile(DEFAULT_PROFILE)
-            self._sync_profile_widgets()
-            self.reload()
-            self._go(self._page_name)
+            self._build()  # the sidebar shows the profile selector only with more than one
             self.toast.show_message(tr("Profile «{name}» removed", name=name))
         self._confirm(tr("Remove the profile «{name}»?", name=esc(name)), tr("Its key and all its credentials will be "
                       "deleted. This cannot be undone."), delete, confirm_text=tr("Remove"), danger=True, icon="trash-2")
@@ -831,7 +850,9 @@ class MainWindow(QMainWindow):
                     return self._choose_password(title, body, action, tr("The passwords do not match. Try again."))
                 action(password)
             self._ask_text_then(tr("Repeat the password"), "", second, secret=True, icon="lock")
-        shown = f"<span style='color:{theme.current().danger}'><b>{error}</b></span><br>{body}" if error else body
+        rule = tr("At least {n} characters.", n=vault.MIN_PASSWORD)
+        shown = (f"<span style='color:{theme.current().danger}'><b>{error}</b></span><br>{body}" if error
+                 else f"{body}<br><b>{rule}</b>")
         self._ask_text_then(title, shown, first, secret=True, icon="lock")
 
     def restore(self) -> None:

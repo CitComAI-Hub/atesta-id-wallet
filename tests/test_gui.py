@@ -21,7 +21,7 @@ from helpers import (  # noqa: E402  (first: sets the test environment)
 )
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 
-from atesta_id_wallet import i18n, storage  # noqa: E402
+from atesta_id_wallet import common, i18n, storage  # noqa: E402
 
 
 @unittest.skipIf(gui is None, "PySide6 not installed")
@@ -215,6 +215,59 @@ class GuiFlowTests(unittest.TestCase):
         labels = self._labels(self.window.overlay.sheet)
         self.assertIn(i18n.tr("Step {n} of {total}", n=1, total=3), labels)
 
+    def test_errors_in_plain_words(self):
+        # The technical message goes behind "Show technical details"; the hint, if any, is what is read.
+        self.window._flow = "issue"
+        self.window._on_failed(common.WalletError("credential_endpoint missing", hint="Plain words."), "")
+        sheet = self.window.overlay.sheet
+        self.assertEqual(sheet.body.text(), "Plain words.")
+        self.assertNotIn("credential_endpoint", sheet.body.text())
+        self.assertTrue(any(w.text() == "credential_endpoint missing" for w in sheet.findChildren(type(sheet.body))))
+        self.window._flow = "present"
+        self.window._on_failed(common.WalletError("x5c broken"), "")
+        self.assertNotIn("x5c", self.window.overlay.sheet.body.text())
+        self.assertIn("no se ha enviado nada", self.window.overlay.sheet.body.text())
+
+    def test_progress_shows_no_protocol_steps(self):
+        self.window._progress_title = "…"
+        self.window._show_progress()
+        self.window.busy = True
+        self.window._on_log("Requesting MembershipCredential (dc+sd-jwt)…", False)
+        self.window.busy = False
+        self.assertFalse(self.window.overlay.sheet.detail.isVisibleTo(self.window.overlay.sheet))
+        self.assertIn("Requesting MembershipCredential", self.window.log_text)  # still in Settings → Advanced
+
+    def test_focus_ring_only_from_the_keyboard(self):
+        self.window.show()
+        self.window.activateWindow()
+        self.window.forget_verifiers()  # a panel: its default button gets the focus, without a ring
+        self.app.processEvents()
+        cancel, accept = self.window.overlay.sheet.findChildren(gui.QPushButton)[-2:]
+        self.assertTrue(accept.hasFocus())
+        self.assertFalse(accept.property("keyboardFocus"))
+        cancel.setFocus(gui.Qt.TabFocusReason)  # as Tab does
+        self.assertTrue(cancel.property("keyboardFocus"))
+        accept.setFocus(gui.Qt.MouseFocusReason)
+        self.assertFalse(accept.property("keyboardFocus"))
+        self.assertFalse(cancel.property("keyboardFocus"))  # the ring left with the focus
+        self.window._close_sheet()
+
+    def test_cards_work_with_the_keyboard(self):
+        holder = storage.HolderKey.load_or_create()
+        storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
+        self.window.reload()
+        self.window._go("wallet")
+        card = self.window.wallet_page.grid_host.findChildren(gui.CredentialCard)[0]
+        self.assertIn("Legal Person Credential", card.accessibleName())
+        self.assertNotEqual(card.focusPolicy(), gui.Qt.NoFocus)
+        from PySide6.QtGui import QKeyEvent
+        from PySide6.QtWidgets import QLabel
+        card.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, gui.Qt.Key_Return, gui.Qt.NoModifier))
+        self.assertIsNotNone(self.window.detail_page)
+        labels = [w.text() for w in self.window.detail_page.findChildren(QLabel)]
+        self.assertIn("Nombre", labels)  # firstName, in the interface language
+        self.assertIn("Correo electrónico", labels)
+
     def test_consent_declined_sends_nothing(self):
         holder = storage.HolderKey.load_or_create()
         storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
@@ -298,3 +351,28 @@ class GuiFlowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(gui is None, "PySide6 not installed")
+class ContrastTests(unittest.TestCase):
+    """WCAG 2.2 AA: 4.5:1 for text, 3:1 for the edges of fields (1.4.11)."""
+
+    @staticmethod
+    def ratio(a, b):
+        def lum(colour):
+            r, g, b_ = (int(colour.lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4))
+            f = lambda c: c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4  # noqa: E731
+            return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b_)
+        high, low = sorted((lum(a), lum(b)), reverse=True)
+        return (high + 0.05) / (low + 0.05)
+
+    def test_theme_colours(self):
+        for t in (gui.theme.LIGHT, gui.theme.DARK):
+            with self.subTest(dark=t.dark):
+                for text, background in ((t.text, t.window), (t.text_muted, t.window), (t.text_muted, t.surface),
+                                         (t.text_muted, t.surface_alt), (t.on_accent, t.accent),
+                                         (t.accent, t.accent_soft), (t.success, t.success_soft),
+                                         (t.warning, t.warning_soft), (t.danger, t.danger_soft),
+                                         (t.danger, t.surface), (t.on_danger, t.danger)):
+                    self.assertGreaterEqual(self.ratio(text, background), 4.5, (text, background))
+                self.assertGreaterEqual(self.ratio(t.input_border, t.surface), 3, "field edges")

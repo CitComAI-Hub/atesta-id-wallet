@@ -248,7 +248,7 @@ class GuiLockTests(VaultTestCase):
         self.window.unlock()
         title, answer = self.asked.pop()
         answer("wrong password")
-        self.assertEqual(self.asked[-1][0], "Contraseña del wallet")  # asked again
+        self.assertEqual(self.asked[-1][0], "Contraseña de la cartera")  # asked again
         self.asked.pop()[1](PASSWORD)
         self.assertEqual(len(self.window.records), 1)
         self.assertIs(self.window.stack.currentWidget(), self.window.wallet_page)
@@ -257,7 +257,7 @@ class GuiLockTests(VaultTestCase):
     def test_link_waits_for_the_password(self):
         handled = []
         self.window.process("openid4vp://?request_uri=https://v/r")
-        self.window._run = lambda title, task, done: handled.append(title)
+        self.window._run = lambda title, task, done, *flow: handled.append(title)
         self.asked.pop()[1](PASSWORD)
         self.assertEqual(handled, ["Leyendo la petición…"])
 
