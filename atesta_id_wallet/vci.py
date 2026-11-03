@@ -33,6 +33,7 @@ from .common import (
     debug,
     host_of,
     log,
+    site_of,
     parse_json,
     require_https,
 )
@@ -647,7 +648,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     configs = issuer_meta.get("credential_configurations_supported") or {}
     if not isinstance(configs, dict):
         configs = {}
-    issuer_name = pick_display(issuer_meta.get("display")).get("name") or host_of(issuer)
+    issuer_name = pick_display(issuer_meta.get("display")).get("name") or site_of(issuer)
     displays = {c: credential_display(configs.get(c, {}), c, issuer_name) for c in config_ids}
     summary = OfferSummary(issuer, issuer_name, [displays[c]["name"] for c in config_ids],
                            known=issuer in load_config().get("issuers", {}))

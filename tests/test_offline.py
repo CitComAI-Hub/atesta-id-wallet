@@ -1038,6 +1038,23 @@ class DPoPTests(unittest.TestCase):
             vci.issue(requests.Session(), self.offer, vci.IssueOptions(dpop=False), ScriptedPrompter(texts=["1234"]))
 
 
+class IssuerNameTests(unittest.TestCase):
+    def test_site_of(self):
+        self.assertEqual(common.site_of("https://keycloak-ciudadania.pgtec-vrain-dataspace.eu/realms/p"),
+                         "pgtec-vrain-dataspace.eu")
+        self.assertEqual(common.site_of("https://kc.city.gov.uk/realms/p"), "city.gov.uk")
+        self.assertEqual(common.site_of("https://example.org"), "example.org")
+        self.assertEqual(common.site_of("http://localhost:8080/x"), "localhost")
+        self.assertEqual(common.site_of("http://127.0.0.1:8080/x"), "127.0.0.1")
+
+    def test_stored_host_shown_as_site(self):
+        issuer = "https://keycloak-ciudadania.pgtec-vrain-dataspace.eu/realms/provider"
+        old = {"issuer": issuer, "display": {"issuer_name": "keycloak-ciudadania.pgtec-vrain-dataspace.eu"}}
+        self.assertEqual(storage.credential_issuer_name(old), "pgtec-vrain-dataspace.eu")
+        named = {"issuer": issuer, "display": {"issuer_name": "Ayuntamiento"}}
+        self.assertEqual(storage.credential_issuer_name(named), "Ayuntamiento")
+
+
 class WalletInitiatedTests(unittest.TestCase):
     def setUp(self):
         isolated_home(self)

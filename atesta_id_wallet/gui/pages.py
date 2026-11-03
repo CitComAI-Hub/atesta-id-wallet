@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import common, i18n, storage, updates, vault
-from ..common import __version__, host_of, humanize
+from ..common import __version__, host_of, humanize, site_of
 from ..i18n import N_, tr, tr_n
 from ..storage import (
     credential_holder,
@@ -123,8 +123,9 @@ class WalletPage(Page):
 
         self.empty = EmptyState(
             "plus", tr("Your wallet is empty"),
-            tr("Ask an issuer for a credential (for example, in your Keycloak account: Verifiable Credentials → "
-               "Issue to wallet) and scan the QR code it shows you."),
+            tr("Open the page where the issuer gives you the credential (for example, the link in your welcome "
+               "email, or Verifiable Credentials → Issue to wallet in your Keycloak account). Then press Scan QR "
+               "and take a screenshot of the QR code."),
             action=self._empty_action(),
         )
         self.root.addWidget(self.empty, 1)
@@ -207,8 +208,9 @@ def _flatten(value: Any, prefix: str = "") -> list[tuple[str, str]]:
 
 
 def _issuer_text(record: dict[str, Any]) -> str:
-    name, host = credential_issuer_name(record), host_of(record.get("issuer", ""))
-    return name if name == host else f"{name} ({host})"
+    issuer = record.get("issuer", "")
+    name, host = credential_issuer_name(record), host_of(issuer)
+    return host if name in (host, site_of(issuer)) else f"{name} ({host})"
 
 
 def _date(timestamp: Any) -> str:
@@ -324,6 +326,9 @@ class ActivityPage(Page):
     def _row(self, event: dict[str, Any]) -> QWidget:
         t = theme.current()
         icon, tone, template = EVENT_STYLE.get(event.get("type"), ("info", "accent", "{party}"))
+        party = event.get("party", "?")
+        if event.get("type") == "issued" and party == host_of(event.get("party_id", "")):
+            party = site_of(event["party_id"])  # older events stored the host of issuers with no name
         color, soft = {"accent": (t.accent, t.accent_soft), "ok": (t.success, t.success_soft),
                        "danger": (t.danger, t.danger_soft)}[tone]
         row = QWidget()
@@ -334,7 +339,7 @@ class ActivityPage(Page):
         text = QVBoxLayout()
         text.setSpacing(3)
         credentials = ", ".join(event.get("credentials") or []) or tr("a credential")
-        text.addWidget(label(tr(template, party=event.get("party", "?"), credentials=credentials),
+        text.addWidget(label(tr(template, party=party, credentials=credentials),
                              "sectionTitle", wrap=True))
         if event.get("claims"):
             names = ", ".join(humanize(c.split(".")[-1]) for c in event["claims"])

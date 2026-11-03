@@ -91,6 +91,8 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   issuer_state note in the SSO client session), replaying the login of the first attempt
   from memory: the user signs in once.
   Theme setting (automatic, light, dark) in *Settings → General*.
+  Issuers with no published name are shown by their domain (`pgtec-vrain-dataspace.eu`, not the
+  Keycloak host); dates as `3 Nov 2026`; empty-wallet text no longer CITCOM-only.
 
 ## Next: roadmap to the pilot (TRL 6)
 

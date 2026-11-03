@@ -67,6 +67,23 @@ def host_of(url: str) -> str:
     return (urlsplit(url).hostname or "").lower()
 
 
+# Second-level labels under which a country code hands out domains (example.co.uk, example.com.es).
+_SECOND_LEVEL = {"ac", "co", "com", "edu", "gob", "gov", "net", "nom", "org"}
+
+
+def site_of(url: str) -> str:
+    """
+    The organisation's domain, to name an issuer that publishes no name: keycloak.city.example.eu
+    -> city.example.eu is not it, example.eu is (the full host is still shown where trust is decided).
+    """
+    host = host_of(url)
+    labels = host.split(".")
+    if len(labels) <= 2 or host.replace(".", "").isdigit():
+        return host
+    keep = 3 if len(labels[-1]) == 2 and labels[-2] in _SECOND_LEVEL else 2
+    return ".".join(labels[-keep:])
+
+
 def require_https(url: str, what: str) -> None:
     """HTTPS is required except on localhost (tests)."""
     parts = urlsplit(url)

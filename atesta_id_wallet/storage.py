@@ -21,7 +21,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from . import vault
-from .common import SD_JWT_FORMATS, WalletError, b64u, b64u_json, debug, host_of, humanize, log
+from .common import SD_JWT_FORMATS, WalletError, b64u, b64u_json, debug, host_of, humanize, log, site_of
 from .i18n import tr
 from .sdjwt import SdJwt, parse_sd_jwt
 
@@ -268,8 +268,11 @@ def credential_holder(record: dict[str, Any]) -> str:
 
 
 def credential_issuer_name(record: dict[str, Any]) -> str:
-    return str((record.get("display") or {}).get("issuer_name") or host_of(record.get("issuer", ""))
-               or record.get("issuer", "?"))
+    issuer = record.get("issuer", "")
+    name = (record.get("display") or {}).get("issuer_name")
+    if not name or name == host_of(issuer):  # no published name (older versions stored the host)
+        name = site_of(issuer)
+    return str(name or issuer or "?")
 
 
 def credential_label(record: dict[str, Any]) -> str:

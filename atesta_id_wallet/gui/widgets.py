@@ -441,7 +441,8 @@ def locale() -> QLocale:
 
 
 def short_date(timestamp: float) -> str:
-    return locale().toString(QDateTime.fromSecsSinceEpoch(int(timestamp)).date(), QLocale.ShortFormat)
+    # "3 Nov 2026": 3/11/26 reads as 11 March in other countries.
+    return locale().toString(QDateTime.fromSecsSinceEpoch(int(timestamp)).date(), "d MMM yyyy")
 
 
 def relative_time(timestamp: float) -> str:
