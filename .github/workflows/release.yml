@@ -16,6 +16,7 @@ permissions:
 env:
   PYTHON_VERSION: "3.12"
   PYINSTALLER_VERSION: "6.22.3"
+  CYCLONEDX_VERSION: "7.6.0"
 
 jobs:
   test:
@@ -45,6 +46,13 @@ jobs:
           dist/atesta-id-wallet/atesta-id-wallet --version
           dist/atesta-id-wallet/atesta-id-wallet-gui --smoke-test
       - run: packaging/build_linux.sh dist/atesta-id-wallet dist/release
+      - name: SBOM (CycloneDX, the Python packages of the build)
+        run: |
+          python -m venv "$RUNNER_TEMP/sbom"  # apart, so the tool is not in the SBOM itself
+          "$RUNNER_TEMP/sbom/bin/pip" install "cyclonedx-bom==${{ env.CYCLONEDX_VERSION }}"
+          version=$(python -c "import atesta_id_wallet.common as c; print(c.__version__)")
+          "$RUNNER_TEMP/sbom/bin/cyclonedx-py" environment --pyproject pyproject.toml --of JSON --output-reproducible \
+            -o "dist/release/Atesta_ID_Wallet-$version-linux.cdx.json" "$(command -v python)"
       - name: Smoke test (AppImage and .deb)
         env:
           QT_QPA_PLATFORM: offscreen
@@ -92,6 +100,16 @@ jobs:
             "/DSourceDir=$PWD\dist\atesta-id-wallet" "/DOutputDir=$PWD\dist\release" packaging\atesta-id-wallet.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
           Compress-Archive -Path dist\atesta-id-wallet -DestinationPath "dist\release\Atesta_ID_Wallet-$version-windows-x64.zip"
+      - name: SBOM (CycloneDX, the Python packages of the build)
+        run: |
+          $python = (Get-Command python).Source
+          python -m venv "$env:RUNNER_TEMP\sbom"
+          & "$env:RUNNER_TEMP\sbom\Scripts\pip.exe" install "cyclonedx-bom==${{ env.CYCLONEDX_VERSION }}"
+          if ($LASTEXITCODE -ne 0) { throw "pip failed" }
+          $version = (dist\atesta-id-wallet\atesta-id-wallet.exe --version).Split(" ")[1]
+          & "$env:RUNNER_TEMP\sbom\Scripts\cyclonedx-py.exe" environment --pyproject pyproject.toml --of JSON `
+            --output-reproducible -o "dist\release\Atesta_ID_Wallet-$version-windows-x64.cdx.json" $python
+          if ($LASTEXITCODE -ne 0) { throw "cyclonedx-py failed" }
       - name: Install, run and uninstall
         env:
           QT_QPA_PLATFORM: offscreen
