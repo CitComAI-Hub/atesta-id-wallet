@@ -117,8 +117,12 @@ class WindowsHandlerTests(unittest.TestCase):
         self.assertIs(desktop.links_registered(), False)
         desktop.cmd_install_handler(None)
         self.assertIs(desktop.links_registered(), True)
+        self.assertEqual(desktop.links_owner(), "us")
+        self.reg.keys[r"Software\Classes\openid4vp\shell\open\command"][""] = r'"C:\Lissi\lissi.exe" "%1"'
+        self.assertEqual(desktop.links_owner(), "other")
         del self.reg.keys[r"Software\Classes\openid-credential-offer\shell\open\command"]
         self.assertIs(desktop.links_registered(), False)  # every scheme is needed
+        self.assertEqual(desktop.links_owner(), "none")
 
 
 class LinuxHandlerQueryTests(unittest.TestCase):
@@ -137,6 +141,9 @@ class LinuxHandlerQueryTests(unittest.TestCase):
         self.answer({"x-scheme-handler/openid4vp": "other-wallet.desktop",
                      "x-scheme-handler/openid-credential-offer": "atesta-id-wallet.desktop"})
         self.assertIs(desktop.links_registered(), True)
+        self.assertEqual(desktop.links_owner(), "other")
+        self.answer({f"x-scheme-handler/{s}": "atesta-id-wallet.desktop" for s in ("openid4vp", "openid-credential-offer")})
+        self.assertEqual(desktop.links_owner(), "us")
 
     def test_missing_scheme(self):
         self.answer({"x-scheme-handler/openid4vp": "atesta-id-wallet.desktop"})

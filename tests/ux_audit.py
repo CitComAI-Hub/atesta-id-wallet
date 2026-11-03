@@ -227,8 +227,14 @@ def fill_wallet() -> None:
                             fmt="dc+sd-jwt", issuer="https://keycloak.citcom.example/realms/citcom",
                             configuration_id="MembershipCredential",
                             display={"name": "CITCOM membership", "issuer_name": "CITCOM TEF"})
+    # Like the real ones of the CITCOM-VRAIN data space: identifiers and FIWARE-style roles; expires soon.
     storage.save_credential(_sd_jwt(holder, {"legalName": "PGTEC Consortium", "vatID": "ESB12345678",
-                                             "email": "marta.ribes@example.org"}, "LegalPersonCredential"),
+                                             "email": "marta.ribes@example.org",
+                                             "jti": "urn:uuid:7f3c2a91-4b8e-4d2f-9c61-0e5a8b7d3f12",
+                                             "sub": "c4a1e2f0-93b7-4e58-a6d2-1f8b9c0d7e34",
+                                             "roles": [{"names": ["data-provider", "member"],
+                                                        "target": "did:web:pgtec-vrain-dataspace.eu"}]},
+                                    "LegalPersonCredential", exp=now + 86400 * 12),
                             fmt="dc+sd-jwt", issuer="https://auth.pgtec-vrain-dataspace.eu/realms/pgtec",
                             configuration_id="LegalPersonCredential")
     storage.save_credential(_sd_jwt(holder, {"email": "marta@example.org", "username": "mribes"}, "UserCredential",
@@ -273,6 +279,15 @@ def _citcom(w: Any) -> dict[str, Any]:
     return next(r for r in w.records if "CITCOM" in storage.credential_name(r))
 
 
+def _scroll_settings_to_end(w: Any) -> None:
+    from PySide6.QtWidgets import QApplication, QScrollArea
+
+    w._nav("settings")
+    QApplication.instance().processEvents()
+    bar = w.settings_page.findChildren(QScrollArea)[0].verticalScrollBar()
+    bar.setValue(bar.maximum())
+
+
 def screens(gui: Any) -> list[tuple[str, Callable[[Any], None]]]:
     """(name, set up the window): pages first (empty wallet), then the filled wallet and every panel."""
     tr = i18n.tr
@@ -308,9 +323,13 @@ def screens(gui: Any) -> list[tuple[str, Callable[[Any], None]]]:
         ("wallet", lambda w: w._go("wallet")),
         ("credential", lambda w: w.open_credential(_citcom(w))),
         ("credential-expired", lambda w: w.open_credential(next(r for r in w.records if storage.is_expired(r)))),
+        ("credential-technical", lambda w: (
+            w.open_credential(next(r for r in w.records if "Legal" in storage.credential_name(r))),
+            w.detail_page.technical.show())),
         ("activity", lambda w: w._nav("activity")),
         ("activity-contact", lambda w: w.activity_page.show_contact("x509_san_dns:marketplace.citcom.example")),
         ("settings", lambda w: w._nav("settings")),
+        ("settings-end", _scroll_settings_to_end),
         ("scan", lambda w: (w._go("wallet"), w.scan())),
         ("offer", lambda w: w._ask_offer(_Ask(ui.OfferSummary("https://keycloak.citcom.example/realms/citcom",
                                                               "CITCOM TEF", ["CITCOM membership"], False)))),
@@ -449,7 +468,9 @@ def check_window(gui: Any, window: Any, screen: str, audit: Audit, *, keyboard: 
         audit.findings.append(Finding(screen, check, _describe(widget), detail))
 
     def window_rect(widget: Any) -> QRect:
-        return QRect(widget.mapTo(window, QPoint(0, 0)), widget.size())
+        """The part of the widget actually on screen (a scroll area may hide the rest), in window coordinates."""
+        shown = widget.visibleRegion().boundingRect()
+        return QRect(widget.mapTo(window, shown.topLeft()), shown.size())
 
     # -- text: clipped, contrast, size ----------------------------------------
     lowest = 99.0
@@ -465,7 +486,8 @@ def check_window(gui: Any, window: Any, screen: str, audit: Audit, *, keyboard: 
             add("text-clipped", lab, f"needs {lab.sizeHint().width()} px of width, has {lab.width()}")
         if _px(lab) < 12:
             add("small-text", lab, f"{_px(lab):.0f} px")
-        ratio = painted_contrast(image, window_rect(lab))
+        ratio = painted_contrast(image, window_rect(lab)) if lab.visibleRegion().boundingRect().height() >= \
+            lab.fontMetrics().height() else None  # mostly scrolled out of view: measured when it is in view
         if ratio is not None:
             large = _px(lab) >= 24 or (_px(lab) >= 18.66 and lab.font().bold())
             lowest = min(lowest, ratio)
@@ -477,7 +499,8 @@ def check_window(gui: Any, window: Any, screen: str, audit: Audit, *, keyboard: 
         if isinstance(w, QAbstractButton) and w.text() and w.sizeHint().width() > w.width() + 2:
             add("text-clipped", w, f"needs {w.sizeHint().width()} px of width, has {w.width()}")
         if isinstance(w, QAbstractButton) and w.text() and not isinstance(w, QCheckBox) \
-                and type(w).__name__ != "QToolButton":  # icon-only buttons: non-text contrast, 3:1
+                and type(w).__name__ != "QToolButton" \
+                and w.visibleRegion().boundingRect().height() >= w.height() - 2:  # icon-only: 3:1; hidden: later
             ratio = painted_contrast(image, window_rect(w).adjusted(3, 3, -3, -3))
             if ratio is not None:
                 lowest = min(lowest, ratio)
@@ -506,6 +529,8 @@ def check_window(gui: Any, window: Any, screen: str, audit: Audit, *, keyboard: 
             w.initStyleOption(option)
             element = QStyle.SE_CheckBoxIndicator if isinstance(w, QCheckBox) else QStyle.SE_RadioButtonIndicator
             box = w.style().subElementRect(element, option, w)
+            if not w.visibleRegion().contains(box):
+                continue  # scrolled out of view: measured where it is in view
             ratio = painted_contrast(image, QRect(w.mapTo(window, box.topLeft()), box.size()).adjusted(-2, -2, 2, 2))
             if ratio is not None and ratio < 3:
                 add("contrast", w, f"box {ratio:.2f}:1 (non-text, 3:1)")
@@ -569,7 +594,7 @@ def _fresh_home() -> None:
 
 
 def run(gui: Any, langs: list[str], themes: list[str], outdir: Path | None = None,
-        keyboard: bool = True) -> dict[tuple[str, str], Audit]:
+        keyboard: bool = True, size: tuple[int, int] = (1100, 740)) -> dict[tuple[str, str], Audit]:
     """Renders every screen in each language and theme; returns the audits (and saves the screenshots)."""
     from PySide6.QtWidgets import QApplication
 
@@ -580,6 +605,7 @@ def run(gui: Any, langs: list[str], themes: list[str], outdir: Path | None = Non
     app.setStyle("Fusion")
     widgets.ANIMATIONS = False
     gui.links_registered = lambda: False
+    gui.links_owner = lambda: "none"
     gui._screenshot_dirs = lambda: []
     results = {}
     for lang in langs:
@@ -589,12 +615,13 @@ def run(gui: Any, langs: list[str], themes: list[str], outdir: Path | None = Non
             storage.save_settings({"theme": theme_name})  # the window reads it from the settings
             theme_module.preference = theme_name
             window = gui.MainWindow()
-            window.resize(1100, 740)
+            window.resize(*size)
             window.show()
             app.processEvents()
             audit = Audit()
             for name, setup in screens(gui):
                 window._close_sheet()
+                window.centralWidget().setFocus()  # no focus ring left by the Tab presses of the last screen
                 app.processEvents()
                 setup(window)
                 for _ in range(3):
@@ -690,6 +717,7 @@ def task_costs(gui: Any) -> list[TaskCost]:
     widgets.ANIMATIONS = False
     gui._screenshot_dirs = lambda: []
     gui.links_registered = lambda: True
+    gui.links_owner = lambda: "us"
     issuer = http.server.HTTPServer(("127.0.0.1", 0), helpers.FakeIssuer)
     verifier = http.server.HTTPServer(("127.0.0.1", 0), helpers.FakeVerifier)
     for server in (issuer, verifier):
@@ -833,6 +861,9 @@ def main(argv: list[str]) -> int:
     costs = task_costs(gui)
     timings = response_times(gui)
     results = run(gui, langs, args.themes.split(","), args.outdir)
+    # the smallest window the wallet allows, with the longest texts
+    small = run(gui, ["fr"], ["light"], args.outdir / "smallest-window", keyboard=False, size=(920, 640))
+    results[("fr", "light · 920×640")] = small[("fr", "light")]
     (args.outdir / "report.md").write_text(report(results, langs, costs, timings), encoding="utf-8")
     total = sum(len(a.findings) for a in results.values())
     print(f"{sum(a.screens for a in results.values())} screens, {total} findings → {args.outdir / 'report.md'}")

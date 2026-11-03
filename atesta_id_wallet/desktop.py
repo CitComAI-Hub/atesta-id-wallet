@@ -363,34 +363,48 @@ def _uninstall_windows() -> bool:
     return removed
 
 
-def _windows_has_handler(scheme: str) -> bool:
+def _windows_handler(scheme: str) -> str:
+    """The command that opens the scheme ('' if none)."""
     if sys.platform != "win32":  # also tells type checkers that winreg exists below
-        return False
+        return ""
     import winreg
 
     try:  # HKEY_CLASSES_ROOT merges the user's (HKCU) and the machine's (HKLM) registrations
-        return bool(winreg.QueryValue(winreg.HKEY_CLASSES_ROOT, rf"{scheme}\shell\open\command"))
+        return str(winreg.QueryValue(winreg.HKEY_CLASSES_ROOT, rf"{scheme}\shell\open\command"))
     except OSError:
-        return False
+        return ""
 
 
-def _linux_has_handler(scheme: str) -> bool:
+def _linux_handler(scheme: str) -> str:
+    """The .desktop file that opens the scheme ('' if none)."""
     found = subprocess.run(["xdg-mime", "query", "default", f"x-scheme-handler/{scheme}"], check=False,
                            capture_output=True, text=True, timeout=10)
-    return bool(found.stdout.strip())
+    return found.stdout.strip()
 
 
-def links_registered() -> bool | None:
-    """Whether some application opens every wallet link (ours or another one); None if it cannot be
-    known or registered from here (macOS without a .app, no xdg-mime)."""
+def links_owner() -> str | None:
+    """
+    Who opens the wallet links: 'us' (this wallet: our .desktop file, or a command with our
+    executable), 'other' (another application has at least one), 'none' (some scheme has no
+    handler), or None if it cannot be known here (macOS without a .app, no xdg-mime).
+    """
     if sys.platform == "darwin":
         return None
     try:
-        check = _windows_has_handler if sys.platform == "win32" else _linux_has_handler
-        return all(check(scheme) for scheme in URI_SCHEMES)
+        handlers = [(_windows_handler if sys.platform == "win32" else _linux_handler)(s) for s in URI_SCHEMES]
     except (OSError, subprocess.SubprocessError) as exc:
         debug(f"Could not check the link handler: {exc}")
         return None
+    if not all(handlers):
+        return "none"
+    ours = DESKTOP_FILE.name.lower() if sys.platform != "win32" else "atesta-id-wallet"
+    return "us" if all(ours in h.lower() for h in handlers) else "other"
+
+
+def links_registered() -> bool | None:
+    """Whether some application opens every wallet link (ours or another one); None if it cannot be known."""
+    owner = links_owner()
+    return None if owner is None else owner != "none"
 
 
 def cmd_install_handler(args: argparse.Namespace | None) -> int:

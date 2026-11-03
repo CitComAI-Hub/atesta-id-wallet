@@ -40,6 +40,7 @@ class Theme:
     # Fields that are recognised by something else (the search field by its icon and text, a drop-down
     # by its arrow) keep the subtle 'border' at rest, and the accent on hover and with the focus.
     input_border: str
+    border_hover: str  # a field under the pointer: a step lighter (darker), not yet the accent
     backdrop: str
 
 
@@ -51,7 +52,7 @@ LIGHT = Theme(
     success="#17773f", success_soft="#e1f5e9",  # text on the soft colours: at least 4.5:1 (WCAG AA)
     warning="#8a5a00", warning_soft="#fff3d1",
     danger="#b03030", danger_soft="#fde6e6", on_danger="#ffffff",
-    input_border="#7b8293",
+    input_border="#7b8293", border_hover="#c0c4cf",
     backdrop="rgba(16, 19, 30, 110)",
 )
 DARK = Theme(
@@ -62,7 +63,7 @@ DARK = Theme(
     success="#4cc58a", success_soft="#163526",
     warning="#f0c062", warning_soft="#3a2f13",
     danger="#f08a8a", danger_soft="#3d1c1f", on_danger="#0f1117",
-    input_border="#6f7689",
+    input_border="#6f7689", border_hover="#4c5263",
     backdrop="rgba(0, 0, 0, 150)",
 )
 
@@ -210,7 +211,7 @@ QToolTip {{ background: {t.surface}; color: {t.text}; border: 1px solid {t.borde
 #pageTitle {{ font-size: 26px; font-weight: 700; }}
 #pageSubtitle, .muted {{ color: {t.text_muted}; }}
 #sectionTitle {{ font-size: 15px; font-weight: 700; }}
-#caption {{ color: {t.text_muted}; font-size: 12px; }}
+#caption {{ color: {t.text_muted}; font-size: 13px; }}
 
 #panel {{ background: {t.surface}; border: 1px solid {t.border}; border-radius: 14px; }}
 #row {{ border-bottom: 1px solid {t.border}; }}
@@ -238,7 +239,8 @@ QPushButton#primary[keyboardFocus="true"], QPushButton#dangerFilled[keyboardFocu
 }}
 QPushButton#ghost[keyboardFocus="true"] {{ border: 2px solid {t.accent}; padding: 4px 8px; }}
 #navButton[keyboardFocus="true"] {{ border: 2px solid {t.accent}; padding: 8px 10px; }}
-QComboBox[keyboardFocus="true"], QCheckBox[keyboardFocus="true"], QRadioButton[keyboardFocus="true"] {{
+QComboBox[keyboardFocus="true"] {{ border-color: {t.accent}; }}
+QCheckBox[keyboardFocus="true"], QRadioButton[keyboardFocus="true"] {{
     border: 2px solid {t.accent}; border-radius: 6px;
 }}
 #activityRow[keyboardFocus="true"] {{ background: {t.accent_soft}; border-radius: 10px; }}
@@ -247,14 +249,17 @@ QLineEdit {{
     background: {t.surface}; border: 1px solid {t.input_border}; border-radius: 10px;
     padding: 9px 12px; selection-background-color: {t.accent};
 }}
-QLineEdit:focus {{ border: 2px solid {t.accent}; padding: 8px 11px; }}
+/* Fields: subtle at rest, a step stronger under the pointer, the accent (1 px) where you type. */
+QLineEdit:hover {{ border-color: {t.text_muted}; }}
+QLineEdit:focus {{ border-color: {t.accent}; }}
 QLineEdit#search {{ border-color: {t.border}; }}
-QLineEdit#search:hover {{ border-color: {t.accent}; }}
-QLineEdit#search:focus {{ border: 2px solid {t.accent}; padding: 8px 11px; }}
+QLineEdit#search:hover {{ border-color: {t.border_hover}; }}
+QLineEdit#search:focus {{ border-color: {t.accent}; }}
 QComboBox {{
     background: {t.surface}; border: 1px solid {t.border}; border-radius: 10px; padding: 7px 12px;
 }}
-QComboBox:hover {{ border-color: {t.accent}; }}
+QComboBox:hover {{ border-color: {t.border_hover}; }}
+QComboBox:on {{ border-color: {t.accent}; }}
 QComboBox::drop-down {{ border: none; width: 28px; }}
 QComboBox::down-arrow {{ image: url("{arrow}"); width: 14px; height: 14px; }}
 QComboBox QAbstractItemView {{

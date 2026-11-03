@@ -197,23 +197,52 @@ class LockPage(Page):
 # ---------------------------------------------------------------------------
 
 
-def _flatten(value: Any, prefix: str = "") -> list[tuple[str, str]]:
-    """Nested claims as 'Address › Street' rows."""
+# Shown elsewhere (dates, issuer, key) or meaningless to a person: never among the data.
+HIDDEN_CLAIMS = {"_sd", "_sd_alg", "cnf", "iss", "vct", "iat", "exp", "nbf", "status", "vct#integrity"}
+# Identifiers and internals (token id, subject id, the DID a role applies to...): under "Technical details".
+TECHNICAL_CLAIMS = {"jti", "sub", "sid", "target", "id", "kid", "nonce", "@context", "@type"}
+
+
+def _flatten(value: Any, prefix: str = "", technical: bool = False) -> list[tuple[str, str, bool]]:
+    """Nested claims as ('Address › Street', value, technical) rows."""
     if isinstance(value, dict):
+        shown = [k for k in value if k not in HIDDEN_CLAIMS and k not in TECHNICAL_CLAIMS]
+        if shown == ["names"] and prefix:  # FIWARE roles {names, target}: "Roles: a, b", the target is technical
+            rows = _flatten(value["names"], prefix, technical)
+            return rows + [r for k in value if k in TECHNICAL_CLAIMS
+                           for r in _flatten(value[k], f"{prefix} › {claim_label(k)}", True)]
         rows = []
         for key, item in value.items():
-            if key in ("_sd", "_sd_alg", "cnf", "iss", "vct", "iat", "exp", "nbf", "status", "vct#integrity"):
+            if key in HIDDEN_CLAIMS:
                 continue
-            rows += _flatten(item, f"{prefix} › {claim_label(str(key))}" if prefix else claim_label(str(key)))
+            name = claim_label(str(key))
+            rows += _flatten(item, f"{prefix} › {name}" if prefix else name, technical or key in TECHNICAL_CLAIMS)
         return rows
     if isinstance(value, list):
         if all(not isinstance(v, (dict, list)) for v in value):
-            return [(prefix, ", ".join(map(str, value)))]
+            return [(prefix, ", ".join(map(str, value)), technical)]
+        if len(value) == 1:  # "Roles › Names", not "Roles 1 › Names"
+            return _flatten(value[0], prefix, technical)
         rows = []
         for index, item in enumerate(value, 1):
-            rows += _flatten(item, f"{prefix} {index}")
+            rows += _flatten(item, f"{prefix} {index}", technical)
         return rows
-    return [(prefix, str(value))]
+    return [(prefix, str(value), technical)]
+
+
+def validity_text(record: dict[str, Any]) -> tuple[str, str]:
+    """(tone, text) of the credential's validity, from its own dates."""
+    state, when = storage.validity(record)
+    if state == "expired":
+        return "danger", tr("Expired on {date}", date=short_date(when))
+    if state == "not-yet":
+        return "warn", tr("Not valid until {date}", date=short_date(when))
+    if state == "expiring":
+        days = max(1, round((when - time.time()) / 86400))
+        return "warn", tr_n("Expires in {n} day ({date})", "Expires in {n} days ({date})", days, date=short_date(when))
+    if when is None:
+        return "ok", tr("Valid · does not expire")
+    return "ok", tr("Valid until {date}", date=short_date(when))
 
 
 def _issuer_text(record: dict[str, Any]) -> str:
@@ -248,12 +277,17 @@ class CredentialPage(Page):
 
         left = QVBoxLayout()
         left.setSpacing(16)
-        left.addWidget(CredentialCard(record, width=340, interactive=False))
-        left.addWidget(label(credential_name(record), "pageTitle", wrap=True))
+        card = CredentialCard(record, width=340, interactive=False)
+        left.addWidget(card)
+        # The card already shows the name: under it, what matters next — is it valid, and who gave it.
+        tone, text = validity_text(record)
+        t = theme.current()
+        colour, soft = {"ok": (t.success, t.success_soft), "warn": (t.warning, t.warning_soft),
+                        "danger": (t.danger, t.danger_soft)}[tone]
+        status = pill(text, colour, soft)
+        status.setAccessibleName(text)
+        left.addWidget(status, alignment=Qt.AlignLeft)
         left.addWidget(label(tr("Issued by {issuer}", issuer=credential_issuer_name(record)), "pageSubtitle", wrap=True))
-        if is_expired(record):
-            t = theme.current()
-            left.addWidget(pill(tr("EXPIRED"), t.danger, t.danger_soft), alignment=Qt.AlignLeft)
         left.addSpacing(8)
         delete = button(tr("Delete credential"), "danger", "trash-2")
         delete.clicked.connect(lambda: window.confirm_delete(record))
@@ -264,7 +298,8 @@ class CredentialPage(Page):
         right = QVBoxLayout()
         right.setSpacing(12)
         sd = record.get("_sd")
-        rows = _flatten(sd.claims if sd else {})
+        flat = _flatten(sd.claims if sd else {})
+        rows = [(k, v) for k, v, technical in flat if not technical]
         right.addWidget(label(tr("Data"), "sectionTitle"))
         data = Panel((20, 6, 20, 6))
         for index, (key, value) in enumerate(rows):
@@ -288,12 +323,26 @@ class CredentialPage(Page):
              else tr("None: anyone with a copy could use it")),
             (tr("Shared only with your approval"), tr_n("{n} piece of data", "{n} pieces of data",
                                                        len(sd.disclosures) if sd else 0)),
-            (tr("Technical type"), str(payload.get("vct") or record.get("credential_configuration_id") or "—")),
         ]
         info = Panel((20, 6, 20, 6))
         for index, (key, value) in enumerate(details):
             info.body.addWidget(key_value_row(key, value, last=index == len(details) - 1))
         right.addWidget(info)
+
+        # Identifiers and internals: there to copy for support, folded away from everybody else.
+        technical = [(tr("Technical type"), str(payload.get("vct") or record.get("credential_configuration_id") or "—")),
+                     *[(k, v) for k, v, is_technical in flat if is_technical]]
+        self.technical = Panel((20, 6, 20, 6))
+        for index, (key, value) in enumerate(technical):
+            self.technical.body.addWidget(key_value_row(key, value, last=index == len(technical) - 1))
+        self.technical.hide()
+        toggle = button(tr("Show technical details"), "ghost", "chevron-down")
+        toggle.setStyleSheet("padding-left: 0px;")
+        toggle.clicked.connect(lambda: (self.technical.setVisible(not self.technical.isVisible()),
+                                        toggle.setText(tr("Hide technical details") if self.technical.isVisible()
+                                                       else tr("Show technical details"))))
+        right.addWidget(toggle, alignment=Qt.AlignLeft)
+        right.addWidget(self.technical)
         right.addStretch()
         columns.addLayout(right, 1)
 
@@ -485,9 +534,14 @@ class SettingsPage(Page):
                    _setting(tr("Theme"), tr("Automatic follows the light or dark mode of your system."),
                             self._theme_combo())]
         if sys.platform != "darwin":  # macOS needs a .app (see desktop.cmd_install_handler)
-            general.append(_setting(tr("Wallet links"), tr("Let buttons and links on web pages open this "
-                                                           "application, instead of scanning their QR code."),
-                                    self._action(tr("Register"), lambda: w.register_links(), "link")))
+            what = tr("Let buttons and links on web pages open this application, instead of scanning their QR code.")
+            owner = w.links_state()
+            status = {"us": tr("Registered: buttons and links on web pages open this application."),
+                      "other": tr("Another application opens them now.") + " " + what,
+                      "none": tr("Not registered yet.") + " " + what}.get(owner or "", what)
+            general.append(_setting(tr("Wallet links"), status,
+                                    self._action(tr("Register again") if owner == "us" else tr("Register"),
+                                                 lambda: w.register_links(), "link")))
         self._section(tr("General"), general)
         self._section(tr("Profile"), [
             _setting(tr("Active profile"), tr("Each profile is a separate identity, with its own key and credentials."),
@@ -580,6 +634,7 @@ class SettingsPage(Page):
     def _action(self, text: str, slot: Any, icon: str | None = None, kind: str | None = None,
                 enabled: bool = True) -> QWidget:
         widget = button(text, kind, icon)
+        widget.setMinimumWidth(132)  # the actions of Settings line up in one column
         widget.clicked.connect(slot)
         widget.setEnabled(enabled)
         return widget

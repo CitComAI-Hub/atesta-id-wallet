@@ -53,6 +53,8 @@ class GuiFlowTests(unittest.TestCase):
         # Nor at the links registered on this computer: they decide a step of the first-run guide.
         self.addCleanup(setattr, gui, "links_registered", gui.links_registered)
         gui.links_registered = lambda: True
+        self.addCleanup(setattr, gui, "links_owner", gui.links_owner)
+        gui.links_owner = lambda: "us"
         self.window = gui.MainWindow()
         self.asked, self.consent = [], True
         self.window._ask_offer = lambda request: self.asked.append("offer") or request.answer(True)

@@ -536,7 +536,7 @@ class ScanSheet(Sheet):
         self.add(body)
         waiting = QHBoxLayout()
         waiting.addWidget(Spinner(22))
-        waiting.addWidget(label(tr("Looking in the clipboard and in your screenshots…"), "caption"), 1)
+        waiting.addWidget(label(tr("Looking in the clipboard and in your screenshots…"), "caption", wrap=True), 1)
         self.layout_.addLayout(waiting)
         image = button(tr("Open image…"), icon="image")
         image.clicked.connect(on_image)

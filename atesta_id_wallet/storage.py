@@ -363,6 +363,30 @@ def is_expired(record: dict[str, Any]) -> bool:
     return isinstance(exp, (int, float)) and exp < time.time()
 
 
+EXPIRES_SOON_DAYS = 30
+
+
+def validity(record: dict[str, Any], now: float | None = None) -> tuple[str, float | None]:
+    """
+    (state, date) from the credential's own dates: 'valid' (until date, or None if it does not
+    expire), 'expiring' (within EXPIRES_SOON_DAYS), 'expired', 'not-yet' (valid from date).
+    Revocation is not checked (no status list support yet): 'valid' means "not expired".
+    """
+    now = time.time() if now is None else now
+    sd: SdJwt | None = record.get("_sd")
+    payload = sd.payload if sd else {}
+    exp, nbf = payload.get("exp"), payload.get("nbf")
+    if isinstance(nbf, (int, float)) and nbf > now:
+        return "not-yet", float(nbf)
+    if isinstance(exp, (int, float)):
+        if exp < now:
+            return "expired", float(exp)
+        if exp - now < EXPIRES_SOON_DAYS * 86400:
+            return "expiring", float(exp)
+        return "valid", float(exp)
+    return "valid", None
+
+
 # What makes up a profile.
 PROFILE_ITEMS = ("holder_key.enc", "credentials", "config.enc", "trusted_cas", "history.enc", vault.VAULT_FILE)
 

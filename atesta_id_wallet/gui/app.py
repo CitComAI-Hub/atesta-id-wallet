@@ -49,6 +49,7 @@ from ..desktop import (
     _screenshot_dirs,
     cmd_install_handler,
     decode_qr_image,
+    links_owner,
     links_registered,
     route_input,
 )
@@ -948,8 +949,14 @@ class MainWindow(QMainWindow):
             self.last_result = (False, tr("Could not register the links"))
             return self._sheet(ResultSheet(False, tr("Could not register the links"), esc(exc), closed))
         self.toast.show_message(tr("Links registered: they will open this application"))
+        if self._page_name == "settings":
+            self.settings_page.refresh()  # its status line says who opens them now
         if then:
             then()
+
+    def links_state(self) -> str | None:
+        """links_owner(), through this module (the tests replace it)."""
+        return links_owner()
 
     # -- wallet lock ----------------------------------------------------------
 
