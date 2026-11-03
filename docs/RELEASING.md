@@ -3,6 +3,12 @@
 Releases are built by GitHub Actions (`.github/workflows/release.yml`), never on a developer's
 machine, so every published file comes from a known commit.
 
+Every push to any branch and every pull request run `.github/workflows/checks.yml`: the tests on
+Linux and Windows, `ruff` (bug-class rules only, `[tool.ruff]` in `pyproject.toml`), `bandit`
+(medium and high) and `pip-audit` (known vulnerabilities in the dependencies). `release.yml` calls
+the same workflow first, so nothing is built or published if a check fails. Dependabot proposes
+dependency and action updates every week (`.github/dependabot.yml`).
+
 ## What a release contains
 
 | File | Built with | Notes |

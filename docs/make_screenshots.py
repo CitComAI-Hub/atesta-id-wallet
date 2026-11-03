@@ -63,7 +63,7 @@ def credential(issuer_key: storage.HolderKey, issuer: str, claims: dict) -> str:
 
 
 def fill_profile() -> None:
-    for index, (name, issuer_name, issuer, colour, claims) in enumerate(reversed(CREDENTIALS)):
+    for name, issuer_name, issuer, colour, claims in reversed(CREDENTIALS):
         issuer_key = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
         display = {"name": name, "issuer_name": issuer_name}
         if colour:

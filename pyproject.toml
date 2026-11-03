@@ -31,3 +31,12 @@ packages = ["atesta_id_wallet", "atesta_id_wallet.gui", "atesta_id_wallet.i18n"]
 [tool.setuptools.package-data]
 "atesta_id_wallet.gui" = ["icons/*.svg", "icons/*.png", "icons/LICENSE"]
 "atesta_id_wallet.i18n" = ["*.json"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["venv", ".venv", "atesta_id_wallet/.venv", "build"]
+
+[tool.ruff.lint]
+# Errors that are bugs (syntax, undefined names, unused imports, bugbear); style is not enforced.
+select = ["E9", "F", "B"]
+

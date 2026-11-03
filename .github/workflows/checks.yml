@@ -1,0 +1,71 @@
+# Tests (Linux, Windows) and static analysis, for every branch and pull request; release.yml calls
+# it before building, so nothing is published if any check fails.
+name: Checks
+
+on:
+  push:
+    branches-ignore: [main]  # main runs them through release.yml
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Qt libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: pip install ".[gui]"
+      - name: Version matches the tag
+        shell: bash
+        run: |
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          python -c "import sys, atesta_id_wallet.common as c; sys.exit(c.__version__ != '$version')" \
+            || { echo "pyproject.toml ($version) and common.__version__ differ"; exit 1; }
+          if [[ "$GITHUB_REF_TYPE" == tag && "${GITHUB_REF_NAME#v}" != "$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $version"; exit 1
+          fi
+      - name: Tests
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+          # Like a real console (UTF-8); a pipe would default to cp1252 on Windows. The CLI copes
+          # with that by itself (cli._tolerant_output), but tests also call other modules directly.
+          PYTHONIOENCODING: utf-8
+        run: |
+          set +e
+          python -m unittest discover -s tests > test-output.txt 2>&1
+          code=$?
+          cat test-output.txt
+          python .github/scripts/annotate_unittest.py test-output.txt "$code"
+          exit $code
+
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python -m pip install --upgrade pip setuptools
+      - run: pip install -e ".[gui]" "ruff==0.17.3" "bandit==1.9.4" "pip-audit==2.10.1"  # -e: the wallet itself is not on PyPI
+      - name: Lint (real bugs only; see [tool.ruff] in pyproject.toml)
+        run: ruff check .
+      - name: Security patterns (bandit, medium and high)
+        run: bandit -q -r atesta_id_wallet -ll
+      - name: Known vulnerabilities in the dependencies (pip-audit)
+        run: pip-audit --skip-editable --progress-spinner off

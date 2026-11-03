@@ -109,8 +109,8 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 2. [ ] **Test on real Windows** by hand with [docs/TESTING-WINDOWS.md](docs/TESTING-WINDOWS.md)
        (browser links, clipboard, screenshots, `%APPDATA%` permissions, update/uninstall) and
        decide on macOS for the pilot.
-3. [ ] **CI**: tests on Linux and Windows for every push (today only on release tags); add
-       `ruff` and a type checker.
+3. [x] **CI**: tests on Linux and Windows for every push and pull request, `ruff` (bug-class rules),
+       `bandit`, `pip-audit`, Dependabot (`checks.yml`). Still missing: a type checker.
 4. [x] **Holder key protection** (0.8.0): encrypted profile, key in the OS keyring or behind a
        wallet password with app lock. Still to check by hand on Windows (Credential Manager).
 5. [ ] **Trust list**: ship the CITCOM verifier CA (or trust list) with the app, so pilot verifiers
@@ -118,10 +118,11 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 6. [ ] **Second login when receiving a credential**: decide option A/B/C (below).
 7. [ ] **Pilot plan**: who (number of users, roles), scenarios (receive, sign in, backup/restore,
        second device), what is measured (success rate, time, support requests), feedback form.
-8. [ ] **First-run guide** in the GUI: what the wallet is, why a backup matters, where the data lives.
-9. [ ] Final app icon for *Atesta ID Wallet* (replace `packaging/app-icon.svg`, run `make_icons.py`) and
-       issuer logo (`display.logo`) on the cards; see open questions.
-10. [ ] Danish reviewed by a native speaker.
+8. [x] **First-run guide** in the GUI: what the wallet is, how to get a credential, why a password and
+       a backup matter.
+9. [ ] Final app icon for *Atesta ID Wallet* (replace `packaging/app-icon.svg`, run `make_icons.py`).
+       Done: issuer logo (`display.logo`) on the cards.
+10. [ ] Danish, German and French reviewed by native speakers; Luxembourgish carefully.
 
 ## Later (after the pilot)
 
