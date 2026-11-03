@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QLocale, Qt
@@ -217,6 +218,13 @@ def _date(timestamp: Any) -> str:
     return short_date(timestamp) if isinstance(timestamp, (int, float)) else "—"
 
 
+def _not_before(timestamp: float) -> str:
+    """nbf: a credential that cannot be used yet says so."""
+    if timestamp > time.time():
+        return tr("{date} (not valid yet)", date=short_date(timestamp))
+    return short_date(timestamp)
+
+
 class CredentialPage(Page):
     def __init__(self, window: MainWindow, record: dict[str, Any]):
         super().__init__(window)
@@ -263,7 +271,9 @@ class CredentialPage(Page):
         details = [
             (tr("Issuer"), _issuer_text(record)),
             (tr("Type"), str(payload.get("vct") or record.get("credential_configuration_id") or "—")),
+            *([(tr("Issued"), _date(payload["iat"]))] if isinstance(payload.get("iat"), (int, float)) else []),
             (tr("Received"), _date(record.get("stored_at"))),
+            *([(tr("Valid from"), _not_before(payload["nbf"]))] if isinstance(payload.get("nbf"), (int, float)) else []),
             (tr("Valid until"), _date(payload.get("exp")) if payload.get("exp") else tr("Does not expire")),
             (tr("Bound to this wallet's key"), tr("Yes") if (payload.get("cnf") or {}).get("jwk") else tr("No")),
             (tr("Selective disclosure"), tr_n("{n} piece of data that is only shared when you approve it",
@@ -297,6 +307,19 @@ class ActivityPage(Page):
         self.header, _ = _header(tr("Activity"), tr("Which credentials you received and which data you shared, and with "
                                                      "whom."))
         self.root.addWidget(self.header)
+        self.contact: str | None = None  # party_id whose history is shown, or None for everything
+        self.contact_bar = QWidget()
+        bar = QVBoxLayout(self.contact_bar)
+        bar.setContentsMargins(0, 0, 0, 6)
+        bar.setSpacing(2)
+        back = button(tr("All activity"), "ghost", "chevron-left")
+        back.clicked.connect(lambda: self.show_contact(None))
+        bar.addWidget(back, alignment=Qt.AlignLeft)
+        self.contact_title = label("", "sectionTitle", wrap=True)
+        self.contact_summary = label("", "caption", wrap=True, selectable=True)
+        bar.addWidget(self.contact_title)
+        bar.addWidget(self.contact_summary)
+        self.root.addWidget(self.contact_bar)
         self.list_host = QWidget()
         self.list_layout = QVBoxLayout(self.list_host)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
@@ -308,9 +331,26 @@ class ActivityPage(Page):
                                    "decline to share) your data."))
         self.root.addWidget(self.empty, 1)
 
+    def show_contact(self, party_id: str | None) -> None:
+        self.contact = party_id
+        self.refresh()
+
     def refresh(self) -> None:
         clear_layout(self.list_layout)
         events = load_history()
+        if self.contact is not None:
+            events = [e for e in events if e.get("party_id") == self.contact]
+        self.contact_bar.setVisible(self.contact is not None)
+        if self.contact is not None and events:
+            kinds = [e.get("type") for e in events]
+            name, place = _party_name(events[0]), _party_place(events[0])
+            self.contact_title.setText(name)
+            parts = [text for n, text in (
+                (kinds.count("issued"), tr_n("{n} credential received", "{n} credentials received", kinds.count("issued"))),
+                (kinds.count("presented"), tr_n("shared once", "shared {n} times", kinds.count("presented"))),
+                (kinds.count("declined"), tr_n("declined once", "declined {n} times", kinds.count("declined"))),
+            ) if n]
+            self.contact_summary.setText("\n".join(p for p in (place if place != name else "", " · ".join(parts)) if p))
         self.scroll.setVisible(bool(events))
         self.empty.setVisible(not events)
         if not events:
@@ -326,9 +366,7 @@ class ActivityPage(Page):
     def _row(self, event: dict[str, Any]) -> QWidget:
         t = theme.current()
         icon, tone, template = EVENT_STYLE.get(event.get("type"), ("info", "accent", "{party}"))
-        party = event.get("party", "?")
-        if event.get("type") == "issued" and party == host_of(event.get("party_id", "")):
-            party = site_of(event["party_id"])  # older events stored the host of issuers with no name
+        party = _party_name(event)
         color, soft = {"accent": (t.accent, t.accent_soft), "ok": (t.success, t.success_soft),
                        "danger": (t.danger, t.danger_soft)}[tone]
         row = QWidget()
@@ -349,7 +387,27 @@ class ActivityPage(Page):
             text.addWidget(label(host_of(event.get("party_id", "")), "caption"))
         layout.addLayout(text, 1)
         layout.addWidget(label(relative_time(event.get("time", 0)), "caption"), alignment=Qt.AlignTop)
+        if self.contact is None and event.get("party_id"):
+            row.setCursor(Qt.PointingHandCursor)
+            row.setToolTip(tr("Show everything with {party}", party=party))
+            row.mousePressEvent = lambda _e, pid=event["party_id"]: self.show_contact(pid)
         return row
+
+
+def _party_name(event: dict[str, Any]) -> str:
+    party = event.get("party", "?")
+    if event.get("type") == "issued" and party == host_of(event.get("party_id", "")):
+        return site_of(event["party_id"])  # older events stored the host of issuers with no name
+    return party
+
+
+def _party_place(event: dict[str, Any]) -> str:
+    """Where the contact is: the host of an issuer, the client_id of a verifier."""
+    party_id = str(event.get("party_id", ""))
+    if "://" in party_id:
+        return host_of(party_id)
+    scheme, _, value = party_id.partition(":")  # verifier client_id: x509_san_dns:host, x509_hash:...
+    return value if scheme == "x509_san_dns" else party_id
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +520,8 @@ class SettingsPage(Page):
             _setting(tr("New versions"), tr("Check once a day whether a newer version has been published on GitHub. "
                                             "Nothing about your wallet is sent."),
                      auto_update, self._action(tr("Check now"), w.check_for_updates)),
+            _setting(tr("Licenses"), tr("Open source software this application is built with."),
+                     self._action(tr("Show"), w.show_licenses, "info")),
         ]
         if w.available_release:
             about.append(_setting(tr("Version {version} is available", version=w.available_release.version),

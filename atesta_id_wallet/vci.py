@@ -789,6 +789,30 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     return issued
 
 
+def known_issuer_for(session: requests.Session, wanted: list[str]) -> tuple[str, str, str] | None:
+    """
+    (issuer, credential_configuration_id, issuer name) of an issuer already used in this profile that
+    offers one of the 'wanted' credential types (configuration id or vct), or None. Only public metadata
+    is read; errors just mean "no".
+    """
+    wanted_set = {w for w in wanted if w}
+    for issuer in list(load_config().get("issuers", {}))[:8]:
+        try:
+            require_https(issuer, "credential_issuer")
+            meta = _get_first_json(session, _well_known(issuer, "openid-credential-issuer"))
+        except (WalletError, requests.RequestException):
+            continue
+        configs = meta.get("credential_configurations_supported") or {}
+        if not isinstance(configs, dict):
+            continue
+        for config_id, config in configs.items():
+            vct = config.get("vct") if isinstance(config, dict) else None
+            if config_id in wanted_set or (vct and vct in wanted_set):
+                name = pick_display(meta.get("display")).get("name") or site_of(issuer)
+                return issuer, config_id, name
+    return None
+
+
 def issue_from_issuer(session: requests.Session, issuer: str, config_ids: list[str], options: IssueOptions,
                       ui: Prompter) -> list[IssuedCredential]:
     """Wallet-initiated issuance (OpenID4VCI 1.0 §3.3.3): no offer, just the issuer and the credential."""

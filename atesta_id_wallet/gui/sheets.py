@@ -30,7 +30,7 @@ from ..i18n import N_, tr, tr_n
 from ..storage import credential_holder, credential_issuer_name, credential_name
 from ..ui import OfferSummary, consent_items
 from . import theme
-from .widgets import IconBubble, Spinner, button, esc, fade_in, label
+from .widgets import IconBubble, Spinner, button, esc, fade_in, label, password_field
 
 # (icon, style, title, explanation) per verifier trust level.
 TRUST_COPY = {
@@ -187,7 +187,7 @@ class ProgressSheet(Sheet):
 class ResultSheet(Sheet):
     def __init__(self, ok: bool, title: str, body: str, on_close: Callable[[], None], *,
                  details: str = "", icon: str | None = None, tone: str | None = None,
-                 extra: QWidget | None = None):
+                 extra: QWidget | None = None, action: tuple[str, Callable[[], None]] | None = None):
         super().__init__(icon=icon or ("circle-check" if ok else "circle-x"),
                          tone=tone or ("ok" if ok else "danger"), title=title, body=body)
         if extra is not None:
@@ -200,12 +200,19 @@ class ResultSheet(Sheet):
             toggle.clicked.connect(lambda: (text.setVisible(not text.isVisible()), toggle.hide()))
             self.add(toggle)
             self.add(text)
-        close = button(tr("Done") if ok else tr("Close"), "primary")
+        close = button(tr("Done") if ok else tr("Close"), None if action else "primary")
         close.clicked.connect(on_close)
-        close.setDefault(True)
-        self.add_buttons(close)
+        if action:
+            act = button(action[0], "primary")
+            act.clicked.connect(action[1])
+            act.setDefault(True)
+            self.add_buttons(close, act)
+            self._focus = act
+        else:
+            close.setDefault(True)
+            self.add_buttons(close)
+            self._focus = close
         self.on_escape = on_close
-        self._focus = close
 
 
 # ---------------------------------------------------------------------------
@@ -215,10 +222,13 @@ class ResultSheet(Sheet):
 
 class ConfirmSheet(Sheet):
     def __init__(self, title: str, body: str, on_answer: Callable[[bool], None], *,
-                 confirm_text: str | None = None, danger: bool = False, icon: str = "info"):
+                 confirm_text: str | None = None, danger: bool = False, icon: str = "info",
+                 cancel_text: str | None = None, step: str = ""):
         super().__init__(icon=icon, tone="danger" if danger else "accent", title=title, body=body)
+        if step:
+            self.add(label(step, "caption"))
         confirm_text = confirm_text or tr("Continue")
-        cancel = button(tr("Cancel"))
+        cancel = button(cancel_text or tr("Cancel"))
         cancel.clicked.connect(lambda: on_answer(False))
         accept = button(confirm_text, "dangerFilled" if danger else "primary")
         accept.clicked.connect(lambda: on_answer(True))
@@ -233,10 +243,12 @@ class TextSheet(Sheet):
                  confirm_text: str | None = None):
         super().__init__(icon=icon, title=title, body=body)
         confirm_text = confirm_text or tr("Continue")
-        self.field = QLineEdit(default)
-        self.field.setPlaceholderText(placeholder)
         if secret:
-            self.field.setEchoMode(QLineEdit.Password)
+            self.field = password_field(placeholder)
+            self.field.setText(default)
+        else:
+            self.field = QLineEdit(default)
+            self.field.setPlaceholderText(placeholder)
         self.add(self.field)
         cancel = button(tr("Cancel"))
         cancel.clicked.connect(lambda: on_answer(None))
@@ -258,9 +270,7 @@ class LoginSheet(Sheet):
         form.setSpacing(6)
         self.user = QLineEdit(username or "")
         self.user.setPlaceholderText(tr("Username or email"))
-        self.password = QLineEdit()
-        self.password.setPlaceholderText(tr("Password"))
-        self.password.setEchoMode(QLineEdit.Password)
+        self.password = password_field(tr("Password"))
         if ask_username:
             form.addWidget(label(tr("Username"), "claimName"))
             form.addWidget(self.user)
@@ -401,6 +411,42 @@ class ConsentSheet(Sheet):
         self.add_buttons(decline, self.share)
         self.on_escape = lambda: on_answer(False)
         self._focus = decline
+
+
+# Third-party software in the application (the frozen builds also carry the Python runtime, PSF).
+THIRD_PARTY = (
+    ("Qt for Python (PySide6)", "LGPL-3.0", "https://doc.qt.io/qtforpython/"),
+    ("cryptography", "Apache-2.0 OR BSD-3-Clause", "https://github.com/pyca/cryptography"),
+    ("requests", "Apache-2.0", "https://github.com/psf/requests"),
+    ("keyring", "MIT", "https://github.com/jaraco/keyring"),
+    ("zxing-cpp", "Apache-2.0", "https://github.com/zxing-cpp/zxing-cpp"),
+    ("Pillow", "MIT-CMU", "https://github.com/python-pillow/Pillow"),
+    ("Lucide icons", "ISC", "https://lucide.dev"),
+    ("Python", "PSF-2.0", "https://www.python.org"),
+)
+
+
+class LicensesSheet(Sheet):
+    def __init__(self, on_close: Callable[[], None]):
+        super().__init__(icon="info", title=tr("Licenses"),
+                         body=tr("Atesta ID Wallet is built with this open source software."))
+        box = QFrame()
+        box.setObjectName("claimBox")
+        rows = QVBoxLayout(box)
+        rows.setContentsMargins(14, 10, 14, 10)
+        rows.setSpacing(6)
+        for name, licence, url in THIRD_PARTY:
+            line = QHBoxLayout()
+            line.addWidget(label(name, "claimName"), 1)
+            line.addWidget(label(licence, "caption"))
+            rows.addLayout(line)
+            rows.addWidget(label(url, "caption", selectable=True))
+        self.add(box)
+        close = button(tr("Close"), "primary")
+        close.clicked.connect(on_close)
+        self.add_buttons(close)
+        self.on_escape = on_close
+        self._focus = close
 
 
 class ScanSheet(Sheet):

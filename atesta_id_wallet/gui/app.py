@@ -73,7 +73,7 @@ from ..storage import (
     write_backup,
 )
 from ..ui import OfferSummary, Prompter, consent_items
-from ..vci import IssueOptions, issue
+from ..vci import IssueOptions, issue, issue_from_issuer, known_issuer_for
 from ..vp import NoMatchingCredential, build_response, prepare_presentation, record_declined, send_presentation
 from . import theme
 from .pages import ActivityPage, CredentialPage, LockPage, SettingsPage, WalletPage
@@ -81,6 +81,7 @@ from .sheets import (
     ChooseSheet,
     ConfirmSheet,
     ConsentSheet,
+    LicensesSheet,
     LoginSheet,
     OfferSheet,
     Overlay,
@@ -265,7 +266,7 @@ class MainWindow(QMainWindow):
             nav.setCursor(Qt.PointingHandCursor)
             nav.setIcon(theme.icon(icon, t.text_muted, 18))
             nav.toggled.connect(lambda on, b=nav, i=icon: b.setIcon(theme.icon(i, t.accent if on else t.text_muted, 18)))
-            nav.clicked.connect(lambda _=False, k=key: self._go(k))
+            nav.clicked.connect(lambda _=False, k=key: self._nav(k))
             self.nav.addButton(nav)
             self.nav_buttons[key] = nav
             column.addWidget(nav)
@@ -288,6 +289,11 @@ class MainWindow(QMainWindow):
         return bar
 
     # -- navigation -----------------------------------------------------------
+
+    def _nav(self, name: str) -> None:
+        """Sidebar: a page from its start (Activity shows everything again)."""
+        self.activity_page.contact = None
+        self._go(name)
 
     def _go(self, name: str) -> None:
         self._page_name = name
@@ -358,6 +364,46 @@ class MainWindow(QMainWindow):
             if ok:
                 action()
         self._sheet(ConfirmSheet(title, body, answer, confirm_text=confirm_text, danger=danger, icon=icon))
+
+    # -- first start -----------------------------------------------------------
+
+    def maybe_onboard(self) -> None:
+        """Three short steps the first time the wallet opens, empty; never again afterwards."""
+        settings = load_settings()
+        if settings.get("onboarded"):
+            return
+        settings["onboarded"] = True  # also for whoever already uses the wallet: only new users see it
+        save_settings(settings)
+        if storage.vault_state() == "open" and not self.records and not storage.load_history():
+            self._onboarding_step(0)
+
+    def _onboarding_step(self, index: int) -> None:
+        steps = (
+            ("wallet", tr("Welcome to Atesta ID Wallet"),
+             tr("Keep your verifiable credentials on this computer and use them to sign in to data space services. "
+                "Nothing is shared without your approval, and you see exactly what.")),
+            ("scan-line", tr("Get your first credential"),
+             tr("Open the page where the issuer gives you the credential (for example, the link in your welcome "
+                "email). Press <b>Scan QR</b> and take a screenshot of the QR code: the wallet finds it by itself.")),
+            ("lock", tr("Protect your wallet"),
+             tr("Your credentials are encrypted on this computer. A <b>wallet password</b> locks the app, and a "
+                "<b>backup</b> (Settings → Backup) is the only way to recover them if you lose this computer.")),
+        )
+        icon, title, body = steps[index]
+        last = index == len(steps) - 1
+        protected = vault.mode(storage.DATA_DIR) == "password"
+
+        def answer(ok: bool) -> None:
+            self._close_sheet()
+            if not last and ok:
+                self._onboarding_step(index + 1)
+            elif last and ok and not protected:
+                self.set_wallet_password()
+
+        self._sheet(ConfirmSheet(
+            title, body, answer, icon=icon, step=tr("Step {n} of {total}", n=index + 1, total=len(steps)),
+            confirm_text=tr("Next") if not last else (tr("Done") if protected else tr("Set a password…")),
+            cancel_text=tr("Skip") if not last else tr("Later")))
 
     def _ask_text_then(self, title: str, body: str, action: Callable[[str], None], *, secret: bool = False,
                        placeholder: str = "", icon: str = "key-round", confirm_text: str | None = None) -> None:
@@ -547,11 +593,10 @@ class MainWindow(QMainWindow):
             self.toast.show_message(tr("Cancelled: nothing was sent"))
             return
         if isinstance(exc, NoMatchingCredential):
-            return self._result(False, tr("You do not have the requested credential"),
-                                tr("<b>{verifier}</b> asks for: {wanted}. Get it from its issuer first and try again.",
-                                   verifier=esc(exc.verifier or tr("The verifier")),
-                                   wanted=esc(", ".join(exc.wanted))),
-                                icon="wallet", tone="warn", details=exc.detail)
+            # Can an issuer this profile already used give it? Then offer to ask for it right away.
+            return self._run(tr("Looking for an issuer that gives it…"),
+                             lambda: known_issuer_for(requests.Session(), exc.wanted),
+                             lambda found: self._missing_credential(exc, found))
         if isinstance(exc, requests.RequestException):
             return self._result(False, tr("Could not connect"), tr("Check your internet connection. ({error})",
                                                                    error=esc(exc)))
@@ -559,6 +604,28 @@ class MainWindow(QMainWindow):
             return self._result(False, tr("Could not complete it"), esc(exc))
         self._on_log(trace, True)
         self._result(False, tr("Unexpected error"), esc(f"{type(exc).__name__}: {exc}"), details=trace)
+
+    def _missing_credential(self, exc: NoMatchingCredential, found: tuple[str, str, str] | None) -> None:
+        verifier = esc(exc.verifier or tr("The verifier"))
+        wanted = esc(", ".join(exc.wanted))
+        if not found:
+            return self._result(False, tr("You do not have the requested credential"),
+                                tr("<b>{verifier}</b> asks for: {wanted}. Get it from its issuer first and try again.",
+                                   verifier=verifier, wanted=wanted),
+                                icon="wallet", tone="warn", details=exc.detail)
+        issuer, config_id, name = found
+
+        def request() -> None:
+            self._close_sheet()
+            self._run(tr("Receiving the credential…"),
+                      lambda: issue_from_issuer(requests.Session(), issuer, [config_id], IssueOptions(), self.prompter),
+                      self._issued)
+        self._result(False, tr("You do not have the requested credential"),
+                     tr("<b>{verifier}</b> asks for: {wanted}. <b>{issuer}</b>, which you have used before, gives it: "
+                        "ask for it now, then scan the login QR code again.",
+                        verifier=verifier, wanted=wanted, issuer=esc(name)),
+                     icon="wallet", tone="warn", details=exc.detail,
+                     action=(tr("Request it from {issuer}", issuer=name), request))
 
     @Slot(str, bool)
     def _on_log(self, message: str, is_debug: bool) -> None:
@@ -772,6 +839,9 @@ class MainWindow(QMainWindow):
         self.toast.show_message(tr("Language: {language}", language=i18n.LANGUAGES[i18n.current()]))
 
 
+    def show_licenses(self) -> None:
+        self._sheet(LicensesSheet(self._close_sheet))
+
     def set_theme(self, preference: str) -> None:
         """Saves the theme chosen in Settings and repaints the window with it."""
         if preference not in theme.THEMES:
@@ -805,13 +875,23 @@ class MainWindow(QMainWindow):
         self._ask_password()
 
     def _ask_password(self, error: str = "") -> None:
+        wait = storage.unlock_wait()
+        if wait and not error:
+            error = esc(storage.TooManyAttempts(wait))
         self._ask_text_then(tr("Wallet password"), error or tr("Profile «{profile}»", profile=esc(storage.PROFILE)),
                             self._try_unlock, secret=True, icon="lock", confirm_text=tr("Unlock"))
 
     def _try_unlock(self, password: str) -> None:
         try:
             storage.unlock(password)
+        except storage.TooManyAttempts as exc:
+            return self._ask_password(esc(exc))
         except vault.WrongPassword:
+            if storage.unlock_wait():
+                return self._ask_password(esc(storage.TooManyAttempts(storage.unlock_wait())))
+            if storage.attempts_before_wait() == 0:
+                return self._ask_password(tr("Wrong wallet password. One more wrong attempt and you will have to "
+                                             "wait before trying again."))
             return self._ask_password(tr("Wrong wallet password. Try again."))
         except WalletError as exc:
             return self._result(False, tr("Could not open the wallet"), esc(exc))
@@ -1064,6 +1144,8 @@ def main(argv: list[str] | None = None) -> int:
         QTimer.singleShot(0, lambda: window.process(args.entry))  # asks for the password first if locked
     elif storage.vault_state() != "open":
         QTimer.singleShot(0, window.unlock)
+    else:
+        QTimer.singleShot(0, window.maybe_onboard)
     window._restart_idle()
     if updates.automatic_check_due():
         window.check_for_updates(automatic=True)

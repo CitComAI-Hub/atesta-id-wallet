@@ -125,7 +125,9 @@ of the login QR code. Before anything is sent, the wallet shows:
 
 Nothing is sent until you press **Share**. For a verifier whose certificate changed or cannot
 be verified, you must also tick *I understand the risk*. If several credentials match, the wallet
-asks which one to use. Shared and declined requests are recorded in **Activity**. The browser
+asks which one to use. Shared and declined requests are recorded in **Activity** (click an entry to see
+everything with that issuer or verifier). If you lack the credential a verifier asks for and an
+issuer you used before gives it, the wallet offers to request it there. The browser
 then completes the login.
 
 **Scan QR** checks the clipboard and any screenshot taken in the last 5 minutes. If it finds

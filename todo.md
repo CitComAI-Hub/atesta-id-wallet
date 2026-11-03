@@ -94,6 +94,10 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   Issuers with no published name are shown by their domain (`pgtec-vrain-dataspace.eu`, not the
   Keycloak host); dates as `3 Nov 2026`; empty-wallet text no longer CITCOM-only.
   Issuer logos on the cards (downloaded once at issuance, stored with the credential).
+  From a look at Lissi's screens: show/hide button in password fields; wait after 3 wrong wallet
+  passwords (doubling, up to 15 min); issued / valid-from dates; "request it from <known issuer>"
+  when a verifier asks for a credential you lack; Activity per contact; three-step first start;
+  Settings → About → Licenses.
 
 ## Next: roadmap to the pilot (TRL 6)
 

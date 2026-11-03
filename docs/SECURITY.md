@@ -31,6 +31,10 @@ another. The data key is kept in one of two ways:
   keyring. Nothing can be read until the password is typed: this is the app lock. The window locks
   again after 5 minutes without use or with *Lock*. The password cannot be recovered; `reset`
   empties the profile and starts again.
+  After 3 wrong passwords each new one doubles a wait (15 s, 30 s, ... up to 15 minutes), kept in
+  `settings.json` so that restarting does not reset it; a right password clears it. This only slows
+  down guessing through the wallet: whoever copies the files attacks scrypt offline, so a long
+  password is what matters.
 
 Without a usable keyring (headless systems, some minimal desktops) a wallet password is required:
 the data is never stored in clear text. Unlocked keys live in the process memory until it locks

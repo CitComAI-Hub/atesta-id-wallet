@@ -160,9 +160,65 @@ def write_private(path: Path, content: str | bytes) -> None:
         raise
 
 
+# Wrong wallet passwords: a few are free, then each one doubles the wait (15 s, 30 s, ... 15 min).
+# This slows down guessing in the wallet itself; whoever copies the files attacks scrypt offline
+# instead (see docs/SECURITY.md).
+FREE_ATTEMPTS = 3
+FIRST_WAIT = 15
+MAX_WAIT = 15 * 60
+
+
+class TooManyAttempts(WalletError):
+    def __init__(self, seconds: int) -> None:
+        self.seconds = seconds
+        super().__init__(tr("Too many wrong passwords. Try again in {seconds} s.", seconds=seconds))
+
+
+def _failures() -> dict[str, Any]:
+    entry = (load_settings().get("unlock_failures") or {}).get(PROFILE) or {}
+    return entry if isinstance(entry, dict) else {}
+
+
+def _save_failures(entry: dict[str, Any] | None) -> None:
+    settings = load_settings()
+    failures = settings.get("unlock_failures") if isinstance(settings.get("unlock_failures"), dict) else {}
+    if entry:
+        failures[PROFILE] = entry
+    else:
+        failures.pop(PROFILE, None)
+    if failures:
+        settings["unlock_failures"] = failures
+    else:
+        settings.pop("unlock_failures", None)
+    save_settings(settings)
+
+
+def unlock_wait() -> int:
+    """Seconds left before the wallet password of the active profile may be tried again."""
+    return max(0, int(float(_failures().get("until", 0)) - time.time() + 0.999))
+
+
+def attempts_before_wait() -> int:
+    """Wrong passwords still allowed before the next one makes the user wait."""
+    return max(0, FREE_ATTEMPTS - int(_failures().get("count", 0)))
+
+
 def unlock(password: str | None = None) -> None:
     """Unlocks the active profile (or creates its key, protected by 'password' if given)."""
-    vault.unlock(DATA_DIR, password)
+    wait = unlock_wait()
+    if wait and vault.mode(DATA_DIR) == "password":
+        raise TooManyAttempts(wait)
+    try:
+        vault.unlock(DATA_DIR, password)
+    except vault.WrongPassword:
+        count = int(_failures().get("count", 0)) + 1
+        entry: dict[str, Any] = {"count": count}
+        if count > FREE_ATTEMPTS:
+            entry["until"] = time.time() + min(MAX_WAIT, FIRST_WAIT * 2 ** (count - FREE_ATTEMPTS - 1))
+        _save_failures(entry)
+        raise
+    if _failures():
+        _save_failures(None)
 
 
 def vault_state() -> str:

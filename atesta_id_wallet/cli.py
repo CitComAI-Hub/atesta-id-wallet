@@ -250,6 +250,8 @@ def open_profile() -> None:
             return
         except vault.WrongPassword as exc:
             print(exc)
+            if storage.unlock_wait():
+                raise storage.TooManyAttempts(storage.unlock_wait()) from exc
     raise vault.WrongPassword()
 
 

@@ -1309,6 +1309,52 @@ class GuiFlowTests(unittest.TestCase):
         card = widgets.CredentialCard({**record, "issuer": "https://kc.example.org"})
         card.grab()  # paints with the logo
 
+    def test_password_can_be_shown(self):
+        from atesta_id_wallet.gui import widgets
+        field = widgets.password_field()
+        self.assertEqual(field.echoMode(), widgets.QLineEdit.Password)
+        field.toggle_visibility.trigger()
+        self.assertEqual(field.echoMode(), widgets.QLineEdit.Normal)
+        field.toggle_visibility.trigger()
+        self.assertEqual(field.echoMode(), widgets.QLineEdit.Password)
+
+    def test_missing_credential_offers_known_issuer(self):
+        storage.save_config({"issuers": {FakeIssuer.base: {}}})
+        holder = storage.HolderKey.load_or_create()
+        self.addCleanup(setattr, gui, "issue_from_issuer", gui.issue_from_issuer)
+        requested = []
+        gui.issue_from_issuer = lambda session, issuer, ids, options, prompter: requested.append((issuer, ids)) or []
+        exc = gui.NoMatchingCredential("no match", ["Legal"])
+        self.window._on_failed(exc, "")
+        self.wait()
+        sheet = self.window.overlay.sheet
+        [ask] = [b for b in sheet.findChildren(gui.QPushButton) if b.text().startswith("Pedirla a")]
+        ask.click()
+        self.wait()
+        self.assertEqual(requested, [(FakeIssuer.base, ["Legal"])])
+        del holder
+
+    def test_activity_by_contact(self):
+        for event in ({"type": "issued", "party": "Ayuntamiento", "party_id": "https://i.example/r"},
+                      {"type": "presented", "party": "Verificador", "party_id": "x509_san_dns:v.example"},
+                      {"type": "declined", "party": "Verificador", "party_id": "x509_san_dns:v.example"}):
+            storage.add_history(event)
+        page = self.window.activity_page
+        self.window._go("activity")
+        page.show_contact("x509_san_dns:v.example")
+        self.assertTrue(page.contact_bar.isVisibleTo(page))
+        self.assertIn("compartido una vez · rechazado una vez", page.contact_summary.text())
+        self.window._nav("activity")  # the sidebar shows everything again
+        self.assertIsNone(page.contact)
+
+    def test_onboarding_only_once(self):
+        self.window.maybe_onboard()
+        self.assertEqual(type(self.window.overlay.sheet).__name__, "ConfirmSheet")
+        self.window._close_sheet()
+        self.window.maybe_onboard()
+        self.assertIsNone(self.window.overlay.sheet)
+        self.assertTrue(storage.load_settings()["onboarded"])
+
     def test_consent_declined_sends_nothing(self):
         holder = storage.HolderKey.load_or_create()
         storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")

@@ -25,7 +25,17 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QImageReader, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QFont,
+    QImageReader,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
@@ -33,6 +43,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -160,6 +171,28 @@ class FlowLayout(QLayout):
             x += hint.width() + self._spacing
             row_height = max(row_height, hint.height())
         return y + row_height - rect.y() + margins.bottom()
+
+
+def password_field(placeholder: str = "") -> QLineEdit:
+    """Password input with a show/hide button at the end (hidden by default)."""
+    field = QLineEdit()
+    field.setPlaceholderText(placeholder)
+    field.setEchoMode(QLineEdit.Password)
+    color = theme.current().text_muted
+    toggle = QAction(theme.icon("eye", color, 18), tr("Show password"), field)
+
+    def flip() -> None:
+        hidden = field.echoMode() == QLineEdit.Password
+        field.setEchoMode(QLineEdit.Normal if hidden else QLineEdit.Password)
+        toggle.setIcon(theme.icon("eye-off" if hidden else "eye", color, 18))
+        toggle.setText(tr("Hide password") if hidden else tr("Show password"))
+        toggle.setToolTip(toggle.text())
+
+    toggle.setToolTip(toggle.text())
+    toggle.triggered.connect(flip)
+    field.addAction(toggle, QLineEdit.TrailingPosition)
+    field.toggle_visibility = toggle  # type: ignore[attr-defined]  # for tests
+    return field
 
 
 _LOGO_MAX_SIDE = 2048

@@ -84,6 +84,31 @@ class PasswordTests(VaultTestCase):
         self.assertEqual(len(storage.load_credentials()), 1)
         self.assertEqual(storage.load_config()["issuers"]["https://issuer.example"]["username"], "alice")
 
+    def test_wrong_passwords_make_you_wait(self):
+        self.store_something()
+        vault.set_password(storage.DATA_DIR, PASSWORD)
+        vault.lock()
+        for left in (2, 1, 0):  # the first ones are free
+            with self.assertRaises(vault.WrongPassword):
+                storage.unlock("wrong password")
+            self.assertEqual((storage.attempts_before_wait(), storage.unlock_wait()), (left, 0))
+        with self.assertRaises(vault.WrongPassword):
+            storage.unlock("wrong password")
+        self.assertTrue(10 <= storage.unlock_wait() <= storage.FIRST_WAIT)
+        with self.assertRaises(storage.TooManyAttempts):  # not even tried while waiting, not even the right one
+            storage.unlock(PASSWORD)
+        settings = storage.load_settings()  # the wait survives a restart: it is in settings.json
+        settings["unlock_failures"][storage.PROFILE]["until"] = 0
+        storage.save_settings(settings)
+        with self.assertRaises(vault.WrongPassword):
+            storage.unlock("wrong password")
+        self.assertTrue(storage.FIRST_WAIT < storage.unlock_wait() <= 2 * storage.FIRST_WAIT)  # doubles
+        settings = storage.load_settings()
+        settings["unlock_failures"][storage.PROFILE]["until"] = 0
+        storage.save_settings(settings)
+        storage.unlock(PASSWORD)
+        self.assertNotIn("unlock_failures", storage.load_settings())  # a right password starts over
+
     def test_removing_the_password_moves_the_key_back_to_the_keyring(self):
         self.store_something()
         vault.set_password(storage.DATA_DIR, PASSWORD)
