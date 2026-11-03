@@ -74,6 +74,22 @@ class LoopbackTests(unittest.TestCase):
             loop.wait(threading.Event(), timeout=1)
 
 
+class OpenBrowserTests(unittest.TestCase):
+    def test_without_console(self):
+        """Windowed builds have no stdout/stderr (no file descriptors 1 and 2): the browser still opens."""
+        opened = []
+        self.addCleanup(setattr, vci.webbrowser, "open", vci.webbrowser.open)
+        self.addCleanup(setattr, vci.os, "dup", vci.os.dup)
+        vci.webbrowser.open = opened.append
+
+        def no_console(fd):
+            raise OSError(9, "Bad file descriptor")
+
+        vci.os.dup = no_console
+        vci._open_browser_quietly("https://kc.example/auth")
+        self.assertEqual(opened, ["https://kc.example/auth"])
+
+
 class ProbeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -211,11 +227,12 @@ class GuiBrowserWaitTests(unittest.TestCase):
 
     def test_panel_open_again_and_cancel(self):
         self.run_wait(lambda stop: stop.wait(10) and (_ for _ in ()).throw(common.Cancelled()))
-        self.pump(lambda: type(self.window.overlay.sheet).__name__ == "ConfirmSheet")
+        self.pump(lambda: type(self.window.overlay.sheet).__name__ == "BrowserSheet")
         sheet = self.window.overlay.sheet
         self.assertIn("kc.example", sheet.body.text())
         buttons = {b.text(): b for b in sheet.findChildren(base.gui.QPushButton)}
-        buttons["Abrir el navegador otra vez"].click()
+        self.assertEqual(self.opened, [])  # vci already opened it: the panel does not open a second tab
+        buttons["¿No se ha abierto? Ábrelo otra vez"].click()
         self.assertEqual(self.opened, ["https://kc.example/auth?x"])
         buttons["Cancelar"].click()
         self.pump(lambda: not self.window.busy)

@@ -78,6 +78,7 @@ from ..vp import NoMatchingCredential, build_response, prepare_presentation, rec
 from . import theme
 from .pages import ActivityPage, CredentialPage, LockPage, SettingsPage, WalletPage
 from .sheets import (
+    BrowserSheet,
     ChooseSheet,
     ConfirmSheet,
     ConsentSheet,
@@ -697,21 +698,17 @@ class MainWindow(QMainWindow):
     def _ask_browser(self, request: Ask) -> None:
         host, url, stop = request.args
 
-        def answer(again: bool) -> None:
-            if again:
-                webbrowser.open(url)
-            else:
-                stop.set()
-                self._show_progress()
+        def cancel() -> None:
+            stop.set()
+            self._show_progress()
 
-        self._sheet(ConfirmSheet(
-            tr("Continue in your browser"),
-            tr("Sign in to <b>{host}</b> in the browser window that has just opened. The wallet carries on by "
-               "itself when you finish; your password stays in the browser.", host=esc(host)),
-            answer, confirm_text=tr("Open the browser again"), icon="lock"))
+        self._sheet(BrowserSheet(host, lambda: webbrowser.open(url), cancel))
 
     def _ask_progress(self, request: Ask) -> None:
+        # Back from the browser: desktops often refuse to bring the window to the front by itself
+        # (focus-stealing prevention), so at least it asks for attention in the taskbar.
         self._show_progress()
+        QApplication.alert(self)
 
     def _ask_choose(self, request: Ask) -> None:
         query_id, candidates = request.args

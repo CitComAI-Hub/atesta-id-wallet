@@ -270,9 +270,15 @@ class _Loopback:
 
 def _open_browser_quietly(url: str) -> None:
     """webbrowser inherits stdout/stderr and the browser writes over the prompt."""
-    sys.stdout.flush()
-    sys.stderr.flush()
-    saved = os.dup(1), os.dup(2)
+    try:
+        for stream in (sys.stdout, sys.stderr):
+            if stream:
+                stream.flush()
+        saved = os.dup(1), os.dup(2)
+    except (OSError, ValueError):
+        # No console (the windowed builds on Windows and macOS have no stdout/stderr): nothing to protect.
+        webbrowser.open(url)
+        return
     devnull = os.open(os.devnull, os.O_WRONLY)
     try:
         os.dup2(devnull, 1)

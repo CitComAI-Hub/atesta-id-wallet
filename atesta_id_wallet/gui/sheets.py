@@ -243,6 +243,25 @@ class ConfirmSheet(Sheet):
         self._focus = cancel if danger else accept
 
 
+class BrowserSheet(Sheet):
+    """While the user signs in in the browser (already opened by the wallet): only cancel, plus a way
+    to open the page again if the browser did not come up."""
+
+    def __init__(self, host: str, on_open_again: Callable[[], None], on_cancel: Callable[[], None]):
+        super().__init__(icon="lock", title=tr("Continue in your browser"),
+                         body=tr("Sign in to <b>{host}</b> in the browser window that has just opened. The wallet "
+                                 "carries on by itself when you finish; your password stays in the browser.",
+                                 host=esc(host)))
+        self.add(label(tr("Waiting for the browser…"), "caption"))
+        again = button(tr("Did it not open? Open it again"), "ghost")
+        again.clicked.connect(on_open_again)
+        cancel = button(tr("Cancel"))
+        cancel.clicked.connect(on_cancel)
+        self.add_buttons(again, cancel)
+        self.on_escape = on_cancel
+        self._focus = cancel
+
+
 class TextSheet(Sheet):
     def __init__(self, title: str, body: str, on_answer: Callable[[str | None], None], *,
                  default: str = "", placeholder: str = "", secret: bool = False, icon: str = "key-round",
