@@ -1,0 +1,171 @@
+{
+  "realm": "atesta",
+  "enabled": true,
+  "verifiableCredentialsEnabled": true,
+  "attributes": {
+    "preAuthorizedCodeLifespanS": "300"
+  },
+  "components": {
+    "org.keycloak.keys.KeyProvider": [
+      {
+        "name": "ec-p256-chain",
+        "providerId": "java-keystore",
+        "config": {
+          "priority": [
+            "100"
+          ],
+          "active": [
+            "true"
+          ],
+          "enabled": [
+            "true"
+          ],
+          "algorithm": [
+            "ES256"
+          ],
+          "keyUse": [
+            "sig"
+          ],
+          "keystore": [
+            "/opt/keycloak/data/atesta/signing.p12"
+          ],
+          "keystorePassword": [
+            "atesta-test"
+          ],
+          "keyAlias": [
+            "signing"
+          ],
+          "keyPassword": [
+            "atesta-test"
+          ],
+          "keystoreType": [
+            "PKCS12"
+          ]
+        }
+      }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "TestCredential",
+      "protocol": "oid4vc",
+      "attributes": {
+        "vc.verifiable_credential_type": "TestCredential",
+        "vc.format": "dc+sd-jwt",
+        "vc.credential_signing_alg": "ES256",
+        "vc.cryptographic_binding_methods_supported": "jwk",
+        "vc.binding_required": "true",
+        "vc.credential_build_config.token_jws_type": "dc+sd-jwt",
+        "vc.credential_build_config.sd_jwt.visible_claims": "iss,iat,nbf,exp,cnf,vct,status",
+        "vc.display": "[{\"name\":\"Test credential\",\"locale\":\"en\"}]",
+        "vc.binding_required_proof_types": "jwt",
+        "vc.credential_build_config.proof_types_supported": "{\"jwt\":{\"proof_signing_alg_values_supported\":[\"ES256\"]}}"
+      },
+      "protocolMappers": [
+        {
+          "name": "vct",
+          "protocol": "oid4vc",
+          "protocolMapper": "oid4vc-static-claim-mapper",
+          "config": {
+            "claim.name": "vct",
+            "staticValue": "TestCredential"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "oid4vc",
+          "protocolMapper": "oid4vc-user-attribute-mapper",
+          "config": {
+            "claim.name": "email",
+            "userAttribute": "email"
+          }
+        },
+        {
+          "name": "firstName",
+          "protocol": "oid4vc",
+          "protocolMapper": "oid4vc-user-attribute-mapper",
+          "config": {
+            "claim.name": "firstName",
+            "userAttribute": "firstName"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "atesta-test",
+      "name": "Test helper (creates offers)",
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "https://wallet.invalid/callback"
+      ],
+      "attributes": {
+        "oid4vci.enabled": "true",
+        "pkce.code.challenge.method": "S256"
+      },
+      "optionalClientScopes": [
+        "TestCredential"
+      ]
+    },
+    {
+      "clientId": "other-wallet",
+      "name": "Another wallet",
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "https://wallet.example/*"
+      ],
+      "attributes": {
+        "oid4vci.enabled": "true",
+        "pkce.code.challenge.method": "S256"
+      },
+      "optionalClientScopes": [
+        "TestCredential"
+      ]
+    },
+    {
+      "clientId": "dpop-wallet",
+      "name": "DPoP wallet",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "https://wallet.invalid/callback"
+      ],
+      "attributes": {
+        "oid4vci.enabled": "true",
+        "pkce.code.challenge.method": "S256",
+        "dpop.bound.access.tokens": "true"
+      },
+      "optionalClientScopes": [
+        "TestCredential"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.org",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Tester",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice-test-password",
+          "temporary": false
+        }
+      ],
+      "verifiableCredentials": [
+        {
+          "credentialScopeName": "TestCredential"
+        }
+      ]
+    }
+  ]
+}

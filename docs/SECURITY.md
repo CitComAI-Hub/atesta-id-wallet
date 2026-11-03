@@ -128,7 +128,7 @@ name to look like a trusted one or inject links.
 - **Issuers without a published name** are shown by their domain on the cards, but by their full
   host in the offer review, where trust is decided; on shared hosting (`*.github.io`, `*.pages.dev`,
   ...) the full host everywhere, so a site there is not named after the platform.
-- **Offers tied to another wallet.** Keycloak 26.7 binds every offer made through
+- **Offers tied to another wallet.** Keycloak 26.6 and 26.7 bind every offer made through
   `create-credential-offer` to the OAuth client that created it, and refuses it at the token
   endpoint when another client signed in (`Credential offer target client ... different from
   login client`). Only on that exact error, the wallet asks the same issuer for the same

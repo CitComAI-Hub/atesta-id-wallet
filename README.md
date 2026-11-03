@@ -110,7 +110,7 @@ It remembers the username but never stores the password, and only sends the pass
 to the authorization server's own domain. It checks the credential's signature and key binding
 before storing it, and shows it with the name, colours and logo the issuer publishes.
 
-Some issuer pages make their QR codes for one specific wallet: Keycloak 26.7 ties each offer to
+Some issuer pages make their QR codes for one specific wallet: Keycloak 26.6 and 26.7 tie each offer to
 the OAuth client that created it, and the PGTEC onboarding portal, for example, makes them for
 Lissi. Scan them as usual: the wallet then asks the same issuer for the same credential directly,
 with the login you just typed, so you sign in only once. This works when your account is
@@ -288,12 +288,24 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[gui]"
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests
 ```
 
-The tests run offline (about 130 tests, a few seconds). They use local fake Keycloak, issuer and
+The tests run offline (149 tests, a few seconds). They use local fake Keycloak, issuer and
 verifier servers, and drive the GUI headless. The GUI tests are skipped if PySide6 is not
 installed. `tests/test_offline.py` covers the flows end to end; `tests/test_hardening.py` holds
 the regression tests for the security review of 0.5.1; `tests/test_packaging.py` covers the
 packaged executables and the new-version check; `tests/test_vault.py` the encryption and the lock. Test messages are checked in Spanish, so
 the Spanish catalog is exercised too.
+
+`tests/integration` runs the issuance flows (pre-authorized code, authorization code with the
+headless login, DPoP, offers made for another client) against a real Keycloak in Docker, with a
+test realm and HTTPS on `localhost:8443`. CI runs them every night on the Keycloak versions in use
+(SEAMWARE 26.6.2 for CITCOM, 26.7 for PGTEC) and, without blocking, on the latest one:
+
+```bash
+tests/integration/run_keycloak.sh quay.io/keycloak/keycloak:26.7 /tmp/kc-certs
+ATESTA_KEYCLOAK_URL=https://localhost:8443 REQUESTS_CA_BUNDLE=/tmp/kc-certs/cert.pem \
+  .venv/bin/python -m unittest discover -s tests/integration -v
+docker rm -f atesta-keycloak-it
+```
 
 The README screenshots are generated with made-up data by `python docs/make_screenshots.py`
 (run it again when the interface changes).

@@ -1,0 +1,62 @@
+# Integration tests against real Keycloak servers (tests/integration): the versions the wallet is used
+# with (CitCom: SEAMWARE 26.6.2; PGTEC: 26.7) and, without blocking, the latest one, to see breaking
+# changes before those servers upgrade. Nightly, by hand, and when the issuance code or the tests change.
+name: Keycloak
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "atesta_id_wallet/vci.py"
+      - "atesta_id_wallet/common.py"
+      - "atesta_id_wallet/sdjwt.py"
+      - "atesta_id_wallet/jose.py"
+      - "tests/integration/**"
+      - ".github/workflows/keycloak.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  keycloak:
+    name: ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # binds_offers: the server refuses offers made for another client and the wallet must fall
+          # back (26.6.2 and 26.7 do; 26.8 accepts them). Empty: not checked, issuance must just work.
+          - image: quay.io/seamware/keycloak:26.6.2
+            binds_offers: "1"
+            experimental: false
+          - image: quay.io/keycloak/keycloak:26.7
+            binds_offers: "1"
+            experimental: false
+          - image: quay.io/keycloak/keycloak:latest
+            binds_offers: ""
+            experimental: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install .
+      - name: Start Keycloak
+        run: tests/integration/run_keycloak.sh "${{ matrix.image }}" "$RUNNER_TEMP/certs"
+      - name: Integration tests
+        env:
+          ATESTA_KEYCLOAK_URL: https://localhost:8443
+        run: |
+          export REQUESTS_CA_BUNDLE="$RUNNER_TEMP/certs/cert.pem"
+          if [[ -n "${{ matrix.binds_offers }}" ]]; then export ATESTA_KEYCLOAK_BINDS_OFFERS="${{ matrix.binds_offers }}"; fi
+          python -m unittest discover -s tests/integration -v
+      - name: Keycloak log
+        if: failure()
+        run: docker logs atesta-keycloak-it 2>&1 | tail -200
