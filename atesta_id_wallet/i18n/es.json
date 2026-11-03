@@ -392,6 +392,7 @@
     "This is the latest version ({version})": "Es la última versión ({version})",
     "This may be a legitimate renewal or an impersonation. Do not continue if you are not sure.": "Puede ser una renovación legítima o una suplantación. No continúes si no estás seguro.",
     "This offer was made for another wallet (OAuth client '{client}') and the issuer did not give the credential directly either: {error}": "Esta oferta se generó para otra wallet (cliente OAuth '{client}') y el emisor tampoco ha dado la credencial directamente: {error}",
+    "This only works on Windows.": "Esto solo funciona en Windows.",
     "This profile already has data": "Este perfil ya tiene datos",
     "This profile has no credentials yet.": "Este perfil todavía no tiene credenciales.",
     "Timed out waiting for the browser redirect.": "Tiempo de espera agotado esperando la redirección del navegador.",

@@ -187,7 +187,9 @@ def _failures() -> dict[str, Any]:
 
 def _save_failures(entry: dict[str, Any] | None) -> None:
     settings = load_settings()
-    failures = settings.get("unlock_failures") if isinstance(settings.get("unlock_failures"), dict) else {}
+    failures = settings.get("unlock_failures")
+    if not isinstance(failures, dict):
+        failures = {}
     if entry:
         failures[PROFILE] = entry
     else:
@@ -482,14 +484,20 @@ def restore_backup(path: Path, password: str) -> int:
 
     with tarfile.open(fileobj=io.BytesIO(plain), mode="r:gz") as tar:
         members = tar.getmembers()
+        # Everything is checked before anything is written.
+        entries = []
         for member in members:
-            if not member.isfile() or _restore_target(member.name) is None:
+            found = _restore_target(member.name) if member.isfile() else None
+            if found is None:
                 raise WalletError(tr("Unexpected entry in the backup: {name}", name=member.name))
+            entries.append((member, *found))
         if "holder_key.pem" not in {m.name for m in members}:
             raise WalletError(tr("Unexpected entry in the backup: {name}", name="holder_key.pem"))
-        for member in members:
-            target, encrypted = _restore_target(member.name)
-            data = tar.extractfile(member).read()
+        for member, target, encrypted in entries:
+            stream = tar.extractfile(member)
+            if stream is None:
+                raise WalletError(tr("Unexpected entry in the backup: {name}", name=member.name))
+            data = stream.read()
             if encrypted:
                 write_secret(target, data)
             else:

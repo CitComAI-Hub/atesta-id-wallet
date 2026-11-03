@@ -65,7 +65,7 @@ WITHOUT_UNLOCK = ("reset", "profiles", "update", "language", "install-handler", 
 
 
 def cmd_issue(args: argparse.Namespace) -> int:
-    raw = None
+    raw = ""
     if not args.issuer:
         raw = args.offer or input(tr("Paste the OpenID4VCI offer (openid-credential-offer://...): "))
     options = IssueOptions(
@@ -152,7 +152,8 @@ def cmd_history(_: argparse.Namespace) -> int:
         print(tr("There is no activity in this profile yet."))
     for event in events:
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(event.get("time", 0)))
-        kind = tr(HISTORY_TEXT.get(event.get("type"), event.get("type")))
+        kind_id = str(event.get("type") or "")
+        kind = tr(HISTORY_TEXT[kind_id]) if kind_id in HISTORY_TEXT else kind_id
         print(f"{when}  {kind:11} {event.get('party')}: {', '.join(event.get('credentials') or [])}")
         if event.get("claims"):
             print(f"{'':29}" + tr("data: {claims}", claims=", ".join(event["claims"])))

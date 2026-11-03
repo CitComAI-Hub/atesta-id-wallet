@@ -392,6 +392,7 @@
     "This is the latest version ({version})": "Dat ass déi neist Versioun ({version})",
     "This may be a legitimate renewal or an impersonation. Do not continue if you are not sure.": "Dat kann eng legitim Erneierung oder en Identitéitsbedrug sinn. Maach net weider, wann s de net sécher bass.",
     "This offer was made for another wallet (OAuth client '{client}') and the issuer did not give the credential directly either: {error}": "Dës Offer gouf fir eng aner Wallet gemaach (OAuth-Client ‚{client}‘), an den Aussteller huet den Nowäis och net direkt ausgestallt: {error}",
+    "This only works on Windows.": "Dat funktionéiert nëmmen op Windows.",
     "This profile already has data": "Dëst Profil huet schonn Donnéeën",
     "This profile has no credentials yet.": "Dëst Profil huet nach keng Nowäiser.",
     "Timed out waiting for the browser redirect.": "Zäit iwwerschratt beim Waarden op d'Weiderleedung vum Browser.",

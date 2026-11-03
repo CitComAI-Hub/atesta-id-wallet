@@ -186,6 +186,8 @@ def set_password(profile: Path, password: str | None) -> None:
     """Protects the (unlocked) data key with a new password, or moves it to the keyring (None)."""
     key = _key(profile)
     meta = load_meta(profile)
+    if meta is None:  # _key has just created it
+        raise Locked()
     if password is None and not keyring_available():
         raise PasswordNeeded()
     new = _protect(meta["id"], key, password)

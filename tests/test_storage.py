@@ -4,9 +4,11 @@ Run:  python -m unittest discover -s tests
 """
 
 import getpass
+import io
 import os
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -20,6 +22,15 @@ class StorageTests(unittest.TestCase):
         self.home = isolated_home(self)
         self._getpass = getpass.getpass
         self.addCleanup(setattr, getpass, "getpass", self._getpass)
+
+    def test_history_event_without_type(self):
+        """'history' lists an event with no type instead of failing on it (found by mypy)."""
+        storage.HolderKey.load_or_create()
+        storage.add_history({"party": "Ayuntamiento", "credentials": ["Persona jurídica"]})
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(cli._run(["history"]), 0)
+        self.assertIn("Ayuntamiento: Persona jurídica", out.getvalue())
 
     @unittest.skipIf(os.name != "posix", "Windows: the data is protected by the profile ACL, not by mode bits")
     def test_private_permissions(self):

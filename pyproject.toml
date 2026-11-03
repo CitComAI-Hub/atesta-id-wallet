@@ -40,3 +40,16 @@ extend-exclude = ["venv", ".venv", "atesta_id_wallet/.venv", "build"]
 # Errors that are bugs (syntax, undefined names, unused imports, bugbear); style is not enforced.
 select = ["E9", "F", "B"]
 
+
+[tool.mypy]
+# CI (checks.yml) runs it on the package. The protocol code is checked; the GUI is not yet: it uses
+# Qt's short enum names (Qt.AlignCenter), which PySide6's stubs only know as Qt.AlignmentFlag.AlignCenter.
+python_version = "3.12"
+files = ["atesta_id_wallet"]
+exclude = ["\\.venv/"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["atesta_id_wallet.gui.*"]
+ignore_errors = true

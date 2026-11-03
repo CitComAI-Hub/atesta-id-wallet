@@ -7,7 +7,7 @@ import base64
 import hashlib
 import json
 import secrets
-from typing import Any
+from typing import Any, Callable
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -74,12 +74,13 @@ def jwk_to_public_key(jwk: dict[str, Any]) -> Any:
         return None
 
 
-_CURVES = {"P-256": ec.SECP256R1, "P-384": ec.SECP384R1, "P-521": ec.SECP521R1}
+_CURVES: dict[str, Callable[[], ec.EllipticCurve]] = {"P-256": ec.SECP256R1, "P-384": ec.SECP384R1,
+                                                     "P-521": ec.SECP521R1}
 
 
 def _jwk_to_public_key(jwk: dict[str, Any]) -> Any:
     if jwk.get("kty") == "EC":
-        curve = _CURVES.get(jwk.get("crv"))
+        curve = _CURVES.get(str(jwk.get("crv")))
         if curve is None:
             return None
         return ec.EllipticCurvePublicNumbers(

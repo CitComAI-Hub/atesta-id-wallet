@@ -48,7 +48,7 @@ def current() -> str:
 
 def system_language(hint: str | None = None) -> str:
     """System language among the supported ones (hint: e.g. QLocale.system().name() in the GUI)."""
-    candidates = [hint] if hint else []
+    candidates: list[str | None] = [hint] if hint else []
     candidates += [os.environ.get(var) for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG")]
     try:
         candidates.append(locale.getlocale()[0])

@@ -113,7 +113,8 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
        (browser links, clipboard, screenshots, `%APPDATA%` permissions, update/uninstall) and
        decide on macOS for the pilot.
 3. [x] **CI**: tests on Linux and Windows for every push and pull request, `ruff` (bug-class rules),
-       `bandit`, `pip-audit`, Dependabot (`checks.yml`). Still missing: a type checker.
+       `bandit`, `pip-audit`, `mypy` (protocol code; the GUI still excluded: move it to Qt's scoped
+       enums, e.g. `Qt.AlignmentFlag.AlignCenter`, then drop the override), Dependabot (`checks.yml`).
 4. [x] **Holder key protection** (0.8.0): encrypted profile, key in the OS keyring or behind a
        wallet password with app lock. Still to check by hand on Windows (Credential Manager).
 5. [ ] **Trust list**: ship the CITCOM verifier CA (or trust list) with the app, so pilot verifiers

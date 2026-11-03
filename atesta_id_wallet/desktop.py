@@ -332,6 +332,8 @@ def _install_linux(gui: bool) -> None:
 
 def _install_windows(gui: bool) -> None:
     """HKCU\\Software\\Classes\\<scheme>: needs no administrator rights."""
+    if sys.platform != "win32":  # also tells type checkers that winreg exists below
+        raise WalletError(tr("This only works on Windows."))
     import winreg
 
     command = _windows_command(gui)
@@ -345,6 +347,8 @@ def _install_windows(gui: bool) -> None:
 
 
 def _uninstall_windows() -> bool:
+    if sys.platform != "win32":  # also tells type checkers that winreg exists below
+        raise WalletError(tr("This only works on Windows."))
     import winreg
 
     removed = False

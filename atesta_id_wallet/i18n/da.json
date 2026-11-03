@@ -392,6 +392,7 @@
     "This is the latest version ({version})": "Dette er den nyeste version ({version})",
     "This may be a legitimate renewal or an impersonation. Do not continue if you are not sure.": "Det kan være en legitim fornyelse eller et forsøg på at udgive sig for en anden. Fortsæt ikke, hvis du er i tvivl.",
     "This offer was made for another wallet (OAuth client '{client}') and the issuer did not give the credential directly either: {error}": "Dette tilbud blev lavet til en anden wallet (OAuth-klient '{client}'), og udstederen gav heller ikke legitimationen direkte: {error}",
+    "This only works on Windows.": "Dette virker kun på Windows.",
     "This profile already has data": "Denne profil indeholder allerede data",
     "This profile has no credentials yet.": "Denne profil har endnu ingen legitimationer.",
     "Timed out waiting for the browser redirect.": "Tiden løb ud under ventetiden på browserens omdirigering.",

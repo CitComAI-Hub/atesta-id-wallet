@@ -227,8 +227,9 @@ class _Loopback:
 
     def __init__(self, redirect_uri: str):
         parts = urlsplit(redirect_uri)
-        path, result = parts.path or "/", {}
-        self.result: dict[str, str] = result
+        path = parts.path or "/"
+        result: dict[str, str] = {}
+        self.result = result
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802

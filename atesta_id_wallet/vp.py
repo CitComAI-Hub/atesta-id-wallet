@@ -190,8 +190,11 @@ def _dcql_claims(query: dict[str, Any], claims: Any) -> list[dict[str, Any]] | N
         return claim_queries if all(ok.values()) else None
     by_id = {cq.get("id"): index for index, cq in enumerate(claim_queries) if cq.get("id") is not None}
     for option in claim_sets:
-        indexes = [by_id.get(claim_id) for claim_id in option or []]
-        if indexes and None not in indexes and all(ok[i] for i in indexes):
+        ids = list(option or [])
+        if not ids or not all(claim_id in by_id for claim_id in ids):
+            continue
+        indexes = [by_id[claim_id] for claim_id in ids]
+        if all(ok[i] for i in indexes):
             return [claim_queries[i] for i in indexes]
     return None
 
