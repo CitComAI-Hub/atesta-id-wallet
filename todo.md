@@ -93,6 +93,7 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   Theme setting (automatic, light, dark) in *Settings → General*.
   Issuers with no published name are shown by their domain (`pgtec-vrain-dataspace.eu`, not the
   Keycloak host); dates as `3 Nov 2026`; empty-wallet text no longer CITCOM-only.
+  Issuer logos on the cards (downloaded once at issuance, stored with the credential).
 
 ## Next: roadmap to the pilot (TRL 6)
 

@@ -108,7 +108,7 @@ The wallet first shows who is offering which credential, and warns you if you ha
 that issuer before. After you accept, it asks for your Keycloak username and password together.
 It remembers the username but never stores the password, and only sends the password over HTTPS
 to the authorization server's own domain. It checks the credential's signature and key binding
-before storing it, and shows it with the name and colours the issuer publishes.
+before storing it, and shows it with the name, colours and logo the issuer publishes.
 
 Some issuer pages make their QR codes for one specific wallet: Keycloak 26.7 ties each offer to
 the OAuth client that created it, and the PGTEC onboarding portal, for example, makes them for

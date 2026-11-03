@@ -3,13 +3,18 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import html
 import time
 from typing import Any
 
 from PySide6.QtCore import (
+    QBuffer,
+    QByteArray,
     QDateTime,
     QEasingCurve,
+    QIODevice,
     QLocale,
     QPoint,
     QPropertyAnimation,
@@ -20,7 +25,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QImageReader, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
@@ -157,6 +162,43 @@ class FlowLayout(QLayout):
         return y + row_height - rect.y() + margins.bottom()
 
 
+_LOGO_MAX_SIDE = 2048
+_logo_cache: dict[tuple[str, int], QPixmap | None] = {}
+
+
+def issuer_logo(record: dict[str, Any], size: int) -> QPixmap | None:
+    """The logo stored with the credential, fitted in size x size; None if there is none or it is unusable."""
+    data = (record.get("display") or {}).get("logo")
+    if not isinstance(data, str) or not data:
+        return None
+    key = (data[:64] + str(len(data)), size)
+    if key not in _logo_cache:
+        _logo_cache[key] = _decode_logo(data, size)
+    return _logo_cache[key]
+
+
+def clear_logo_cache() -> None:
+    _logo_cache.clear()  # QPixmaps must go before QApplication (see app.release_widgets)
+
+
+def _decode_logo(data: str, size: int) -> QPixmap | None:
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    buffer = QBuffer()
+    buffer.setData(QByteArray(raw))
+    buffer.open(QIODevice.ReadOnly)
+    reader = QImageReader(buffer)
+    dimensions = reader.size()  # from the header, before decoding: no huge allocations
+    if not dimensions.isValid() or max(dimensions.width(), dimensions.height()) > _LOGO_MAX_SIDE:
+        return None
+    image = reader.read()
+    if image.isNull():
+        return None
+    return QPixmap.fromImage(image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+
 class CredentialCard(QWidget):
     """Credential as a card (ID-1 format), in the issuer's colour."""
 
@@ -228,8 +270,20 @@ class CredentialCard(QWidget):
         issuer = credential_issuer_name(self.record).upper()
         painter.drawText(QRectF(pad, pad, w - 2 * pad - 30 * scale, 20 * scale), Qt.AlignLeft | Qt.AlignVCenter,
                          painter.fontMetrics().elidedText(issuer, Qt.ElideRight, int(w - 2 * pad - 30 * scale)))
-        painter.drawPixmap(int(w - pad - 22 * scale), int(pad - 2 * scale),
-                           theme.icon_pixmap("id-card", muted.name(), round(22 * scale), stroke=1.6))
+        badge = 30 * scale
+        logo = issuer_logo(self.record, round(badge - 6 * scale))
+        if logo is not None:
+            # On a light tile: logos are made for white backgrounds, the card may be dark.
+            tile = QRectF(w - pad - badge, pad - 5 * scale, badge, badge)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 235))
+            painter.drawRoundedRect(tile, 7 * scale, 7 * scale)
+            ratio = logo.devicePixelRatio() or 1
+            lw, lh = logo.width() / ratio, logo.height() / ratio
+            painter.drawPixmap(int(tile.center().x() - lw / 2), int(tile.center().y() - lh / 2), logo)
+        else:
+            painter.drawPixmap(int(w - pad - 22 * scale), int(pad - 2 * scale),
+                               theme.icon_pixmap("id-card", muted.name(), round(22 * scale), stroke=1.6))
 
         font.setPixelSize(round(19 * scale))
         font.setWeight(QFont.Bold)

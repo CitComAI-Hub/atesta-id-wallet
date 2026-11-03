@@ -841,6 +841,22 @@ class ScriptedPrompter(ui.Prompter):
         self.asked.append(message)
 
 
+def png_bytes(size=8, color=(200, 30, 60)):
+    import io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new("RGB", (size, size), color).save(out, "PNG")
+    return out.getvalue()
+
+
+def _wide_png():
+    import io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new("1", (5000, 1)).save(out, "PNG")
+    return out.getvalue()
+
+
 class FakeIssuer(http.server.BaseHTTPRequestHandler):
     """Minimal OpenID4VCI issuer with pre-authorized_code + tx_code."""
     key = None
@@ -866,7 +882,8 @@ class FakeIssuer(http.server.BaseHTTPRequestHandler):
                 "nonce_endpoint": self.base + "/nonce",
                 "display": [{"name": "Ayuntamiento", "locale": "es"}, {"name": "Town hall", "locale": "en"}],
                 "credential_configurations_supported": {"Legal": {"format": "dc+sd-jwt", "credential_metadata": {
-                    "display": [{"name": "Persona jurídica", "locale": "es", "background_color": "#12355b"}]}}}},
+                    "display": [{"name": "Persona jurídica", "locale": "es", "background_color": "#12355b",
+                                 "logo": {"uri": self.base + "/logo.png"}}]}}}},
             "/.well-known/oauth-authorization-server": {
                 "issuer": self.base, "token_endpoint": self.base + "/token", "jwks_uri": self.base + "/jwks"},
             "/jwks": {"keys": [{"kty": "EC", "crv": "P-256", "kid": "k1",
@@ -874,6 +891,14 @@ class FakeIssuer(http.server.BaseHTTPRequestHandler):
         }
         if self.path in routes:
             return self._json(routes[self.path])
+        if self.path == "/logo.png":
+            body = png_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         self._json({"error": "not_found"}, 404)
 
     def do_POST(self):  # noqa: N802
@@ -922,6 +947,8 @@ class IssueFlowTests(unittest.TestCase):
         self.assertEqual(storage.credential_name(record), "Persona jurídica")
         self.assertEqual(storage.credential_issuer_name(record), "Ayuntamiento")
         self.assertEqual(record["display"]["background_color"], "#12355b")
+        self.assertEqual(base64.b64decode(record["display"]["logo"]), png_bytes())  # stored, not fetched later
+        self.assertEqual(record["display"]["logo_type"], "image/png")
         event = storage.load_history()[0]
         self.assertEqual((event["type"], event["party"], event["credentials"]),
                          ("issued", "Ayuntamiento", ["Persona jurídica"]))
@@ -1036,6 +1063,31 @@ class DPoPTests(unittest.TestCase):
     def test_no_dpop_option(self):
         with self.assertRaisesRegex(common.WalletError, "DPoP proof is missing"):
             vci.issue(requests.Session(), self.offer, vci.IssueOptions(dpop=False), ScriptedPrompter(texts=["1234"]))
+
+
+class LogoTests(unittest.TestCase):
+    def data_uri(self, data, mime="image/png"):
+        return f"data:{mime};base64," + base64.b64encode(data).decode()
+
+    def test_raster_data_uri_accepted(self):
+        logo = vci.fetch_logo(requests.Session(), self.data_uri(png_bytes()))
+        self.assertEqual((base64.b64decode(logo["logo"]), logo["logo_type"]), (png_bytes(), "image/png"))
+
+    def test_svg_and_unknown_rejected(self):
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+        self.assertEqual(vci.fetch_logo(requests.Session(), self.data_uri(svg, "image/svg+xml")), {})
+        self.assertEqual(vci.fetch_logo(requests.Session(), self.data_uri(b"hello")), {})
+
+    def test_too_big_rejected(self):
+        big = png_bytes() + b"\0" * vci.LOGO_MAX_BYTES
+        self.assertEqual(vci.fetch_logo(requests.Session(), self.data_uri(big)), {})
+
+    def test_plain_http_rejected(self):
+        self.assertEqual(vci.fetch_logo(requests.Session(), "http://example.org/logo.png"), {})
+
+    def test_data_uri_not_stored_twice(self):
+        stored = vci._stored_display({"name": "X", "logo_uri": "data:image/png;base64,AAAA"}, {"logo": "AAAA"})
+        self.assertEqual(stored, {"name": "X", "logo": "AAAA"})
 
 
 class IssuerNameTests(unittest.TestCase):
@@ -1245,6 +1297,17 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(len(FakeVerifier.received), 1)
         self.assertEqual(self.window.last_result, (True, "Datos compartidos"))
         self.assertEqual([e["type"] for e in storage.load_history()], ["presented", "issued"])
+
+    def test_card_logo(self):
+        from atesta_id_wallet.gui import widgets
+        record = {"display": {"logo": base64.b64encode(png_bytes(64)).decode()}}
+        pixmap = widgets.issuer_logo(record, 24)
+        self.assertEqual((pixmap.width(), pixmap.height()), (24, 24))
+        wide = {"display": {"logo": base64.b64encode(_wide_png()).decode()}}
+        self.assertIsNone(widgets.issuer_logo(wide, 24))  # dimensions checked before decoding
+        self.assertIsNone(widgets.issuer_logo({"display": {"logo": "not base64!"}}, 24))
+        card = widgets.CredentialCard({**record, "issuer": "https://kc.example.org"})
+        card.grab()  # paints with the logo
 
     def test_consent_declined_sends_nothing(self):
         holder = storage.HolderKey.load_or_create()

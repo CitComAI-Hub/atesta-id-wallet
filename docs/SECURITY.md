@@ -145,6 +145,13 @@ name to look like a trusted one or inject links.
     signature is invalid. It only warns if no key is found, or if the keys came from the
     offering server and cannot be tied to `iss`;
   - checks that `cnf.jwk` is this wallet's key.
+- **Logos** published by the issuer (credential `display.logo`, else the issuer's) are fetched
+  once, after the user accepted the offer, and stored encrypted with the credential: showing the
+  wallet never contacts anyone, and declining an offer reveals nothing to a third-party logo host.
+  Only HTTPS or `data:` URIs, no redirects, at most 256 KiB, and only PNG, JPEG, GIF or WebP
+  recognised by their first bytes (no SVG: scripts and external references). The window reads the
+  image dimensions from the header and refuses images larger than 2048 px before decoding. A logo
+  that fails any check is left out; the credential is stored anyway.
 
 ## Desktop integration
 

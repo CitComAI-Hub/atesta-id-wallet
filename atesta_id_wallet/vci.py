@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import html
 import http.server
@@ -760,6 +762,12 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     debug(f"Token scope: {token.get('scope')}")
 
     issued: list[IssuedCredential] = []
+    # Logos are fetched only now, once the user accepted the offer, and stored with the credential:
+    # showing the wallet never contacts anyone.
+    issuer_logo = _logo_uri(pick_display(issuer_meta.get("display")))
+    logos = _Logos(session)
+    for config_id in config_ids:
+        logos.want(config_id, displays[config_id].get("logo_uri") or issuer_logo)
     for config_id in config_ids:
         fmt = configs.get(config_id, {}).get("format", "unknown")
         log(tr("Requesting {credential} ({format})…", credential=config_id, format=fmt))
@@ -769,7 +777,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
             if fmt in SD_JWT_FORMATS:
                 verify_issued_credential(session, raw_credential, key, issuer, as_meta)
             path = save_credential(raw_credential, fmt=fmt, issuer=issuer, configuration_id=config_id,
-                                   display=displays[config_id])
+                                   display=_stored_display(displays[config_id], logos.get(config_id)))
             debug(f"Credential stored in {path}")
             claims = parse_sd_jwt(raw_credential).claims if fmt in SD_JWT_FORMATS else None
             issued.append(IssuedCredential(config_id, path, claims))
@@ -812,6 +820,80 @@ def pick_display(displays: Any, locales: tuple[str, ...] | None = None) -> dict[
     return displays[0] if isinstance(displays[0], dict) else {}
 
 
+LOGO_MAX_BYTES = 256 * 1024
+# Raster formats only, recognised by their first bytes; SVG is left out (scripts, external references).
+_LOGO_TYPES = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+
+
+def _logo_type(data: bytes) -> str | None:
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return next((mime for magic, mime in _LOGO_TYPES if data.startswith(magic)), None)
+
+
+def _logo_uri(entry: dict[str, Any]) -> str | None:
+    logo = entry.get("logo") or {}
+    uri = logo.get("uri") or logo.get("url") if isinstance(logo, dict) else None
+    return uri if isinstance(uri, str) else None
+
+
+def fetch_logo(session: requests.Session, uri: str) -> dict[str, str]:
+    """{"logo": base64, "logo_type": mime} for a small raster image, or {} (a logo is never required)."""
+    try:
+        if uri.startswith("data:"):
+            header, _, payload = uri[5:].partition(",")
+            if not header.endswith(";base64") or len(payload) > LOGO_MAX_BYTES * 4 // 3 + 4:
+                return {}
+            data = base64.b64decode(payload, validate=True)
+        else:
+            require_https(uri, "logo")
+            with session.get(uri, timeout=10, stream=True, allow_redirects=False) as response:
+                if response.status_code != 200:
+                    return {}
+                data = response.raw.read(LOGO_MAX_BYTES + 1, decode_content=True)
+        mime = _logo_type(data)
+        if len(data) > LOGO_MAX_BYTES or mime is None:
+            debug(f"Logo ignored ({len(data)} bytes, not a small PNG/JPEG/GIF/WebP): {uri[:80]}")
+            return {}
+        return {"logo": base64.b64encode(data).decode("ascii"), "logo_type": mime}
+    except (WalletError, requests.RequestException, binascii.Error, ValueError) as exc:
+        debug(f"Logo not downloaded ({exc}): {uri[:80]}")
+        return {}
+
+
+def _stored_display(display: dict[str, Any], logo: dict[str, str]) -> dict[str, Any]:
+    stored = {**display, **logo}
+    if str(stored.get("logo_uri", "")).startswith("data:"):  # already decoded into "logo"
+        del stored["logo_uri"]
+    return stored
+
+
+class _Logos:
+    """Logo of each credential configuration, each address downloaded once."""
+
+    def __init__(self, session: requests.Session):
+        self.session = session
+        self.by_uri: dict[str, dict[str, str]] = {}
+        self.by_config: dict[str, str] = {}
+
+    def want(self, config_id: str, uri: str | None) -> None:
+        if uri:
+            self.by_config[config_id] = uri
+
+    def get(self, config_id: str) -> dict[str, str]:
+        uri = self.by_config.get(config_id)
+        if not uri:
+            return {}
+        if uri not in self.by_uri:
+            self.by_uri[uri] = fetch_logo(self.session, uri)
+        return self.by_uri[uri]
+
+
 def credential_display(config: dict[str, Any], config_id: str, issuer_name: str) -> dict[str, Any]:
     """Name and colours the issuer wants the credential shown with (if it publishes them)."""
     entry = pick_display(config.get("display") or (config.get("credential_metadata") or {}).get("display"))
@@ -819,9 +901,9 @@ def credential_display(config: dict[str, Any], config_id: str, issuer_name: str)
     for key in ("background_color", "text_color", "description"):
         if isinstance(entry.get(key), str):
             display[key] = entry[key]
-    logo = entry.get("logo") or {}
-    if isinstance(logo, dict) and isinstance(logo.get("uri") or logo.get("url"), str):
-        display["logo_uri"] = logo.get("uri") or logo.get("url")
+    logo_uri = _logo_uri(entry)
+    if logo_uri:
+        display["logo_uri"] = logo_uri
     return display
 
 

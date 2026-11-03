@@ -89,7 +89,7 @@ from .sheets import (
     ScanSheet,
     TextSheet,
 )
-from .widgets import CredentialCard, IconBubble, Toast, button, esc, label
+from .widgets import CredentialCard, IconBubble, Toast, button, clear_logo_cache, esc, label
 
 
 # ---------------------------------------------------------------------------
@@ -1081,6 +1081,7 @@ def release_widgets() -> None:
     app = QApplication.instance()
     if app is None:
         return
+    clear_logo_cache()
     for widget in app.topLevelWidgets():
         widget.close()
         widget.deleteLater()
