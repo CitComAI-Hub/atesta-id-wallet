@@ -72,7 +72,7 @@ def _header(title: str, subtitle: str = "") -> tuple[QWidget, QHBoxLayout]:
     text = QVBoxLayout()
     text.setSpacing(2)
     text.addWidget(label(title, "pageTitle"))
-    sub = label(subtitle, "pageSubtitle")
+    sub = label(subtitle, "pageSubtitle", wrap=True)  # long translations in a small window
     text.addWidget(sub)
     header.subtitle = sub  # type: ignore[attr-defined]
     row.addLayout(text, 1)
