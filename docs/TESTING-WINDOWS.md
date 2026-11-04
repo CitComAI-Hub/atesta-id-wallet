@@ -19,6 +19,9 @@ enabled and the log copied).
 - [ ] Installed in `%LOCALAPPDATA%\Programs\Atesta ID Wallet`; Start menu entry *Atesta ID Wallet* with the icon.
 - [ ] The window opens from the Start menu, with the app icon in the taskbar and in Alt+Tab.
 - [ ] The interface language follows Windows; changing it in *Settings → General* works.
+- [ ] No text is cut off (the CI cannot check it on Windows): *Wallet*, a credential, *Activity*,
+      *Settings* to the end, the consent panel, in French and German (the longest texts), with the window
+      at its smallest size and at 125 % / 150 % display scaling.
 
 ## 2. Links from the browser
 

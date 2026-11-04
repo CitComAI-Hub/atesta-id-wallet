@@ -51,12 +51,9 @@ class ScreenAuditTests(unittest.TestCase):
             else:
                 cls.results = ux_audit.run(gui, ["en"], ["light"])
                 cls.results.update(ux_audit.run(gui, ["de"], ["dark"], keyboard=False))
-            # The smallest window the wallet allows (920×640), with the longest texts. Not on Windows:
-            # there the offscreen platform reports almost twice the real width of every text in this
-            # run only (the normal runs agree with Linux) — to look at in the manual Windows test.
-            if sys.platform != "win32":
-                small = ux_audit.run(gui, ["fr"], ["light"], keyboard=False, size=(920, 640))
-                cls.results[("fr", "light-920x640")] = small[("fr", "light")]
+            # the smallest window the wallet allows (920×640), with the longest texts
+            small = ux_audit.run(gui, ["fr"], ["light"], keyboard=False, size=(920, 640))
+            cls.results[("fr", "light-920x640")] = small[("fr", "light")]
         finally:
             i18n.set_language(saved)
 
@@ -68,6 +65,10 @@ class ScreenAuditTests(unittest.TestCase):
         for audit in self.results.values():
             self.assertGreaterEqual(audit.screens, 30)
 
+    # On the Windows CI runners the offscreen platform measures text inconsistently (almost twice the
+    # painted width, in different screens from one run to the next): Linux checks the layout on every
+    # push and every night; the manual Windows test (docs/TESTING-WINDOWS.md) looks at it by eye.
+    @unittest.skipIf(sys.platform == "win32", "text measurement of the offscreen platform unreliable on Windows")
     def test_no_text_cut_off(self):
         self.assertNone("text-clipped", "text that does not fit (often a long translation)")
 
