@@ -15,7 +15,7 @@ SD-JWT VC. It is **not** a certified EUDI Wallet under eIDAS 2.0: that needs a p
 by a Member State, certification at assurance level high (with a secure hardware key store,
 WSCD) and wallet attestations, which are out of scope for this prototype.
 
-> **Status: prototype (TRL 5), version 0.11.0.** Tested against Keycloak, the CITCOM
+> **Status: prototype (TRL 5), version 0.12.0.** Tested against Keycloak, the CITCOM
 > marketplace and the PGTEC onboarding portal. Desktop window (Qt) and command line, in English, Spanish, Danish, German, French and Luxembourgish. Linux is the
 > tested platform; the Windows builds are new and not yet tested by hand on real machines;
 > macOS is untested. Read [docs/SECURITY.md](docs/SECURITY.md) before using it with real data.

@@ -17,7 +17,7 @@ import requests
 from .i18n import N_, tr
 
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 URI_SCHEMES = ("openid4vp", "openid-credential-offer")
 SD_JWT_FORMATS = ("dc+sd-jwt", "vc+sd-jwt")
 VERBOSE = False

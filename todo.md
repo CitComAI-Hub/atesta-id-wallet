@@ -10,12 +10,12 @@
   fallback), Spanish, Danish, German, French and Luxembourgish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
-## Status (0.11.0, November 2026)
+## Status (0.12.0, November 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
-GUI, a CLI, six languages, an offline test suite (209 tests, GUI and a UX audit included) and nightly tests
-against real Keycloak 26.6, 26.7 and latest. Release 0.11.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
+GUI, a CLI, six languages, an offline test suite (240 tests, GUI and a UX audit included) and nightly tests
+against real Keycloak 26.6, 26.7 and latest. Release 0.12.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
 smoke-tested by CI (including a silent install/uninstall on Windows), but nobody outside the team
 has used it and nobody has tested it by hand on real Windows or macOS.
 
@@ -123,6 +123,14 @@ the full manual Windows test and the CITCOM verifier trust list.
   `.github/workflows/ux.yml` (every night, report with screenshots): WCAG checks on every screen in
   six languages and two themes, readability (Flesch, Fernández-Huerta, Amstad, Kandel-Moles, LIX),
   task cost (Keystroke-Level Model) and response times.
+- **0.12.0: revocation, issuer keys, app icon**: revocation check with Token Status List (before
+  presenting, in the window and with `list --check`; "Revoked" / "Suspended" on the card; can be
+  turned off in Settings → Security). Certificates (x5c) of did:web issuers are bound to the DID's
+  host, or to the key its DID document publishes, so CitCom credentials no longer carry the "could
+  not be tied" warning. Secrets (codes,
+  tokens, any JWT) redacted from the verbose log, the technical details and CLI errors. Final app
+  icon after the GNOME HIG (indigo wallet with credentials; symbolic version too), also in the
+  sidebar, the welcome step and About.
 
 ## Next: roadmap to the pilot (TRL 6)
 
@@ -155,7 +163,7 @@ the full manual Windows test and the CITCOM verifier trust list.
              from source): an extra step, "Open wallet links with this application", with *Register* /
              *Not now* (= Settings → General → Register). Only when no application opens them (another
              wallet's choice is respected); not on macOS (no .app) nor without `xdg-mime`.
-9. [ ] Final app icon for *Atesta ID Wallet* (replace `packaging/app-icon.svg`, run `make_icons.py`).
+9. [x] Final app icon for *Atesta ID Wallet* (`atesta_id_wallet/gui/icons/app-icon.svg`, GNOME HIG style, also in the sidebar, welcome and About; symbolic in `packaging/app-icon-symbolic.svg`).
        Done: issuer logo (`display.logo`) on the cards.
 10. [ ] Danish, German and French reviewed by native speakers; Luxembourgish carefully.
 11. [ ] **UX**: expert review and a measured second round ([docs/UX-REVIEW.md](docs/UX-REVIEW.md): 28 problems
