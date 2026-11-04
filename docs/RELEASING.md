@@ -63,9 +63,12 @@ packaging/build_linux.sh                                                      # 
 
 On Windows, after PyInstaller: `iscc /DAppVersion=0.6.0 packaging\atesta-id-wallet.iss` (Inno Setup 6).
 
-The app icon is generated from `packaging/app-icon.svg` with `python packaging/make_icons.py`
+The app icon is generated from `atesta_id_wallet/gui/icons/app-icon.svg` with `python packaging/make_icons.py`
 (writes `atesta_id_wallet/gui/icons/app-icon.png` and `packaging/atesta-id-wallet.ico`, both kept in git).
-It is a placeholder until the product has a name.
+It follows the [GNOME app icon guidelines](https://developer.gnome.org/hig/guidelines/app-icons.html)
+(the 128 px template, 2 px grid, flat colours, 4 px front profile) with Atesta's indigo instead of the GNOME
+palette; preview it with [App Icon Preview](https://flathub.org/apps/org.gnome.design.AppIconPreview).
+The symbolic version is `packaging/app-icon-symbolic.svg`.
 
 ## Pending
 

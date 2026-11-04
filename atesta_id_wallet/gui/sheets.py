@@ -31,7 +31,18 @@ from ..i18n import N_, tr, tr_n
 from ..storage import credential_holder, credential_issuer_name, credential_name, is_expired
 from ..ui import OfferSummary, consent_items
 from . import theme
-from .widgets import IconBubble, Spinner, button, esc, fade_in, keyboard_focus_ring, label, password_field
+from .widgets import (
+    APP_ICON_NAME,
+    IconBubble,
+    Spinner,
+    app_logo,
+    button,
+    esc,
+    fade_in,
+    keyboard_focus_ring,
+    label,
+    password_field,
+)
 
 # (icon, style, title, explanation) per verifier trust level.
 TRUST_COPY = {
@@ -127,7 +138,10 @@ class Sheet(QFrame):
         self.layout_ = QVBoxLayout(self)
         self.layout_.setContentsMargins(28, 28, 28, 24)
         self.layout_.setSpacing(12)
-        if icon:
+        if icon == APP_ICON_NAME:
+            self.layout_.addWidget(app_logo(52))
+            self.layout_.addSpacing(4)
+        elif icon:
             t = theme.current()
             color, soft = {
                 "accent": (t.accent, t.accent_soft), "ok": (t.success, t.success_soft),

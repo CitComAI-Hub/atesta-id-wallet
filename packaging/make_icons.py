@@ -1,5 +1,6 @@
 """
-Generates the app icons from packaging/app-icon.svg (with PySide6 and Pillow):
+Generates the app icons from atesta_id_wallet/gui/icons/app-icon.svg (with PySide6 and Pillow);
+the SVG itself is also drawn in the app (sidebar, welcome, About):
   atesta_id_wallet/gui/icons/app-icon.png   window, Linux menu (install-handler) and .deb/AppImage
   packaging/atesta-id-wallet.ico            Windows executables and installer
 Usage:  python packaging/make_icons.py   (the results are kept in git; run again if the SVG changes)
@@ -18,7 +19,7 @@ from PySide6.QtGui import QGuiApplication, QImage, QPainter  # noqa: E402
 from PySide6.QtSvg import QSvgRenderer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "packaging" / "app-icon.svg"
+SOURCE = ROOT / "atesta_id_wallet" / "gui" / "icons" / "app-icon.svg"
 
 
 def render(size: int) -> Image.Image:

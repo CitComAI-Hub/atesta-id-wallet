@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Atesta ID Wallet app icon (own artwork, not part of Lucide), drawn after the GNOME HIG app icon guidelines
+     (https://developer.gnome.org/hig/guidelines/app-icons.html): 128x128 canvas, 2px grid, bottom on
+     the template baseline (y=116), flat colours, 4px darker front profile, no shadows.
+     Colours: Atesta's indigo accent scale (gui/theme.py) instead of the GNOME palette; neutrals from it (Light 1, 4, 5).
+     Shown in the app (sidebar, welcome, About). Symbolic version: packaging/app-icon-symbolic.svg.
+     app-icon.png and the .ico: python packaging/make_icons.py -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- back credential (#a0a0ff) -->
+  <rect x="44" y="20" width="60" height="40" rx="6" fill="#a0a0ff"/>
+  <!-- front ID card (Light 1) with photo (accent #5b5bd6) and text lines (Light 5, Light 4) -->
+  <rect x="24" y="28" width="68" height="40" rx="6" fill="#ffffff"/>
+  <circle cx="40" cy="42" r="6" fill="#5b5bd6"/>
+  <rect x="52" y="36" width="28" height="4" rx="2" fill="#9a9996"/>
+  <rect x="52" y="44" width="20" height="4" rx="2" fill="#c0bfbc"/>
+  <!-- wallet: front profile (#3d3da8), top (accent #5b5bd6) -->
+  <rect x="12" y="60" width="104" height="56" rx="12" fill="#3d3da8"/>
+  <rect x="12" y="56" width="104" height="56" rx="12" fill="#5b5bd6"/>
+  <!-- clasp tab: front profile (#2e2e8c), top (#3d3da8), button (Light 1) -->
+  <rect x="80" y="76" width="40" height="24" rx="12" fill="#2e2e8c"/>
+  <rect x="80" y="72" width="40" height="24" rx="12" fill="#3d3da8"/>
+  <circle cx="106" cy="84" r="6" fill="#ffffff"/>
+</svg>

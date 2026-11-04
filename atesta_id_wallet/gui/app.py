@@ -94,7 +94,17 @@ from .sheets import (
     ScanSheet,
     TextSheet,
 )
-from .widgets import CredentialCard, IconBubble, Toast, button, clear_logo_cache, esc, keyboard_focus_ring, label
+from .widgets import (
+    APP_ICON_NAME,
+    CredentialCard,
+    Toast,
+    app_logo,
+    button,
+    clear_logo_cache,
+    esc,
+    keyboard_focus_ring,
+    label,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +280,7 @@ class MainWindow(QMainWindow):
 
         brand = QHBoxLayout()
         brand.setSpacing(10)
-        brand.addWidget(IconBubble("wallet", t.on_accent, t.accent, 38))
+        brand.addWidget(app_logo(34), alignment=Qt.AlignVCenter)
         brand.addWidget(label("Atesta ID Wallet", "appName"), 1, alignment=Qt.AlignVCenter)
         column.addLayout(brand)
         column.addSpacing(28)
@@ -476,7 +486,7 @@ class MainWindow(QMainWindow):
     def _onboarding_step(self, index: int, steps: list[str] | None = None) -> None:
         steps = steps or ["welcome", "first-credential", "protect"]
         texts = {
-            "welcome": ("wallet", tr("Welcome to Atesta ID Wallet"),
+            "welcome": (APP_ICON_NAME, tr("Welcome to Atesta ID Wallet"),
                         tr("A credential is like a digital card that says something about you: a membership card, an "
                            "employee pass, a certificate. Keep yours on this computer and use them to sign in to data "
                            "space services. Nothing is shared without your approval, and you see exactly what.")),

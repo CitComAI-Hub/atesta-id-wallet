@@ -429,6 +429,19 @@ class CredentialCard(QWidget):
         painter.end()
 
 
+# Icon name of the sheets that show the app icon instead of a Lucide icon in a bubble.
+APP_ICON_NAME = "app-icon"
+
+
+def app_logo(height: int) -> QLabel:
+    """The app icon, decorative: it always goes next to the name, or with text that already says it."""
+    logo = QLabel()
+    logo.setPixmap(theme.app_icon_pixmap(height))
+    logo.setFixedSize(logo.pixmap().deviceIndependentSize().toSize())
+    logo.setAccessibleName("")
+    return logo
+
+
 class IconBubble(QWidget):
     """Icon inside a soft-coloured circle (panel headers and rows)."""
 

@@ -114,6 +114,27 @@ def card_colors(record: dict) -> tuple[QColor, QColor, QColor]:
     return QColor(start), QColor(end), QColor("#ffffff")
 
 
+# The app icon follows the GNOME HIG canvas (128x128 with room around the object); inside the app it
+# is drawn cropped to the object, so that it lines up with the text next to or under it.
+APP_ICON_BOUNDS = QRectF(12, 20, 108, 96)
+
+
+def app_icon_pixmap(height: int) -> QPixmap:
+    """The app icon (full colour, the same in light and dark), 'height' px high and cropped to the object."""
+    renderer = QSvgRenderer(QByteArray(_svg("app-icon")))
+    renderer.setViewBox(APP_ICON_BOUNDS)
+    width = round(height * APP_ICON_BOUNDS.width() / APP_ICON_BOUNDS.height())
+    ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
+    pixmap = QPixmap(int(width * ratio), int(height * ratio))
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    renderer.render(painter, QRectF(0, 0, width * ratio, height * ratio))
+    painter.end()
+    pixmap.setDevicePixelRatio(ratio)
+    return pixmap
+
+
 @lru_cache(maxsize=512)
 def _svg(name: str) -> bytes:
     return (ICON_DIR / f"{name}.svg").read_bytes()

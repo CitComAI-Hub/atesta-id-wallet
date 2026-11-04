@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Atesta ID Wallet symbolic app icon (GNOME HIG UI icon style: 16x16, pixel grid, monochrome).
+     Full-colour version: atesta_id_wallet/gui/icons/app-icon.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <g fill="#222222">
+    <!-- two credentials sticking out of the wallet, as in the full-colour icon -->
+    <path d="M10 1h3a1 1 0 0 1 1 1v3h-4z"/>
+    <path d="M4 2h4a1 1 0 0 1 1 1v2H3V3a1 1 0 0 1 1-1z"/>
+    <!-- wallet with the clasp tab cut out -->
+    <path fill-rule="evenodd" d="M3 6h10a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm7.5 3a1.5 1.5 0 0 0 0 3H13V9z"/>
+  </g>
+</svg>

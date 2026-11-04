@@ -40,6 +40,7 @@ from .widgets import (
     FlowLayout,
     IconBubble,
     Panel,
+    app_logo,
     clear_layout,
     button,
     hline,
@@ -514,11 +515,13 @@ def _party_place(event: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _setting(title: str, description: str, *controls: QWidget) -> QWidget:
+def _setting(title: str, description: str, *controls: QWidget, leading: QWidget | None = None) -> QWidget:
     row = QWidget()
     layout = QHBoxLayout(row)
     layout.setContentsMargins(0, 14, 0, 14)
     layout.setSpacing(16)
+    if leading is not None:
+        layout.addWidget(leading, alignment=Qt.AlignVCenter)
     text = QVBoxLayout()
     text.setSpacing(2)
     text.addWidget(label(title, "sectionTitle"))
@@ -633,7 +636,7 @@ class SettingsPage(Page):
         auto_update.toggled.connect(w.set_update_check)
         about = [
             _setting(f"Atesta ID Wallet {__version__}", "OpenID4VCI 1.0 + OpenID4VP · SD-JWT VC\n"
-                     + tr("Data: {path}", path=storage.DATA_DIR)),
+                     + tr("Data: {path}", path=storage.DATA_DIR), leading=app_logo(40)),
             _setting(tr("New versions"), tr("Check once a day whether a newer version has been published on GitHub. "
                                             "Nothing about your wallet is sent."),
                      auto_update, self._action(tr("Check now"), w.check_for_updates)),
