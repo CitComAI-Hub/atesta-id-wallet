@@ -46,7 +46,7 @@ from .common import (
 from . import i18n
 from .i18n import tr
 from .jose import _dns_names, _verify_jws, _x5c_chain, jwk_to_public_key
-from .sdjwt import SdJwt, parse_sd_jwt
+from .sdjwt import parse_sd_jwt
 from .storage import HolderKey, add_history, load_config, save_config, save_credential
 from .ui import OfferSummary, Prompter, TerminalPrompter
 
@@ -765,6 +765,27 @@ def account_of(token: dict[str, Any]) -> str | None:
     return f"{names[0]} ({names[1]})" if len(names) == 2 else (names[0] if names else None)
 
 
+def authorization_server_metadata(session: requests.Session, issuer_meta: dict[str, Any],
+                                  issuer: str) -> dict[str, Any]:
+    """Metadata of the issuer's (first) authorization server, checked as RFC 8414 asks."""
+    as_base = (issuer_meta.get("authorization_servers") or [issuer])[0]
+    require_https(as_base, "authorization_server")
+    as_meta = _get_first_json(
+        session,
+        _well_known(as_base, "oauth-authorization-server") + _well_known(as_base, "openid-configuration"),
+    )
+    # RFC 8414 §3.3: the metadata 'issuer' must be the server that was queried.
+    if as_meta.get("issuer") and str(as_meta["issuer"]).rstrip("/") != as_base.rstrip("/"):
+        raise WalletError(tr("The authorization server metadata belongs to {other}, not to {server}.",
+                             other=as_meta["issuer"], server=as_base))
+    if "token_endpoint" not in as_meta:
+        raise WalletError(tr("The authorization server metadata has no token_endpoint."))
+    for name in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
+        if name in as_meta:
+            require_https(str(as_meta[name]), name)
+    return as_meta
+
+
 def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: Prompter) -> list[IssuedCredential]:
     """Accepts an OpenID4VCI offer and stores the received credentials in the active profile."""
     key = HolderKey.load_or_create()
@@ -807,20 +828,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
         raise Cancelled()
 
     as_base = (issuer_meta.get("authorization_servers") or [issuer])[0]
-    require_https(as_base, "authorization_server")
-    as_meta = _get_first_json(
-        session,
-        _well_known(as_base, "oauth-authorization-server") + _well_known(as_base, "openid-configuration"),
-    )
-    # RFC 8414 §3.3: the metadata 'issuer' must be the server that was queried.
-    if as_meta.get("issuer") and str(as_meta["issuer"]).rstrip("/") != as_base.rstrip("/"):
-        raise WalletError(tr("The authorization server metadata belongs to {other}, not to {server}.",
-                             other=as_meta["issuer"], server=as_base))
-    if "token_endpoint" not in as_meta:
-        raise WalletError(tr("The authorization server metadata has no token_endpoint."))
-    for name in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
-        if name in as_meta:
-            require_https(str(as_meta[name]), name)
+    as_meta = authorization_server_metadata(session, issuer_meta, issuer)
 
     dpop = DPoP() if options.dpop and supports_dpop(as_meta) else None
     if dpop:
@@ -1125,18 +1133,18 @@ def _did_web_keys(session: requests.Session, did: str, kid: str | None) -> list[
     return [k for k in (jwk_to_public_key(m["publicKeyJwk"]) for m in methods) if k is not None]
 
 
-def _issuer_keys(
-    session: requests.Session, sd: SdJwt, issuer: str, as_meta: dict[str, Any]
+def issuer_keys(
+    session: requests.Session, header: dict[str, Any], iss: str, issuer: str,
+    as_meta: dict[str, Any] | Callable[[], dict[str, Any]],
 ) -> tuple[list[Any], bool]:
     """
-    Candidate public keys of the issuer, and whether they are known to belong to the
-    credential's 'iss': x5c, did:web document, jwt-vc-issuer metadata or, as a last resort,
-    the jwks of the authorization server that offered the credential.
+    Candidate public keys for a JWT of the issuer 'iss' with this header, and whether they are known
+    to belong to 'iss': x5c, did:web document, jwt-vc-issuer metadata or, as a last resort, the jwks
+    of the authorization server that offered the credential ('as_meta', or a function that fetches it).
     """
-    iss = str(sd.payload.get("iss", ""))
-    kid = sd.header.get("kid")
-    if sd.header.get("x5c"):
-        cert = _x5c_chain(sd.header)[0]
+    kid = header.get("kid")
+    if header.get("x5c"):
+        cert = _x5c_chain(header)[0]
         return [cert.public_key()], host_of(iss) in _dns_names(cert)
     if iss.startswith("did:web:"):
         try:
@@ -1157,6 +1165,8 @@ def _issuer_keys(
                 return [k for k in map(jwk_to_public_key, keys) if k is not None], True
         except (WalletError, requests.RequestException) as exc:
             debug(f"No jwt-vc-issuer metadata: {exc}")
+    if callable(as_meta):
+        as_meta = as_meta()
     if not as_meta.get("jwks_uri"):
         return [], False
     jwks = _json(session.get(as_meta["jwks_uri"], timeout=20), "GET", as_meta["jwks_uri"])
@@ -1171,7 +1181,7 @@ def verify_issued_credential(
     """Before storing: issuer signature and binding to the wallet key."""
     sd = parse_sd_jwt(raw)
     iss = sd.payload.get("iss") or issuer
-    keys, bound = _issuer_keys(session, sd, issuer, as_meta)
+    keys, bound = issuer_keys(session, sd.header, str(sd.payload.get("iss", "")), issuer, as_meta)
     if not keys:
         log(tr("Warning: the issuer's public key was not found; the signature could not be verified."))
     elif not any(_verify_jws(sd.issuer_jwt, k) for k in keys):

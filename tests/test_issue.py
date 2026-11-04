@@ -64,14 +64,14 @@ class HeadlessLoginTests(unittest.TestCase):
 class IssuedCredentialTests(unittest.TestCase):
     def setUp(self):
         self.holder = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
-        self._issuer_keys = vci._issuer_keys
-        self.addCleanup(setattr, vci, "_issuer_keys", self._issuer_keys)
+        self._saved_issuer_keys = vci.issuer_keys
+        self.addCleanup(setattr, vci, "issuer_keys", self._saved_issuer_keys)
 
     def test_bad_signature_and_wrong_binding(self):
-        vci._issuer_keys = lambda *a: ([ec.generate_private_key(ec.SECP256R1()).public_key()], True)
+        vci.issuer_keys = lambda *a: ([ec.generate_private_key(ec.SECP256R1()).public_key()], True)
         with self.assertRaisesRegex(common.WalletError, "firma"):
             vci.verify_issued_credential(None, make_sd_jwt(self.holder), self.holder, "did:web:issuer.example", {})
-        vci._issuer_keys = lambda *a: ([], False)
+        vci.issuer_keys = lambda *a: ([], False)
         stranger = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
         with self.assertRaisesRegex(common.WalletError, "otra clave"):
             vci.verify_issued_credential(None, make_sd_jwt(stranger), self.holder, "did:web:issuer.example", {})

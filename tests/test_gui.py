@@ -270,6 +270,42 @@ class GuiFlowTests(unittest.TestCase):
         self.assertIn("Nombre", labels)  # firstName, in the interface language
         self.assertIn("Correo electrónico", labels)
 
+    def test_revoked_credential_is_marked(self):
+        holder = storage.HolderKey.load_or_create()
+        storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
+        record = storage.load_credentials()[0]
+        record["revocation"] = {"state": "revoked", "checked_at": int(time.time()), "next_check": 0}
+        storage.save_record(record)
+        self.window.reload()
+        self.window._go("wallet")
+        card = self.window.wallet_page.grid_host.findChildren(gui.CredentialCard)[0]
+        self.assertIn("Revocada", card.accessibleName())
+        card.grab()  # paints the REVOKED tag
+        self.window.open_credential(self.window.records[0])
+        from PySide6.QtWidgets import QLabel
+        labels = [w.text() for w in self.window.detail_page.findChildren(QLabel)]
+        self.assertIn("Revocada por i", labels)
+        # The credential has no status list: the detail says that it cannot be checked.
+        self.assertIn("i no la ofrece", labels)
+
+    def test_revocation_setting(self):
+        from atesta_id_wallet import status
+        from PySide6.QtWidgets import QCheckBox
+
+        self.window._go("settings")
+        boxes = [b for b in self.window.settings_page.findChildren(QCheckBox)
+                 if b.accessibleName() == "Credenciales revocadas"]
+        self.assertEqual(len(boxes), 1)
+        self.assertTrue(boxes[0].isChecked())
+        boxes[0].setChecked(False)
+        self.assertFalse(status.automatic_enabled())
+        boxes[0].setChecked(True)
+        self.assertTrue(status.automatic_enabled())
+        shown = []
+        self.window.toast.show_message = lambda message, *_: shown.append(message)
+        self.window.check_revocations()  # no credential with a status list: says so, asks nobody
+        self.assertEqual(shown, ["Ninguna de tus credenciales ofrece esta comprobación."])
+
     def test_consent_declined_sends_nothing(self):
         holder = storage.HolderKey.load_or_create()
         storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")

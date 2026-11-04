@@ -171,7 +171,8 @@ source and the fallback. A test checks that every catalog has all the strings, w
 ## Managing credentials and identities
 
 ```bash
-atesta-id-wallet list [-d]              # stored credentials (-d: all claims)
+atesta-id-wallet list [-d] [--check]    # stored credentials (-d: all claims; --check: ask the issuers
+                                        # whether they have been revoked)
 atesta-id-wallet history                # what was received, shared or declined, and with whom
 atesta-id-wallet remove 2               # delete by number or id from 'list'
 atesta-id-wallet backup ~/wallet.bak    # encrypted backup of the profile, holder key included
@@ -264,7 +265,8 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
   `trusted_authorities` and `multiple` are ignored.
 - Keys are software keys (no TPM or secure element). See [docs/SECURITY.md](docs/SECURITY.md).
 - One holder key per profile, so verifiers can correlate presentations made with the same profile.
-- No revocation check (Token Status List).
+- Revocation: Token Status List in JWT form only (no CWT lists); see
+  [docs/SECURITY.md](docs/SECURITY.md#revocation-token-status-list).
 
 ## Architecture
 
@@ -277,6 +279,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 | `storage` | Profiles, holder key, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
 | `vault` | Profile encryption: data key in the system keyring or wrapped with the wallet password |
 | `trust` | Verifier identity and trust (x509_san_dns, x509_hash, pinning, CAs) |
+| `status` | Revocation: the issuer's Token Status List, checked and stored with each credential |
 | `vci` | OpenID4VCI: offers, metadata checks, authorization server login, issuance, issuer signature |
 | `vp` | OpenID4VP: request, DCQL / Presentation Exchange, `prepare_presentation` → `build_response` → `send_presentation` |
 | `desktop` | Clipboard, screenshots with QR codes, link handler (also for the packaged executables) |

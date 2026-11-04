@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, storage, updates, vault
+from .. import common, i18n, status, storage, updates, vault
 from ..common import Cancelled, WalletError, __version__, humanize
 from ..desktop import (
     APP_ICON,
@@ -125,6 +125,7 @@ class Bridge(QObject):
     finished = Signal(object, object)  # (callback, resultado)
     failed = Signal(object, str)  # (exception, traceback)
     update_checked = Signal(object, bool)  # (Release, None or exception; automatic)
+    status_checked = Signal(object)  # (paths whose revocation state changed, manual, any failure)
 
 
 class GuiPrompter(Prompter):
@@ -189,6 +190,9 @@ class MainWindow(QMainWindow):
         self.bridge.finished.connect(self._on_finished)
         self.bridge.failed.connect(self._on_failed)
         self.bridge.update_checked.connect(self._on_update_checked)
+        self.bridge.status_checked.connect(self._on_status_checked)
+        self._status_started = 0.0  # last background revocation check (at most one every few minutes)
+        self._status_running = False
         self.prompter = GuiPrompter(self.bridge)
         self.busy = False
         self.records: list[dict[str, Any]] = []
@@ -344,6 +348,69 @@ class MainWindow(QMainWindow):
         current = self.stack.currentWidget() if hasattr(self, "stack") else None
         if current is not None and hasattr(current, "refresh"):
             current.refresh()
+        self._check_status_in_background()
+
+    # -- revocation ---------------------------------------------------------
+
+    def _check_status_in_background(self) -> None:
+        """Asks the issuers' status lists for the credentials whose last check is out of date."""
+        if (not status.automatic_enabled() or time.time() - self._status_started < status.MIN_RECHECK
+                or not any(map(status.due, self.records))):
+            return
+        self._check_status(manual=False)
+
+    def check_revocations(self) -> None:
+        """Settings → Check now: every credential with a status list, and an answer either way."""
+        if not any(map(status.has_status, self.records)):
+            self.toast.show_message(tr("None of your credentials offers this check."))
+            return
+        self._check_status(manual=True)
+
+    def _check_status(self, manual: bool) -> None:
+        if self._status_running:
+            return
+        self._status_running = True
+        self._status_started = time.time()
+        profile = storage.PROFILE
+
+        def work() -> None:
+            changed: list[str] = []
+            failed: list[dict[str, Any]] = []
+            try:
+                if storage.PROFILE == profile:
+                    changed = [r["_path"] for r in status.refresh(requests.Session(), load_credentials(),
+                                                                  force=manual, failed=failed)]
+            except Exception as exc:  # e.g. the wallet locked meanwhile: next time
+                common.debug(f"Revocation check stopped: {exc}")
+                failed.append({})
+            self.bridge.status_checked.emit((changed, manual, bool(failed)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_status_checked(self, result: tuple[list[str], bool, bool]) -> None:
+        changed, manual, failed = result
+        self._status_running = False
+        if storage.vault_state() != "open":
+            return
+        if changed:
+            self.reload()
+            detail = self.detail_page
+            if detail is not None and self.stack.currentWidget() is detail and detail.record.get("_path") in changed:
+                fresh = next((r for r in self.records if r["_path"] == detail.record["_path"]), None)
+                if fresh is not None:
+                    self.open_credential(fresh)
+        names = [credential_name(r) for r in self.records if r["_path"] in changed and storage.revocation_state(r)]
+        if names:
+            self.toast.show_message(tr("No longer valid: {names}", names=", ".join(names)), 6000)
+        elif manual and failed:
+            self.toast.show_message(tr("Some credentials could not be checked. The details are under Advanced."), 6000)
+        elif manual:
+            self.toast.show_message(tr("No credential has been revoked or suspended."))
+
+    def set_status_check(self, enabled: bool) -> None:
+        status.set_automatic(enabled)
+        if enabled:
+            self._check_status_in_background()
 
     def switch_profile(self, name: str) -> None:
         if not name or name == storage.PROFILE:

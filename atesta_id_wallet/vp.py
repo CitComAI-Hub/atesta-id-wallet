@@ -32,7 +32,8 @@ from .common import (
 from .i18n import tr
 from .jose import encrypt_response_jwe
 from .sdjwt import SdJwt, _claim_at, _sd_digest, select_disclosures
-from .storage import HolderKey, add_history, credential_name, is_expired
+from . import status
+from .storage import HolderKey, add_history, credential_name, is_usable
 from .trust import VerifierIdentity, check_request_object, check_response_uri, remember_verifier, split_client_id
 from .ui import consent_items
 
@@ -173,7 +174,29 @@ def _first(_query_id: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _usable(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [r for r in records if r.get("_sd") is not None and not is_expired(r)]
+    return [r for r in records if is_usable(r)]
+
+
+def _checking_status(session: requests.Session, choose: Chooser) -> Chooser:
+    """
+    Before choosing, the status of the candidates for this query (only those: the issuers of the
+    other credentials are not contacted). A revoked or suspended one is left out; if that leaves
+    none, the request cannot be answered. If the status cannot be checked, or the user turned the
+    automatic check off, the verifier will (the state from the last check still counts).
+    """
+    def checked(query_id: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+        if status.automatic_enabled():
+            status.refresh(session, candidates)
+        usable = _usable(candidates)
+        if not usable:
+            raise WalletError(tr("Every credential that matches the request has been revoked or suspended by its "
+                                 "issuer."),
+                              hint=tr("The organisation that issued the credential this request asks for has revoked "
+                                      "or suspended it, so it cannot be used. Nothing was sent. Ask them for a new "
+                                      "one."))
+        return choose(query_id, usable)
+
+    return checked
 
 
 def _dcql_claims(query: dict[str, Any], claims: Any) -> list[dict[str, Any]] | None:
@@ -387,6 +410,7 @@ def prepare_presentation(
     debug(f"response_uri: {response_uri} ({response_mode})")
 
     pd = None
+    choose = _checking_status(session, choose)
     try:
         if "dcql_query" in request:
             matches = match_dcql(request["dcql_query"], records, disclose_all, choose)

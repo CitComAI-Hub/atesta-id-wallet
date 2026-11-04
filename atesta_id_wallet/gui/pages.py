@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, storage, updates, vault
+from .. import common, i18n, status, storage, updates, vault
 from ..common import __version__, claim_label, host_of, site_of
 from ..i18n import N_, tr, tr_n
 from ..storage import (
@@ -231,8 +231,12 @@ def _flatten(value: Any, prefix: str = "", technical: bool = False) -> list[tupl
 
 
 def validity_text(record: dict[str, Any]) -> tuple[str, str]:
-    """(tone, text) of the credential's validity, from its own dates."""
+    """(tone, text) of the credential's validity: revoked or suspended at the last check, or its own dates."""
     state, when = storage.validity(record)
+    if state == "revoked":
+        return "danger", tr("Revoked by {issuer}", issuer=credential_issuer_name(record))
+    if state == "suspended":
+        return "warn", tr("Suspended by {issuer}", issuer=credential_issuer_name(record))
     if state == "expired":
         return "danger", tr("Expired on {date}", date=short_date(when))
     if state == "not-yet":
@@ -262,6 +266,21 @@ def _not_before(timestamp: float) -> str:
     return short_date(timestamp)
 
 
+def _revocation_text(record: dict[str, Any]) -> str:
+    """What the wallet knows about the credential being revoked, and since when."""
+    if not status.has_status(record):
+        return tr("Not offered by {issuer}", issuer=credential_issuer_name(record))
+    checked = (record.get("revocation") or {}).get("checked_at")
+    if not isinstance(checked, (int, float)):
+        return tr("Not checked yet")
+    state = storage.revocation_state(record)
+    if state == "revoked":
+        return tr("Revoked (checked on {date})", date=short_date(checked))
+    if state == "suspended":
+        return tr("Suspended (checked on {date})", date=short_date(checked))
+    return tr("Not revoked (checked on {date})", date=short_date(checked))
+
+
 class CredentialPage(Page):
     def __init__(self, window: MainWindow, record: dict[str, Any]):
         super().__init__(window)
@@ -284,9 +303,9 @@ class CredentialPage(Page):
         t = theme.current()
         colour, soft = {"ok": (t.success, t.success_soft), "warn": (t.warning, t.warning_soft),
                         "danger": (t.danger, t.danger_soft)}[tone]
-        status = pill(text, colour, soft)
-        status.setAccessibleName(text)
-        left.addWidget(status, alignment=Qt.AlignLeft)
+        state_pill = pill(text, colour, soft)
+        state_pill.setAccessibleName(text)
+        left.addWidget(state_pill, alignment=Qt.AlignLeft)
         left.addWidget(label(tr("Issued by {issuer}", issuer=credential_issuer_name(record)), "pageSubtitle", wrap=True))
         left.addSpacing(8)
         delete = button(tr("Delete credential"), "danger", "trash-2")
@@ -318,6 +337,7 @@ class CredentialPage(Page):
             (tr("Received"), _date(record.get("stored_at"))),
             *([(tr("Valid from"), _not_before(payload["nbf"]))] if isinstance(payload.get("nbf"), (int, float)) else []),
             (tr("Valid until"), _date(payload.get("exp")) if payload.get("exp") else tr("Does not expire")),
+            (tr("Revocation check"), _revocation_text(record)),
             (tr("Protection against copies"),
              tr("Only this wallet can use it") if (payload.get("cnf") or {}).get("jwk")
              else tr("None: anyone with a copy could use it")),
@@ -536,10 +556,10 @@ class SettingsPage(Page):
         if sys.platform != "darwin":  # macOS needs a .app (see desktop.cmd_install_handler)
             what = tr("Let buttons and links on web pages open this application, instead of scanning their QR code.")
             owner = w.links_state()
-            status = {"us": tr("Registered: buttons and links on web pages open this application."),
-                      "other": tr("Another application opens them now.") + " " + what,
-                      "none": tr("Not registered yet.") + " " + what}.get(owner or "", what)
-            general.append(_setting(tr("Wallet links"), status,
+            links = {"us": tr("Registered: buttons and links on web pages open this application."),
+                     "other": tr("Another application opens them now.") + " " + what,
+                     "none": tr("Not registered yet.") + " " + what}.get(owner or "", what)
+            general.append(_setting(tr("Wallet links"), links,
                                     self._action(tr("Register again") if owner == "us" else tr("Register"),
                                                  lambda: w.register_links(), "link")))
         self._section(tr("General"), general)
@@ -568,6 +588,14 @@ class SettingsPage(Page):
                                                    "app lock: it is asked for whenever the wallet opens."),
                          self._action(tr("Set…"), w.set_wallet_password, "key-round")),
             ]
+        status_check = QCheckBox()
+        status_check.setChecked(status.automatic_enabled())
+        status_check.toggled.connect(w.set_status_check)
+        security.append(_setting(
+            tr("Revoked credentials"),
+            tr("Ask the organisations that gave you your credentials whether they have cancelled them, before you "
+               "use them and from time to time. The question carries nothing about you or about the credential."),
+            status_check, self._action(tr("Check now"), w.check_revocations)))
         self._section(tr("Security"), security)
         self._section(tr("Backup"), [
             _setting(tr("Create an encrypted backup"), tr("It includes the wallet key: without it the credentials are "

@@ -156,9 +156,11 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
        `.github/workflows/ux.yml` (every night, report with screenshots). Pending there: help in the app,
        scanning by screenshot, text size, a screen reader test, technical sections of Settings. Then a
        usability test with 5–8 people of the pilot profile (part of item 7).
-12. [ ] **Revocation check** (Token Status List, `status` claim): today "Valid" only means "not
-       expired". Needed before a verifier relies on the wallet's word, and for a "Revoked" state.
-
+12. [x] **Revocation check** (Token Status List, `status` claim; `status.py`): before presenting (a
+       revoked or suspended credential is not offered), in the window in the background, and with
+       `list --check`; "Revoked" / "Suspended" on the card and in the details; can be turned off in
+       Settings → Security (on by default). Still to do: try it
+       against a real issuer (does the Keycloak in use publish status lists?).
 ## Later (after the pilot)
 
 - [ ] **Hardware-backed holder keys** (WSCD-like), together with one key per credential and
@@ -171,7 +173,6 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
       - Key attestation from the TPM: the first real step towards wallet attestation.
       - Decide first: a hardware key cannot be exported, so backups cannot restore credentials
         on another computer; a new or broken laptop means asking the issuers again.
-- [ ] Token Status List (revocation)
 - [ ] Make "issuer key not found" an error once the pilot issuers are known
 - [ ] Issuer trust list / allow-list; validate issuer `x5c` chains
 - [ ] Deferred issuance; `jwt_vc_json` and mso_mdoc if a verifier needs them

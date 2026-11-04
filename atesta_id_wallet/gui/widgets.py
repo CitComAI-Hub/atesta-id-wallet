@@ -57,7 +57,7 @@ from PySide6.QtWidgets import (
 
 from .. import i18n
 from ..i18n import tr
-from ..storage import credential_holder, credential_issuer_name, credential_name, is_expired, validity
+from ..storage import credential_holder, credential_issuer_name, credential_name, validity
 from . import theme
 
 
@@ -297,9 +297,10 @@ class CredentialCard(QWidget):
             self.setFocusPolicy(Qt.StrongFocus)  # Tab reaches the cards; Enter or Space opens them
             keyboard_focus_ring(self)
         # Painted by hand: screen readers need the words.
+        state = validity(record)[0]
         parts = [credential_name(record), credential_issuer_name(record), credential_holder(record),
-                 tr("Expired") if is_expired(record) else
-                 tr("Expires soon") if validity(record)[0] == "expiring" else ""]
+                 {"revoked": tr("Revoked"), "suspended": tr("Suspended"), "expired": tr("Expired"),
+                  "expiring": tr("Expires soon")}.get(state, "")]
         self.setAccessibleName(", ".join(p for p in parts if p))
         if interactive:
             self.setAccessibleDescription(tr("Show the credential's data"))
@@ -337,10 +338,10 @@ class CredentialCard(QWidget):
         scale = w / self.WIDTH
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        expired = is_expired(self.record)
-        soon = not expired and validity(self.record)[0] == "expiring"
+        state = validity(self.record)[0]
+        expired = state in ("expired", "revoked", "suspended")  # it does not work (now)
         if expired:
-            painter.setOpacity(0.55)  # faded: it no longer works (the EXPIRED tag stays opaque)
+            painter.setOpacity(0.55)  # faded: it no longer works (the tag stays opaque)
         path = QPainterPath()
         path.addRoundedRect(QRectF(0, 0, w, h), 16 * scale, 16 * scale)
         gradient = QLinearGradient(0, 0, w, h)
@@ -397,25 +398,29 @@ class CredentialCard(QWidget):
         font.setWeight(QFont.Medium)
         painter.setFont(font)
         painter.setPen(muted)
+        tag_text = {"revoked": tr("REVOKED"), "suspended": tr("SUSPENDED"), "expired": tr("EXPIRED"),
+                    "expiring": tr("EXPIRES SOON")}.get(state, "")
+        tag_font = QFont(font)
+        tag_font.setPixelSize(round(11 * scale))
+        tag_font.setWeight(QFont.Bold)
+        tag_width = (max(70 * scale, QFontMetrics(tag_font).horizontalAdvance(tag_text) + 18 * scale)
+                     if tag_text else 0)
         holder = credential_holder(self.record)
         bottom = QRectF(pad, h - pad - 18 * scale, w - 2 * pad, 18 * scale)
         painter.drawText(bottom, Qt.AlignLeft | Qt.AlignVCenter,
                          painter.fontMetrics().elidedText(holder, Qt.ElideRight,
-                                                          int(w - 2 * pad - (130 if soon else 80) * scale)))
-        if expired or soon:
-            # EXPIRED in white on dark; EXPIRES SOON in dark on amber (both well over 4.5:1 on any card)
-            text = tr("EXPIRED") if expired else tr("EXPIRES SOON")
+                                                          int(w - 2 * pad - tag_width - 10 * scale)))
+        if tag_text:
+            # Not working (expired, revoked, suspended) in white on dark; EXPIRES SOON in dark on amber
+            # (both well over 4.5:1 on any card)
             painter.setOpacity(1.0)
-            font.setPixelSize(round(11 * scale))
-            font.setWeight(QFont.Bold)
-            painter.setFont(font)
-            tag_width = max(70 * scale, painter.fontMetrics().horizontalAdvance(text) + 18 * scale)
+            painter.setFont(tag_font)
             tag = QRectF(w - pad - tag_width, h - pad - 20 * scale, tag_width, 20 * scale)
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor(0, 0, 0, 150) if expired else QColor("#f0c062"))
             painter.drawRoundedRect(tag, 10 * scale, 10 * scale)
             painter.setPen(QColor("#ffffff") if expired else QColor("#141824"))
-            painter.drawText(tag, Qt.AlignCenter, text)
+            painter.drawText(tag, Qt.AlignCenter, tag_text)
         if self.property("keyboardFocus"):  # focus ring, only when reached with the keyboard
             painter.setOpacity(1.0)
             painter.setBrush(Qt.NoBrush)

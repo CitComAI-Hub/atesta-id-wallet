@@ -17,7 +17,7 @@ from typing import Any
 
 import requests
 
-from . import common, i18n, storage, updates, vault
+from . import common, i18n, status, storage, updates, vault
 from .common import Cancelled, WalletError, __version__, confirm, log
 from .desktop import (
     FROZEN,
@@ -132,6 +132,8 @@ def cmd_present(args: argparse.Namespace) -> int:
 
 def cmd_list(args: argparse.Namespace) -> int:
     records = load_credentials()
+    if args.check:
+        status.refresh(requests.Session(), records, force=True)
     print(tr("Profile: {profile}  ({path})", profile=storage.PROFILE, path=storage.DATA_DIR))
     if not records:
         print(tr("No credentials stored."))
@@ -431,6 +433,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     lst = sub.add_parser("list", help=tr("List stored credentials"))
     lst.add_argument("--details", "-d", action="store_true", help=tr("Show all the data of each credential."))
+    lst.add_argument("--check", action="store_true",
+                     help=tr("Ask the issuers whether the credentials have been revoked (their status lists)."))
     lst.set_defaults(func=cmd_list)
 
     history = sub.add_parser("history", help=tr("What was received, shared or declined, and with whom"))

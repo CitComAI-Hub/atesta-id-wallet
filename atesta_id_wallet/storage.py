@@ -348,7 +348,11 @@ def credential_label(record: dict[str, Any]) -> str:
     label = tr("{credential} from {issuer}, stored on {date}", credential=kind, issuer=issuer, date=stored)
     if who:
         label += f" ({who})"
-    if is_expired(record):
+    if revocation_state(record) == "revoked":
+        label += "  " + tr("[REVOKED]")
+    elif revocation_state(record) == "suspended":
+        label += "  " + tr("[SUSPENDED]")
+    elif is_expired(record):
         label += "  " + tr("[EXPIRED]")
     return label
 
@@ -357,10 +361,35 @@ def delete_credential(record: dict[str, Any]) -> None:
     Path(record["_path"]).unlink(missing_ok=True)
 
 
+def save_record(record: dict[str, Any]) -> bool:
+    """
+    Writes a loaded credential back (e.g. with its revocation state). Only into the active profile:
+    a background check that finishes after a profile switch must not write with another profile's
+    key. Returns whether it was written.
+    """
+    path = Path(record["_path"])
+    if path.parent != CRED_DIR or not path.exists():
+        return False
+    data = {k: v for k, v in record.items() if not k.startswith("_")}
+    write_secret(path, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
+    return True
+
+
 def is_expired(record: dict[str, Any]) -> bool:
     sd: SdJwt | None = record.get("_sd")
     exp = sd.payload.get("exp") if sd else None
     return isinstance(exp, (int, float)) and exp < time.time()
+
+
+def revocation_state(record: dict[str, Any]) -> str | None:
+    """'revoked' or 'suspended' if the issuer's status list said so at the last check, else None."""
+    state = (record.get("revocation") or {}).get("state")
+    return state if state in ("revoked", "suspended") else None
+
+
+def is_usable(record: dict[str, Any]) -> bool:
+    """It can be presented: readable, not expired, not revoked or suspended (as last checked)."""
+    return record.get("_sd") is not None and not is_expired(record) and revocation_state(record) is None
 
 
 EXPIRES_SOON_DAYS = 30
@@ -368,11 +397,16 @@ EXPIRES_SOON_DAYS = 30
 
 def validity(record: dict[str, Any], now: float | None = None) -> tuple[str, float | None]:
     """
-    (state, date) from the credential's own dates: 'valid' (until date, or None if it does not
-    expire), 'expiring' (within EXPIRES_SOON_DAYS), 'expired', 'not-yet' (valid from date).
-    Revocation is not checked (no status list support yet): 'valid' means "not expired".
+    (state, date): 'revoked' or 'suspended' (date of the check that said so) if the issuer's status
+    list said so; otherwise from the credential's own dates: 'valid' (until date, or None if it does
+    not expire), 'expiring' (within EXPIRES_SOON_DAYS), 'expired', 'not-yet' (valid from date).
+    'valid' does not mean that the status was checked: see status.py.
     """
     now = time.time() if now is None else now
+    revoked = revocation_state(record)
+    if revoked:
+        checked = (record.get("revocation") or {}).get("checked_at")
+        return revoked, float(checked) if isinstance(checked, (int, float)) else None
     sd: SdJwt | None = record.get("_sd")
     payload = sd.payload if sd else {}
     exp, nbf = payload.get("exp"), payload.get("nbf")

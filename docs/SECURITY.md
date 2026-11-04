@@ -179,6 +179,32 @@ name to look like a trusted one or inject links.
   image dimensions from the header and refuses images larger than 2048 px before decoding. A logo
   that fails any check is left out; the credential is stored anyway.
 
+## Revocation (Token Status List)
+
+- A credential that carries `status.status_list` (`idx`, `uri`) is checked against the issuer's
+  status list (IETF Token Status List, JWT form): 0 valid, 1 revoked, 2 suspended. Other values
+  and any failure leave the state unknown: the wallet never concludes "revoked" or "valid" from a
+  list it could not verify.
+- The list must have `typ: statuslist+jwt`, a `sub` equal to the credential's `uri` (a list for
+  other credentials served at that address is refused), an `iat`, no past `exp`, and a signature
+  by keys that belong to the credential's `iss`, found the same way as for the credential itself.
+  Only HTTPS, never this computer or the local network unless the issuer is, at most 3 redirects,
+  each one checked, at most 1 MiB downloaded and 16 MiB decompressed (no zlib bomb).
+- **When it is checked**: before presenting, only for the credentials that match the request
+  (a revoked or suspended one is not offered; if none is left, nothing is sent); in the window,
+  in the background, for the credentials whose last check is out of date; and with
+  `atesta-id-wallet list --check`. A check is good for the list's `ttl` (5 minutes to 7 days),
+  1 hour without one, and never beyond its `exp`. A revocation is final, so a revoked credential
+  is not checked again; a suspension may be lifted. *Settings → Security → Revoked credentials*
+  turns the automatic checks off (setting `status_check`, on by default, for all profiles); the
+  state found by earlier checks still counts, and *Check now* or `list --check` ask by hand.
+- **What the issuer learns**: the request carries no wallet or personal data, and a list covers
+  many credentials, so the issuer sees an IP address asking for a list, not which credential.
+  It does see when the wallet is in use, and before a presentation that a credential of that list
+  is about to be used.
+- The answer is stored encrypted with the credential, so the window shows it without asking
+  again. The verifier still checks the status itself: the wallet's check is for the user.
+
 ## Desktop integration
 
 - Only one window runs at a time. A link opened while the wallet is running is handed to that
@@ -208,7 +234,7 @@ name to look like a trusted one or inject links.
 | Issuer trust is not anchored | Any HTTPS issuer the user accepts can issue credentials. An `x5c` issuer certificate is not validated against a CA, only used to check the signature. | Issuer allow-list or trust list. |
 | A credential is stored with a warning if no issuer key is found | The wallet may hold a credential whose signature it could not check. The verifier will check it anyway. | Make it an error once the pilot issuers are known. |
 | One key per profile | Verifiers can link presentations from the same profile. | One key per credential (batch issuance). |
-| No revocation / status list check | A revoked credential may still be offered. The verifier is expected to check status. | Token Status List support. |
+| Revocation is only as fresh as the last check | Offline, or if the issuer's list cannot be fetched or verified, a revoked credential may still be offered (the verifier is expected to check status). Only Token Status List in JWT form; no CWT lists or other mechanisms. | — |
 | Clipboard and recent screenshots are read automatically by *Scan QR* | A QR the user did not intend could be picked. | Mitigated by the offer review and consent screens, which show what was picked and who asks. |
 | Windows builds not code-signed; builds not reproducible | SmartScreen warns, and users rely on the checksums and the CI attestation to know what they installed. | Authenticode certificate for the Windows builds. |
 | No external security review | Bugs like the ones fixed in 0.5.1 may remain. | Review before handing the wallet to end users. |
