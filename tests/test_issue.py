@@ -368,3 +368,51 @@ class WalletInitiatedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IssuerKeysWithCertificateTest(unittest.TestCase):
+    """x5c in the header: the certificate names the issuer's host, or the DID document has the key."""
+
+    def setUp(self):
+        from helpers import der_b64, make_cert
+        self.key = ec.generate_private_key(ec.SECP256R1())
+        self.did = "did:web:onboarding.example.org:acme-1a2b"
+        # Keycloak's certificate of a realm key: self-signed, it names the realm, not the host
+        self.header = {"kid": "k1", "x5c": [der_b64(make_cert(self.key, "acme-1a2b"))]}
+        self.make_cert, self.der_b64 = make_cert, der_b64
+        self._saved = vci._did_web_keys
+        self.addCleanup(setattr, vci, "_did_web_keys", self._saved)
+        self.session = requests.Session()
+        self.addCleanup(self.session.close)
+
+    def keys(self, iss):
+        return vci.issuer_keys(self.session, self.header, iss, "https://kc.example.org/realms/acme-1a2b", {})
+
+    def test_certificate_naming_the_host(self):
+        header = {"x5c": [self.der_b64(self.make_cert(self.key, "onboarding.example.org"))]}
+        keys, bound = vci.issuer_keys(self.session, header, self.did, "https://kc.example.org/realms/x", {})
+        self.assertTrue(bound)
+
+    def test_did_document_with_the_same_key(self):
+        vci._did_web_keys = lambda session, did, kid: [self.key.public_key()]
+        keys, bound = self.keys(self.did)
+        self.assertTrue(bound)
+        self.assertEqual(len(keys), 1)
+
+    def test_did_document_with_another_key(self):
+        vci._did_web_keys = lambda session, did, kid: [ec.generate_private_key(ec.SECP256R1()).public_key()]
+        keys, bound = self.keys(self.did)
+        self.assertFalse(bound)
+
+    def test_did_document_not_resolved(self):
+        def fail(session, did, kid):
+            raise requests.ConnectionError("offline")
+        vci._did_web_keys = fail
+        keys, bound = self.keys(self.did)
+        self.assertFalse(bound)
+        self.assertEqual(len(keys), 1)
+
+    def test_https_issuer_unchanged(self):
+        vci._did_web_keys = lambda *a: self.fail("no DID to resolve")
+        keys, bound = self.keys("https://kc.example.org/realms/acme-1a2b")
+        self.assertFalse(bound)

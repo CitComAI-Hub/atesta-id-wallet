@@ -22,6 +22,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 import requests
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from .common import (
@@ -1133,6 +1134,24 @@ def _did_web_keys(session: requests.Session, did: str, kid: str | None) -> list[
     return [k for k in (jwk_to_public_key(m["publicKeyJwk"]) for m in methods) if k is not None]
 
 
+def _issuer_host(iss: str) -> str:
+    """Host of an issuer: of its URL, or of the URL of its DID document for a did:web."""
+    if iss.startswith("did:web:"):
+        try:
+            return urlsplit(did_web_url(iss)).hostname or ""
+        except (WalletError, ValueError):
+            return ""
+    return host_of(iss)
+
+
+def _same_public_key(a: Any, b: Any) -> bool:
+    spki = serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+    try:
+        return a.public_bytes(*spki) == b.public_bytes(*spki)
+    except (AttributeError, ValueError):
+        return False
+
+
 def issuer_keys(
     session: requests.Session, header: dict[str, Any], iss: str, issuer: str,
     as_meta: dict[str, Any] | Callable[[], dict[str, Any]],
@@ -1145,7 +1164,19 @@ def issuer_keys(
     kid = header.get("kid")
     if header.get("x5c"):
         cert = _x5c_chain(header)[0]
-        return [cert.public_key()], host_of(iss) in _dns_names(cert)
+        key = cert.public_key()
+        if _issuer_host(iss) in _dns_names(cert):
+            return [key], True
+        # A did:web issuer may sign with a key whose certificate does not name its host: Keycloak
+        # makes a self-signed one per realm (CN = the realm). The key is still the DID's if its
+        # document publishes that same public key.
+        if iss.startswith("did:web:"):
+            try:
+                if any(_same_public_key(key, k) for k in _did_web_keys(session, iss, kid)):
+                    return [key], True
+            except (WalletError, requests.RequestException) as exc:
+                log(tr("Warning: could not resolve {iss}: {error}", iss=iss, error=exc))
+        return [key], False
     if iss.startswith("did:web:"):
         try:
             keys = _did_web_keys(session, iss, kid)
