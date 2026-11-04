@@ -442,6 +442,8 @@ class MainWindow(QMainWindow):
 
     def _result(self, ok: bool, title: str, body: str, **kwargs: Any) -> None:
         self.last_result = (ok, title)
+        if kwargs.get("details"):
+            kwargs["details"] = common.redact(kwargs["details"])
         self._sheet(ResultSheet(ok, title, body, self._close_sheet, **kwargs))
 
     def _confirm(self, title: str, body: str, action: Callable[[], None], *, confirm_text: str | None = None,
@@ -767,7 +769,7 @@ class MainWindow(QMainWindow):
     @Slot(str, bool)
     def _on_log(self, message: str, is_debug: bool) -> None:
         # Only in the technical log (Settings → Advanced): the protocol steps mean nothing to most people.
-        self.log_text += ("· " if is_debug else "") + message + "\n"
+        self.log_text += ("· " if is_debug else "") + common.redact(message) + "\n"
 
     # -- questions from the flow --------------------------------------------------
 

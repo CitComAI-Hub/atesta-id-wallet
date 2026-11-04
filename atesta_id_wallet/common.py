@@ -43,7 +43,35 @@ class Cancelled(WalletError):
         super().__init__(message or tr("Cancelled by the user."))
 
 
+# Values that let someone else act as the user (codes, tokens, passwords) or carry personal data
+# (credentials, presentations). Logs and technical details are meant to be pasted into a support
+# request, so they never contain them.
+SECRET_KEYS = ("pre-authorized_code", "code", "tx_code", "user_pin", "access_token", "refresh_token", "id_token",
+               "code_verifier", "password", "client_secret", "issuer_state", "state", "session_state", "vp_token",
+               "credential", "credentials")
+REDACTED = "<redacted>"
+_KEYS = "|".join(re.escape(k) for k in sorted(SECRET_KEYS, key=len, reverse=True))
+_REDACTIONS = (
+    # JSON and Python reprs: "code": "…" / 'code': '…' (also cut short by a [:200]).
+    (re.compile(rf"""(?<![\w-])(["'])({_KEYS})\1(\s*:\s*)(["'])(?:(?!\4).)*\4?"""), rf"\1\2\1\3\4{REDACTED}\4"),
+    # Query strings, fragments and form bodies: ?code=… &state=…
+    (re.compile(rf"(?<![\w-])({_KEYS})=[^&#\s\"']*"), rf"\1={REDACTED}"),
+    # Authorization and DPoP headers.
+    (re.compile(r"(?i)\b(Bearer|DPoP)(\s+)[A-Za-z0-9._~+/=-]{16,}"), rf"\1\2{REDACTED}"),
+    # Compact JWS/JWE and SD-JWT (credentials, proofs, tokens), whole or cut short.
+    (re.compile(r"eyJ[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*){1,4}(?:~[A-Za-z0-9_.~-]*)?"), f"<JWT {REDACTED}>"),
+)
+
+
+def redact(text: str) -> str:
+    """Removes secrets and personal data from text meant for logs and technical details."""
+    for pattern, replacement in _REDACTIONS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def log(message: str) -> None:
+    message = redact(message)
     if LOG_HANDLER:
         LOG_HANDLER(message, False)
     else:
@@ -53,6 +81,7 @@ def log(message: str) -> None:
 def debug(message: str) -> None:
     if not VERBOSE:
         return
+    message = redact(message)
     if LOG_HANDLER:
         LOG_HANDLER(message, True)
     else:

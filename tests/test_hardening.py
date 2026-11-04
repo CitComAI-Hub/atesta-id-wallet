@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest import mock
 from contextlib import redirect_stderr
 from pathlib import Path
 
@@ -458,3 +459,57 @@ class ReviewNovember2026Tests(unittest.TestCase):
         storage.save_settings({"unlock_failures": ["nonsense"]})
         self.assertEqual(storage.unlock_wait(), 0)
 
+
+
+class RedactionTests(unittest.TestCase):
+    """Logs and technical details are pasted into support requests: no codes, tokens or credentials."""
+
+    JWT = "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln"
+
+    def test_secrets_are_removed(self):
+        cases = {
+            "https://kc/auth?response_type=code&state=S1&issuer_state=IS1&code_challenge=CC":
+                "https://kc/auth?response_type=code&state=<redacted>&issuer_state=<redacted>&code_challenge=CC",
+            "http://127.0.0.1:5000/callback?session_state=SS&code=C1&iss=x":
+                "http://127.0.0.1:5000/callback?session_state=<redacted>&code=<redacted>&iss=x",
+            '{"pre-authorized_code": "P1", "tx_code": {"length": 4}}':
+                '{"pre-authorized_code": "<redacted>", "tx_code": {"length": 4}}',
+            "{'access_token': 'T1', 'token_type': 'DPoP'}": "{'access_token': '<redacted>', 'token_type': 'DPoP'}",
+            '{"refresh_token": "R1': '{"refresh_token": "<redacted>"',  # cut short by a [:200]
+            "Authorization: Bearer abcdefghijklmnopqrst": "Authorization: Bearer <redacted>",
+            f"proof {self.JWT}": "proof <JWT <redacted>>",
+            f"credential {self.JWT}~WyJzIiwiZW1haWwiLCJhQGIuYyJd~": "credential <JWT <redacted>>",
+            "jwt eyJhbGciOiJFUzI1NiJ9.eyJzdW": "jwt <JWT <redacted>>",
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(common.redact(text), expected)
+                self.assertEqual(common.redact(expected), expected)
+
+    def test_useful_details_are_kept(self):
+        for text in ('{"error": "invalid_grant", "error_description": "Code not valid"}',
+                     "response_uri: https://v.example/resp (direct_post) nonce=n1",
+                     "grant-type:pre-authorized_code", "client_id=x509_san_dns:v.example&response_type=code"):
+            with self.subTest(text=text):
+                self.assertEqual(common.redact(text), text)
+
+    def test_log_and_debug_are_redacted(self):
+        seen = []
+        old = (common.LOG_HANDLER, common.VERBOSE)
+        common.LOG_HANDLER, common.VERBOSE = (lambda message, is_debug: seen.append(message)), True
+        try:
+            common.debug("GET https://i/cb?code=C2")
+            common.log(f"token {self.JWT}")
+        finally:
+            common.LOG_HANDLER, common.VERBOSE = old
+        self.assertEqual(seen, ["GET https://i/cb?code=<redacted>", "token <JWT <redacted>>"])
+
+    def test_cli_error_is_redacted(self):
+        err = io.StringIO()
+        with mock.patch.object(cli, "_run", side_effect=common.WalletError("bad callback ?code=C3")), \
+                redirect_stderr(err):
+            try:
+                self.assertEqual(cli.main([]), 1)
+            finally:
+                i18n.set_language("es")  # main() picks the language from the settings
+        self.assertNotIn("C3", err.getvalue())

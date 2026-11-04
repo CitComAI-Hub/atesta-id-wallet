@@ -589,19 +589,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         code = _run(argv)
     except WalletError as exc:
-        print("\n" + tr("ERROR: {error}", error=exc), file=sys.stderr)
+        print("\n" + tr("ERROR: {error}", error=common.redact(str(exc))), file=sys.stderr)
         code = 1
     except requests.RequestException as exc:
-        print("\n" + tr("NETWORK ERROR: {error}", error=exc), file=sys.stderr)
+        print("\n" + tr("NETWORK ERROR: {error}", error=common.redact(str(exc))), file=sys.stderr)
         code = 1
     except KeyboardInterrupt:
         print("\n" + tr("Cancelled."), file=sys.stderr)
         return 130
     except Exception as exc:  # unexpected server response, damaged file...
         if common.VERBOSE:
-            traceback.print_exc()
+            print(common.redact(traceback.format_exc()), file=sys.stderr, end="")
         print("\n" + tr("UNEXPECTED ERROR: {error} (repeat with --verbose for details)",
-                         error=f"{type(exc).__name__}: {exc}"), file=sys.stderr)
+                         error=common.redact(f"{type(exc).__name__}: {exc}")), file=sys.stderr)
         code = 1
     if "--pause" in argv:
         try:

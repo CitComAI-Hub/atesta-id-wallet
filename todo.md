@@ -20,7 +20,7 @@ smoke-tested by CI (including a silent install/uninstall on Windows), but nobody
 has used it and nobody has tested it by hand on real Windows or macOS.
 
 **TRL 6 target**: a pilot with real users in the CITCOM environment. Blocking for that, in order:
-the manual Windows test, the CITCOM verifier trust list, and a decision on the second login.
+the full manual Windows test and the CITCOM verifier trust list.
 
 ## Done
 
@@ -129,6 +129,7 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 1. [ ] **Windows code signing** (Authenticode certificate) to avoid the SmartScreen warning.
        Done: public repository, release 0.6.0 published by CI, new-version check working.
 2. [ ] **Test on real Windows** by hand with [docs/TESTING-WINDOWS.md](docs/TESTING-WINDOWS.md)
+       Done (November 2026, a first look): the app starts and reads QR codes from the clipboard.
        (browser links, clipboard, screenshots, `%APPDATA%` permissions, update/uninstall) and
        decide on macOS for the pilot.
 3. [x] **CI**: tests on Linux and Windows for every push and pull request, `ruff` (bug-class rules),
@@ -138,8 +139,14 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
        wallet password with app lock. Still to check by hand on Windows (Credential Manager).
 5. [ ] **Trust list**: ship the CITCOM verifier CA (or trust list) with the app, so pilot verifiers
        show as trusted instead of "first time".
-6. [ ] **Second login when receiving a credential**: option B is in the wallet (0.10, below); the
-       issuers still have to register the `atesta-id-wallet` client (CITCOM realm, PGTEC).
+       Found (November 2026): the marketplace verifier signs its requests with its Let's Encrypt TLS
+       certificate (`x509_san_dns`, 90 days), so there is no CITCOM CA to ship, and every renewal
+       shows it as "changed" (red), because the pin is the certificate's SHA-256. Proper fix: a
+       CITCOM CA only for request signing, kept off the servers, set in the VCVerifier. A list of
+       pilot hosts checked against public roots was considered and set aside for now.
+6. [x] **Second login when receiving a credential**: option B is in the wallet (0.10, below) and
+       the `atesta-id-wallet` client is registered in the issuer realms (November 2026). Still to
+       do: receive a credential from each real issuer and check it signs in through the browser.
 7. [ ] **Pilot plan**: who (number of users, roles), scenarios (receive, sign in, backup/restore,
        second device), what is measured (success rate, time, support requests), feedback form.
 8. [x] **First-run guide** in the GUI: what the wallet is, how to get a credential, why a password and
@@ -178,7 +185,8 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
 - [ ] Deferred issuance; `jwt_vc_json` and mso_mdoc if a verifier needs them
 - [ ] DCQL `trusted_authorities`; verifier attestations / OpenID Federation client_ids
 - [ ] Digital Credentials API (browser-mediated presentation), when browsers support it on desktop
-- [ ] Redact secrets (codes, tokens) from the verbose log shown in *Settings → Advanced*
+- [x] Redact secrets (codes, tokens) from the verbose log shown in *Settings → Advanced*: also
+      credentials and proofs (any JWT), in the window's technical details and in CLI errors (`common.redact`)
 - [ ] External security review before end-user distribution
 - [x] Split `tests/test_offline.py` (1000+ lines) by module: `tests/helpers.py` + one module per area
 - [x] Fuzzing of SD-JWT, JWT, offer, presentation request and DCQL parsing (`tests/test_fuzz.py`;
@@ -203,7 +211,7 @@ even if the browser already has one. Options (decide with whoever administers Ke
       Only avoids later logins; the cookie gives access to the account while it is valid.
 - [ ] **GUI for wallet-initiated issuance** ("Request a credential" from a known issuer); today only
       `issue --issuer` in the CLI.
-- [ ] **Register `atesta-id-wallet`** in each issuer realm (public, standard flow only, PKCE S256,
+- [x] **Register `atesta-id-wallet`** in each issuer realm (public, standard flow only, PKCE S256,
       redirect `http://127.0.0.1/callback`, `oid4vci.enabled`, `profile` and `email` as default scopes
       so the wallet can say which account signed in, the credential scopes as optional scopes): CITCOM connectors (dataspace-on-upv), PGTEC (ask its admin). No wallet change needed.
 

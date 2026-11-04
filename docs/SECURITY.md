@@ -14,6 +14,7 @@ It describes version 0.8.0.
 | Profile data key | System keyring, or `vault.json` wrapped with the wallet password | See *Encryption at rest*. |
 | Trusted CA certificates | `trusted_cas/*.pem` | Public certificates: not encrypted, `0600`. |
 | Keycloak password | Never stored | Typed into the window or the terminal, sent only over HTTPS to the authorization server's host. Kept in memory until that login ends; if the offer is tied to another wallet, it is sent once more to the same host for the retry without the offer (see *Issuance*). |
+| Log and technical details | Memory only (*Settings → Advanced*, "Show technical details", CLI errors) | Codes, tokens, `state`, passwords and every JWT (credentials, proofs, presentations) are replaced by `<redacted>` before they are shown, so they can be pasted into a support request. |
 | Backups | File chosen by the user | AES-256-GCM, key derived from a password with scrypt (N=2¹⁵, r=8, p=1). Restore rejects archive entries outside the profile (no path traversal, no links). |
 
 ## Encryption at rest
