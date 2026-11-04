@@ -199,3 +199,26 @@ Cognitive walkthrough ("will the person know what to do, and understand what hap
 
 What it cannot measure: whether people understand the screens and finish the tasks without help.
 That is still the usability test with 5–8 people of the pilot profile (with SUS at the end).
+
+## An outside opinion (three screenshots)
+
+A review by another AI assistant of three screenshots (wallet, settings, credential detail, taken
+from real CITCOM-VRAIN credentials), checked point by point against the measurements and the code:
+
+| Point | Verdict | What was done |
+|---|---|---|
+| Validity must be obvious ("are they valid, and until when?") | **Right** | The validity under the card, coloured: "Valid until…", "Expires in 12 days (…)", "Expired on…", "Not valid until…"; an EXPIRES SOON tag on the card 30 days before |
+| "Revoked" as a state | **Right, and a real gap** | The wallet does not check revocation (no Token Status List): "Valid" means "not expired". In `todo.md` (item 12) |
+| Technical data shown like the rest (`Jti`, `Roles 1 › Target`) | **Right** (our sample data had none of it) | Identifiers (`jti`, `sub`, a role's `target`…) under "Show technical details"; one-item lists without an index; FIWARE roles as "Roles: a, b". The audit now uses a credential like the real ones |
+| The name repeated under the card | Right | Replaced by the validity |
+| Wallet links: no status | Right | "Registered", "Another application opens them now", "Not registered yet" (`desktop.links_owner`), and "Register again" |
+| Buttons of different widths in Settings | Partly | The actions of Settings line up in one column (same minimum width) |
+| Secondary text small and with low contrast | Half: the contrast is 5.8:1 (AA asks 4.5), the size was 12 px | Captions 13 px; the audit checks the layout still fits in six languages |
+| Check smaller windows | Right | The audit also runs the smallest window (920×640) in French |
+| Confirmation before removing a profile | Already there | Danger panel with what is lost; *Cancel* has the focus |
+| Keyboard, screen readers, hover/focus/disabled states, success and error notices | Already there (round 2) | — |
+| Labels "Issuer:", "Type:", "Holder:" on every card | **Not adopted** | A card is read like a physical one; the labels would clutter it. The detail page and the screen reader name say what each line is |
+| Scores (8/10…), more space use, reference images | Not actionable | — |
+
+Its closing questions are a good test of the wallet page and the credential page: *which
+credentials do I have, who issued them, are they valid and until when, what can I do with them*.

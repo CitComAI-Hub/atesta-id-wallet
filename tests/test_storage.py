@@ -17,6 +17,28 @@ from helpers import isolated_home, make_sd_jwt  # noqa: E402  (first: sets the t
 from atesta_id_wallet import cli, common, storage  # noqa: E402
 
 
+class ValidityTests(unittest.TestCase):
+    """The credential's state from its own dates (revocation is not checked yet)."""
+
+    @staticmethod
+    def record(**payload):
+        class Sd:
+            pass
+        sd = Sd()
+        sd.payload = payload
+        return {"_sd": sd}
+
+    def test_states(self):
+        now = 1_800_000_000
+        day = 86400
+        self.assertEqual(storage.validity(self.record(), now), ("valid", None))
+        self.assertEqual(storage.validity(self.record(exp=now + 90 * day), now), ("valid", now + 90 * day))
+        self.assertEqual(storage.validity(self.record(exp=now + 12 * day), now), ("expiring", now + 12 * day))
+        self.assertEqual(storage.validity(self.record(exp=now - 1), now), ("expired", now - 1))
+        self.assertEqual(storage.validity(self.record(nbf=now + day, exp=now + 90 * day), now), ("not-yet", now + day))
+        self.assertEqual(storage.validity({}, now), ("valid", None))
+
+
 class StorageTests(unittest.TestCase):
     def setUp(self):
         self.home = isolated_home(self)

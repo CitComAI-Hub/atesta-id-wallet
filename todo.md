@@ -10,12 +10,12 @@
   fallback), Spanish, Danish, German, French and Luxembourgish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
-## Status (0.10.0, November 2026)
+## Status (0.11.0, November 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
-GUI, a CLI, six languages, an offline test suite (179 tests, GUI included) and nightly tests
-against real Keycloak 26.6, 26.7 and latest. Release 0.10.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
+GUI, a CLI, six languages, an offline test suite (209 tests, GUI and a UX audit included) and nightly tests
+against real Keycloak 26.6, 26.7 and latest. Release 0.11.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
 smoke-tested by CI (including a silent install/uninstall on Windows), but nobody outside the team
 has used it and nobody has tested it by hand on real Windows or macOS.
 
@@ -113,6 +113,16 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
   Security review (November 2026): shared-hosting issuer names, no logos from local addresses,
   http://localhost only with ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP=1. CI on every branch and pull request
   with ruff, bandit and pip-audit; Dependabot.
+- **0.11.0: UX/UI review, measured and automated** ([docs/UX-REVIEW.md](docs/UX-REVIEW.md)): texts in
+  plain words (no "issuer"/"verifier" in the window; errors that say what to do, the technical text
+  behind "Show technical details"; translated claim names); WCAG 2.2 AA: keyboard focus ring (only
+  from the keyboard), focus kept inside panels, names for every control, contrast of text, fields
+  and checkboxes; validity under the card ("Valid until…", "Expires in 12 days", EXPIRES SOON tag),
+  identifiers under "Technical details", expired credentials faded and last; Settings say who opens
+  the wallet links; the first-run guide offers to register them. `tests/test_ux.py` (every push) and
+  `.github/workflows/ux.yml` (every night, report with screenshots): WCAG checks on every screen in
+  six languages and two themes, readability (Flesch, Fernández-Huerta, Amstad, Kandel-Moles, LIX),
+  task cost (Keystroke-Level Model) and response times.
 
 ## Next: roadmap to the pilot (TRL 6)
 
@@ -146,6 +156,8 @@ the manual Windows test, the CITCOM verifier trust list, and a decision on the s
        `.github/workflows/ux.yml` (every night, report with screenshots). Pending there: help in the app,
        scanning by screenshot, text size, a screen reader test, technical sections of Settings. Then a
        usability test with 5–8 people of the pilot profile (part of item 7).
+12. [ ] **Revocation check** (Token Status List, `status` claim): today "Valid" only means "not
+       expired". Needed before a verifier relies on the wallet's word, and for a "Revoked" state.
 
 ## Later (after the pilot)
 

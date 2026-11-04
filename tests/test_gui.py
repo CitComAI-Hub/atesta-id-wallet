@@ -356,6 +356,47 @@ if __name__ == "__main__":
 
 
 @unittest.skipIf(gui is None, "PySide6 not installed")
+class CredentialDataTests(unittest.TestCase):
+    """What the credential page shows as data, and what it folds under "Technical details"."""
+
+    def test_identifiers_are_technical_and_roles_are_plain(self):
+        from atesta_id_wallet.gui import pages
+
+        rows = pages._flatten({
+            "email": "a@b.c", "jti": "urn:uuid:1", "sub": "u-1", "iat": 1,
+            "roles": [{"names": ["data-provider", "member"], "target": "did:web:x"}],
+            "address": [{"street": "Major 1"}],
+            "groups": [{"name": "a"}, {"name": "b"}],
+        })
+        data = {k: v for k, v, technical in rows if not technical}
+        technical = {k for k, _, is_technical in rows if is_technical}
+        roles, tr = i18n.tr("Roles"), i18n.tr
+        self.assertEqual(data[roles], "data-provider, member")  # not "Roles 1 › Names"
+        self.assertEqual(data[f"{tr('Address')} › Street"], "Major 1")  # one-item list: no index
+        self.assertIn(f"{tr('Groups')} 2 › {tr('Name')}", data)
+        self.assertNotIn("Jti", data)
+        self.assertEqual(technical, {"Jti", "Sub", f"{roles} › Target"})
+
+    def test_validity_text(self):
+        from atesta_id_wallet.gui import pages
+
+        rec = ValidityRecord
+        self.assertEqual(pages.validity_text(rec(exp=time.time() - 10))[0], "danger")
+        tone, text = pages.validity_text(rec(exp=time.time() + 5 * 86400))
+        self.assertEqual(tone, "warn")
+        self.assertIn("5", text)
+        self.assertEqual(pages.validity_text(rec())[0], "ok")
+
+
+def ValidityRecord(**payload):  # noqa: N802
+    class Sd:
+        pass
+    sd = Sd()
+    sd.payload = payload
+    return {"_sd": sd}
+
+
+@unittest.skipIf(gui is None, "PySide6 not installed")
 class ContrastTests(unittest.TestCase):
     """WCAG 2.2 AA: 4.5:1 for text, 3:1 for the edges of fields (1.4.11)."""
 
