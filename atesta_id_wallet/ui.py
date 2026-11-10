@@ -15,7 +15,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .common import WalletError, confirm
+from .common import WalletError, confirm, printable
 from .i18n import N_, tr
 from .sdjwt import disclosed_claims
 from .storage import credential_label
@@ -129,14 +129,14 @@ class TerminalPrompter(Prompter):
         return confirm(question, default=default, assume_yes=self.assume_yes)
 
     def notice(self, message: str) -> None:
-        print("\n" + message + "\n")
+        print("\n" + printable(message) + "\n")
 
     def choose_credential(self, query_id: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
         if len(candidates) == 1 or self.assume_yes or not sys.stdin.isatty():
             return candidates[0]
-        print("\n" + tr("Several credentials match '{query}':", query=query_id))
+        print("\n" + printable(tr("Several credentials match '{query}':", query=query_id)))
         for index, record in enumerate(candidates, 1):
-            print(f"  {index}. {credential_label(record)}")
+            print(printable(f"  {index}. {credential_label(record)}"))
         while True:
             answer = input(tr("Which one? [1-{count}, Enter = 1] ", count=len(candidates))).strip() or "1"
             if answer.isdigit() and 1 <= int(answer) <= len(candidates):
@@ -145,14 +145,16 @@ class TerminalPrompter(Prompter):
     def consent(self, prepared: Any) -> bool:
         identity = prepared.identity
         print("\n" + "=" * 70)
-        print(tr("Verifier: {name}", name=identity.name))
+        # Everything here comes from the verifier or the issuer: printed without control characters, so
+        # that neither can erase or rewrite the lines that say who asks and how far it is trusted.
+        print(printable(tr("Verifier: {name}", name=identity.name)))
         print(f"  {tr(TRUST_TEXT[identity.trust])}")
-        print(tr("The data will be sent to: {uri}", uri=prepared.response_uri))
+        print(printable(tr("The data will be sent to: {uri}", uri=prepared.response_uri)))
         print("\n" + tr("Data that will be disclosed:"))
         for item in consent_items(prepared.matches):
-            print(f"  · {item.label}")
+            print(printable(f"  · {item.label}"))
             for path, value in item.claims:
-                print(f"      {path}: {value}")
+                print(printable(f"      {path}: {value}"))
         print("=" * 70)
         if identity.trust in RISKY_TRUST and self.assume_yes:
             raise WalletError(tr("Data is not sent to an unverified verifier without confirmation (remove --yes)."))

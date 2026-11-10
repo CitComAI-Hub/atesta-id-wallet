@@ -112,9 +112,10 @@ def settings_file() -> Path:
 
 def load_settings() -> dict[str, Any]:
     try:
-        return json.loads(settings_file().read_text(encoding="utf-8"))
+        settings = json.loads(settings_file().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    return settings if isinstance(settings, dict) else {}  # hand-edited or damaged: the defaults
 
 
 def save_settings(settings: dict[str, Any]) -> None:

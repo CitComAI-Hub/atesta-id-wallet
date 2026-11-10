@@ -88,7 +88,8 @@ def parse_sd_jwt(raw: str) -> SdJwt:
                 if key in ("_sd", "_sd_alg"):
                     continue
                 out[key] = resolve(value, path + [key])
-            for digest in node.get("_sd", []) or []:
+            digests = node.get("_sd")
+            for digest in digests if isinstance(digests, list) else []:
                 disclosure = take(digest)
                 if disclosure is None or disclosure.name is None:
                     continue
@@ -115,19 +116,27 @@ def parse_sd_jwt(raw: str) -> SdJwt:
     return SdJwt(raw, issuer_jwt, header, payload, list(by_digest.values()), claims)
 
 
+def _same_step(a: Any, b: Any) -> bool:
+    """Two path steps name the same place; None (DCQL: every element of an array) stands for any index."""
+    if a is None or b is None:
+        return (a is None or type(a) is int) and (b is None or type(b) is int)
+    return type(a) is type(b) and a == b  # 1 is not True, and the index 0 is not the claim "0"
+
+
 def _path_is_prefix(prefix: list[Any], full: list[Any]) -> bool:
     if len(prefix) > len(full):
         return False
-    return all(p is None or p == f for p, f in zip(prefix, full))
+    return all(_same_step(p, f) for p, f in zip(prefix, full))
 
 
 def select_disclosures(sd_jwt: SdJwt, requested_paths: list[list[Any]] | None) -> list[Disclosure]:
+    # An orphan disclosure (no path: nothing in the credential refers to it) is never revealed.
     if requested_paths is None:
-        return list(sd_jwt.disclosures)
+        return [d for d in sd_jwt.disclosures if d.path]
     return [
         d
         for d in sd_jwt.disclosures
-        if d.path  # an orphan disclosure (no path) is never revealed
+        if d.path
         and any(_path_is_prefix(d.path, p) or _path_is_prefix(p, d.path) for p in requested_paths)
     ]
 

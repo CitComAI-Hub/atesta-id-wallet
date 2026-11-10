@@ -1,7 +1,7 @@
 # Security model
 
 This page explains what the wallet protects against, what it trusts and what it does not.
-It describes version 0.8.0.
+It describes version 0.12.0 and the review that followed it.
 
 ## Assets
 
@@ -32,6 +32,9 @@ another. The data key is kept in one of two ways:
   keyring. Nothing can be read until the password is typed: this is the app lock. The window locks
   again after 5 minutes without use or with *Lock*. The password cannot be recovered; `reset`
   empties the profile and starts again.
+  The scrypt parameters are stored with the wrapped key and read back from there (within bounds:
+  `vault.json` is not authenticated), so stronger defaults in a later version do not lock out
+  older profiles.
   After 3 wrong passwords each new one doubles a wait (15 s, 30 s, ... up to 15 minutes), kept in
   `settings.json` so that restarting does not reset it; a right password clears it. This only slows
   down guessing through the wallet: whoever copies the files attacks scrypt offline, so a long
@@ -84,7 +87,9 @@ attacker from relaying a legitimate verifier's request and having your data post
 `redirect_uri` verifiers must use their client_id as `response_uri`. HTTPS is required for every
 URL the wallet fetches or posts to. `http://localhost` is only accepted with
 `ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP=1` (development and tests): otherwise a QR code could make the wallet
-call services on this computer.
+call services on this computer. The same holds for redirects: a request that started on HTTPS is
+never followed to `http://`, and the presentation itself is posted without following redirects at
+all (a `307`/`308` would send it again to an address nobody checked; the wallet stops instead).
 
 **4. Replay protection and minimal disclosure.** Every presentation carries a Key-Binding JWT
 with the verifier's `nonce`, `aud = client_id` and the `sd_hash` of what is sent. Only the
@@ -98,17 +103,22 @@ requested claims are disclosed, following OpenID4VP 1.0 §6.4.1:
   `limit_disclosure: required` are selected; otherwise the whole credential is disclosed, as that
   specification intends, and the consent screen shows it.
 
-A disclosure that the credential does not reference is never sent. Expired credentials are not
-offered.
+A disclosure that the credential does not reference is never sent, not even when the whole
+credential is disclosed. Expired credentials are not offered. `nonce`, `state`, `response_uri` and
+`client_id` must be strings, and a Presentation Exchange `pattern` filter must be a short, valid
+regular expression (it comes from the verifier and runs on the user's data).
 
 **5. After the presentation.** The verifier may answer with a `redirect_uri` that the wallet opens
 in the browser. Only `https://` addresses (`http://localhost` only in development, see above) are
 opened, never `file:`,
 `javascript:` or other local schemes.
 
-**6. Untrusted text in the window.** Names, claim values and error messages come from issuers
-and verifiers. The window shows them as plain text, never as HTML, so a verifier cannot style its
-name to look like a trusted one or inject links.
+**6. Untrusted text in the window and the terminal.** Names, claim values and error messages come
+from issuers and verifiers. The window shows them as plain text, never as HTML, so a verifier cannot
+style its name to look like a trusted one or inject links. In the terminal, control characters
+(escape sequences that move the cursor or erase lines) and bidirectional overrides are replaced
+before printing, so the lines that say who asks and how far it is trusted cannot be rewritten.
+Names published by issuers are reduced to one short line of text before they are stored or shown.
 
 ## Issuance (OpenID4VCI)
 
@@ -131,8 +141,9 @@ name to look like a trusted one or inject links.
   The browser may reuse a session that was already open, perhaps someone else's on a shared
   computer: after issuance the wallet says which account it was issued for (`preferred_username`
   and `email` of the `id_token` from the token endpoint; display only) and offers to delete it.
-- In the wallet's own login, the password is only submitted, over HTTPS, to a form on the same
-  host as the `authorization_endpoint`. External IdPs need `--browser-login`.
+- In the wallet's own login, the password, the one-time code and the username are only submitted,
+  over HTTPS, to a form on the same host as the `authorization_endpoint`, and every page of the
+  login is fetched over HTTPS. External IdPs need `--browser-login`.
 - The authorization code flow uses PKCE (S256) and a `state` that must come back unchanged. If
   the response names its issuer (`iss`, RFC 9207), it must be the expected one.
 - **DPoP** (RFC 9449): when the authorization server advertises ES256 in
@@ -169,7 +180,8 @@ name to look like a trusted one or inject links.
     server that made the offer. Keycloak, for example, may issue credentials whose `iss` is a
     `did:web` and sign them with the DID's key. The wallet rejects the credential if the
     signature is invalid. It only warns if no key is found, or if the keys came from the
-    offering server and cannot be tied to `iss`;
+    offering server and cannot be tied to `iss`. Key sets (`jwks_uri`) are only fetched over
+    HTTPS, and RSA keys shorter than 2048 bits do not verify anything;
   - checks that `cnf.jwk` is this wallet's key.
 - **Logos** published by the issuer (credential `display.logo`, else the issuer's) are fetched
   once, after the user accepted the offer, and stored encrypted with the credential: showing the
@@ -232,7 +244,9 @@ name to look like a trusted one or inject links.
 |---|---|---|
 | Keys are software keys | Without a wallet password, malware running as the user can ask the keyring for the data key. With one, it can still read the key from memory while the wallet is unlocked. There is no hardware-backed key (TPM, secure element). | Hardware-backed holder keys if the pilot needs them. |
 | No default trust list | Most verifiers start as `new`. Users must judge the domain shown. | Ship the project's verifier CA or trust list. |
-| Issuer trust is not anchored | Any HTTPS issuer the user accepts can issue credentials. An `x5c` issuer certificate is not validated against a CA, only used to check the signature. | Issuer allow-list or trust list. |
+| Issuer trust is not anchored | Any HTTPS issuer the user accepts can issue credentials. An `x5c` issuer certificate is not validated against a CA, only used to check the signature: for an `https` issuer, a certificate that names the issuer's host counts as the issuer's key even if it is self-signed. This also applies to status lists, so whoever controls the address of a status list (or the TLS connection to it) could sign one with such a certificate and make a credential look revoked or valid in the wallet (the verifier still checks for itself). | Issuer allow-list or trust list; validate `x5c` chains against it. |
+| Addresses are checked by name, not by where they resolve | A public host name that resolves to a private address (DNS rebinding) passes the "not this computer or the local network" checks for logos and status lists. Only HTTPS requests are made, and their answers are not shown. | — |
+| Verifier certificates are not checked for expiry unless a CA vouches for them | A pinned (trust on first use) certificate keeps its level after it expires. | Part of the trust list work. |
 | A credential is stored with a warning if no issuer key is found | The wallet may hold a credential whose signature it could not check. The verifier will check it anyway. | Make it an error once the pilot issuers are known. |
 | One key per profile | Verifiers can link presentations from the same profile. | One key per credential (batch issuance). |
 | Revocation is only as fresh as the last check | Offline, or if the issuer's list cannot be fetched or verified, a revoked credential may still be offered (the verifier is expected to check status). Only Token Status List in JWT form; no CWT lists or other mechanisms. | — |

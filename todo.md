@@ -14,7 +14,7 @@
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
-GUI, a CLI, six languages, an offline test suite (240 tests, GUI and a UX audit included) and nightly tests
+GUI, a CLI, six languages, an offline test suite (256 tests, GUI and a UX audit included) and nightly tests
 against real Keycloak 26.6, 26.7 and latest. Release 0.12.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
 smoke-tested by CI (including a silent install/uninstall on Windows), but nobody outside the team
 has used it and nobody has tested it by hand on real Windows or macOS.
@@ -132,6 +132,27 @@ the full manual Windows test and the CITCOM verifier trust list.
   icon after the GNOME HIG (indigo wallet with credentials; symbolic version too), also in the
   sidebar, the welcome step and About.
 
+- **After 0.12.0: second review** (security and robustness; `SecondReviewTests` in `tests/test_hardening.py`,
+  `KdfParameterTests` in `tests/test_vault.py`):
+  - [x] DCQL paths with `null` (every element of an array) selected the claim inside the element but not
+        the element's own disclosure, so the verifier could not read it; disclosing a whole credential
+        also sent disclosures nothing refers to.
+  - [x] Redirects: no request leaves HTTPS by following one (`common.new_session`); the presentation is
+        posted without following redirects (a 307/308 re-posted it to an unchecked address).
+  - [x] Wallet login: one-time code and username only to the authorization server's host over HTTPS
+        (only the password was checked); every page of the login over HTTPS.
+  - [x] Issuer keys: `jwks_uri` of `jwt-vc-issuer` metadata only over HTTPS; RSA keys under 2048 bits
+        do not verify; malformed `x5c`, key sets, DID documents, `cnf`, grants and token responses give
+        a clear error instead of an unexpected one. A status check that fails for any reason no longer
+        stops a presentation.
+  - [x] Terminal: control characters and bidirectional overrides removed from everything printed that
+        comes from outside (a verifier could erase the trust warning above its name); issuer names
+        reduced to one short line.
+  - [x] Vault: scrypt parameters read from `vault.json` (bounded) instead of today's constants; a
+        damaged `vault.json` or `settings.json` is reported, not a crash.
+  - [x] Request values (`nonce`, `state`, `response_uri`, `client_id`) must be strings; Presentation
+        Exchange definitions and `pattern` filters are checked.
+
 ## Next: roadmap to the pilot (TRL 6)
 
 1. [ ] **Windows code signing** (Authenticode certificate) to avoid the SmartScreen warning.
@@ -189,7 +210,8 @@ the full manual Windows test and the CITCOM verifier trust list.
       - Decide first: a hardware key cannot be exported, so backups cannot restore credentials
         on another computer; a new or broken laptop means asking the issuers again.
 - [ ] Make "issuer key not found" an error once the pilot issuers are known
-- [ ] Issuer trust list / allow-list; validate issuer `x5c` chains
+- [ ] Issuer trust list / allow-list; validate issuer `x5c` chains (today a self-signed certificate
+      naming the issuer's host is taken as the issuer's key, also for status lists: see Known gaps)
 - [ ] Deferred issuance; `jwt_vc_json` and mso_mdoc if a verifier needs them
 - [ ] DCQL `trusted_authorities`; verifier attestations / OpenID Federation client_ids
 - [ ] Digital Credentials API (browser-mediated presentation), when browsers support it on desktop

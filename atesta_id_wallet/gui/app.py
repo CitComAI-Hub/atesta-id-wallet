@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import common, i18n, status, storage, updates, vault
-from ..common import Cancelled, WalletError, __version__, humanize
+from ..common import Cancelled, WalletError, __version__, humanize, new_session
 from ..desktop import (
     APP_ICON,
     IMAGE_SUFFIXES,
@@ -388,7 +388,7 @@ class MainWindow(QMainWindow):
             failed: list[dict[str, Any]] = []
             try:
                 if storage.PROFILE == profile:
-                    changed = [r["_path"] for r in status.refresh(requests.Session(), load_credentials(),
+                    changed = [r["_path"] for r in status.refresh(new_session(), load_credentials(),
                                                                   force=manual, failed=failed)]
             except Exception as exc:  # e.g. the wallet locked meanwhile: next time
                 common.debug(f"Revocation check stopped: {exc}")
@@ -655,12 +655,12 @@ class MainWindow(QMainWindow):
         self._consumed.add(raw.strip())
         if command == "issue":
             self._run(tr("Receiving the credential…"),
-                      lambda: issue(requests.Session(), raw, IssueOptions(), self.prompter), self._issued)
+                      lambda: issue(new_session(), raw, IssueOptions(), self.prompter), self._issued)
         else:
             self._run(tr("Reading the request…"), lambda: self._present(raw), self._presented, "present")
 
     def _present(self, raw: str) -> tuple[Any, str | None]:
-        session = requests.Session()
+        session = new_session()
         prepared = prepare_presentation(session, raw, load_credentials(), choose=self.prompter.choose_credential)
         if not self.prompter.consent(prepared):
             record_declined(prepared)
@@ -732,7 +732,7 @@ class MainWindow(QMainWindow):
         if isinstance(exc, NoMatchingCredential):
             # Can an issuer this profile already used give it? Then offer to ask for it right away.
             return self._run(tr("Looking for where you can get it…"),
-                             lambda: known_issuer_for(requests.Session(), exc.wanted),
+                             lambda: known_issuer_for(new_session(), exc.wanted),
                              lambda found: self._missing_credential(exc, found), "present")
         receiving = self._flow == "issue"
         if isinstance(exc, requests.RequestException):
@@ -767,7 +767,7 @@ class MainWindow(QMainWindow):
         def request() -> None:
             self._close_sheet()
             self._run(tr("Receiving the credential…"),
-                      lambda: issue_from_issuer(requests.Session(), issuer, [config_id], IssueOptions(), self.prompter),
+                      lambda: issue_from_issuer(new_session(), issuer, [config_id], IssueOptions(), self.prompter),
                       self._issued)
         self._result(False, tr("You do not have the requested credential"),
                      tr("<b>{verifier}</b> asks for: {wanted}. <b>{issuer}</b>, which you have used before, gives it: "

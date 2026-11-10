@@ -227,7 +227,9 @@ def refresh(session: requests.Session, records: list[dict[str, Any]], *, force: 
         before = storage.revocation_state(record)
         try:
             state = check(session, record, lists)
-        except (WalletError, requests.RequestException) as exc:
+        except (storage.vault.Locked, storage.vault.PasswordNeeded):
+            raise  # the wallet locked meanwhile: nothing can be read or written
+        except Exception as exc:  # noqa: BLE001  (whatever the list's server sends must not stop a presentation)
             log(tr("Warning: could not check whether '{credential}' has been revoked: {error}",
                    credential=storage.credential_name(record), error=exc))
             if failed is not None:

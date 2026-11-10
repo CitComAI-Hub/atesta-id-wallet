@@ -107,10 +107,14 @@ def fetch_request(session: requests.Session, raw: str) -> tuple[dict[str, Any], 
         request = parse_json(token, "request_uri")
         if not isinstance(request, dict):
             raise WalletError(tr("{what} is not valid JSON.", what="request_uri"))
+        if not isinstance(request.get("client_id", ""), str):
+            raise WalletError(tr("The request object has a client_id that is not a string."))
         prefix, value = split_client_id(request.get("client_id") or client_id)
         identity = VerifierIdentity(request.get("client_id") or client_id, prefix, value, value)
     else:
         _, request = jwt_decode_unverified(token)
+        if not isinstance(request.get("client_id", ""), str):
+            raise WalletError(tr("The request object has a client_id that is not a string."))
         identity = check_request_object(token, client_id or request.get("client_id", ""))
     if client_id and request.get("client_id") and request["client_id"] != client_id:
         raise WalletError(tr("The client_id of the QR code and of the request object do not match."))
@@ -126,14 +130,31 @@ def _jsonpath_to_list(path: str) -> list[Any]:
     return out
 
 
-def _filter_ok(value: Any, flt: dict[str, Any]) -> bool:
+# A 'pattern' comes from the verifier and runs on the user's data: only short ones, so that a crafted
+# expression cannot keep the wallet busy for long (backtracking grows with the pattern and the text).
+PATTERN_MAX = 256
+PATTERN_TEXT_MAX = 4096
+
+
+def _filter_ok(value: Any, flt: Any) -> bool:
+    if not isinstance(flt, dict):
+        raise WalletError(tr("The verifier's presentation_definition is not valid: {problem}.",
+                             problem="a 'filter' is not an object"))
     candidates = value if isinstance(value, list) else [value]
     if "const" in flt:
         return flt["const"] in candidates
     if "enum" in flt:
-        return any(c in flt["enum"] for c in candidates)
+        return isinstance(flt["enum"], list) and any(c in flt["enum"] for c in candidates)
     if "pattern" in flt:
-        return any(isinstance(c, str) and re.search(flt["pattern"], c) for c in candidates)
+        pattern = flt["pattern"]
+        try:
+            if not isinstance(pattern, str) or len(pattern) > PATTERN_MAX:
+                raise re.error("not a short string")
+            compiled = re.compile(pattern)
+        except re.error as exc:
+            raise WalletError(tr("The verifier's presentation_definition is not valid: {problem}.",
+                                 problem=f"'pattern' is not a usable regular expression ({exc})")) from exc
+        return any(isinstance(c, str) and len(c) <= PATTERN_TEXT_MAX and compiled.search(c) for c in candidates)
     if "contains" in flt:
         return any(_filter_ok(c, flt["contains"]) for c in candidates)
     return True
@@ -331,11 +352,22 @@ def match_dcql(dcql: dict[str, Any], records: list[dict[str, Any]], disclose_all
 def match_presentation_definition(
     pd: dict[str, Any], records: list[dict[str, Any]], disclose_all: bool, choose: Chooser = _first
 ) -> list[Match]:
+    def invalid(problem: str) -> WalletError:
+        return WalletError(tr("The verifier's presentation_definition is not valid: {problem}.", problem=problem))
+
+    if not isinstance(pd, dict) or not isinstance(pd.get("input_descriptors", []), list):
+        raise invalid("it is not an object with an 'input_descriptors' array")
     matches: list[Match] = []
     records = _usable(records)
     for descriptor in pd.get("input_descriptors", []):
+        if not isinstance(descriptor, dict):
+            raise invalid("an input descriptor is not an object")
         constraints = descriptor.get("constraints") or {}
-        fields = constraints.get("fields") or []
+        fields = constraints.get("fields") or [] if isinstance(constraints, dict) else None
+        if not isinstance(fields, list) or not all(
+                isinstance(f, dict) and isinstance(f.get("path", []), list)
+                and all(isinstance(p, str) for p in f.get("path", [])) for f in fields):
+            raise invalid(f"the constraints of '{descriptor.get('id')}' need 'fields' with string paths")
         found: list[tuple[dict[str, Any], list[list[Any]]]] = []
         for record in records:
             sd: SdJwt = record["_sd"]
@@ -406,6 +438,10 @@ def prepare_presentation(
         raise WalletError(tr("response_mode '{mode}' is not supported (only direct_post[.jwt]).", mode=response_mode))
     if not response_uri or not nonce:
         raise WalletError(tr("The request object has no response_uri or nonce."))
+    # They go into the signed answer and into the address it is posted to: text, nothing else.
+    for name, value in (("response_uri", response_uri), ("nonce", nonce), ("state", request.get("state", ""))):
+        if not isinstance(value, str):
+            raise WalletError(tr("'{name}' in the verifier's request is not a string.", name=name))
     check_response_uri(identity, response_uri)
     debug(f"response_uri: {response_uri} ({response_mode})")
 
@@ -477,9 +513,17 @@ def send_presentation(
 ) -> str | None:
     """Sends the response; returns the verifier's redirect_uri, if any."""
     log(tr("Sending the presentation…"))
-    response = session.post(prepared.response_uri, data=body, timeout=30)
+    # Redirects are not followed: a 307/308 would post the presentation again to whatever address the
+    # answer names, which nobody checked (check_response_uri) and the user never saw.
+    response = session.post(prepared.response_uri, data=body, timeout=30, allow_redirects=False)
     if response.status_code >= 400:
         raise _http_error("POST", prepared.response_uri, response)
+    if response.status_code in (307, 308):
+        raise WalletError(
+            tr("The verifier answered the presentation with a redirect to {target}; it was not sent there.",
+               target=host_of(response.headers.get("Location", "")) or "?"),
+            hint=tr("The service asked the wallet to send your data to another address, so the wallet stopped. "
+                    "Reload the page with the QR code and try again; if it keeps happening, tell the service."))
     debug(f"Presentation accepted (HTTP {response.status_code}).")
     remember_verifier(prepared.identity)
     add_history(_history_event("presented", prepared))

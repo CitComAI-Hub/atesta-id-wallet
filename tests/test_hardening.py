@@ -513,3 +513,259 @@ class RedactionTests(unittest.TestCase):
             finally:
                 i18n.set_language("es")  # main() picks the language from the settings
         self.assertNotIn("C3", err.getvalue())
+
+
+class SecondReviewTests(unittest.TestCase):
+    """Security and robustness review after 0.12.0."""
+
+    def setUp(self):
+        base.isolated_home(self)
+
+    @staticmethod
+    def serve(test, handler):
+        import http.server
+        import threading
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        test.addCleanup(server.server_close)
+        test.addCleanup(server.shutdown)
+        return f"http://localhost:{server.server_port}"
+
+    def test_wildcard_path_also_selects_the_array_element(self):
+        """DCQL ['roles', null, 'name']: the element's own disclosure goes with the claim inside it."""
+        name = disclosure("s1", "name", "admin")
+        element = disclosure("s2", {"_sd": [name[1]]})
+        roles = disclosure("s3", "roles", [{"...": element[1]}])
+        orphan = disclosure("s9", "secret", "x")
+        sd = sdjwt.parse_sd_jwt(sd_jwt({"_sd": [roles[1]]}, name, element, roles, orphan))
+        selected = {d.encoded for d in sdjwt.select_disclosures(sd, [["roles", None, "name"]])}
+        self.assertEqual(selected, {name[0], element[0], roles[0]})
+        # The index 0 is not the claim "0", and a wildcard only stands for array elements.
+        self.assertEqual(sdjwt.select_disclosures(sd, [["roles", "0"]]), [d for d in sd.disclosures if d.name == "roles"])
+        # Disclosing everything still leaves out what the credential does not refer to.
+        self.assertNotIn(orphan[0], [d.encoded for d in sdjwt.select_disclosures(sd, None)])
+        self.assertEqual(len(sdjwt.select_disclosures(sd, None)), 3)
+
+    def test_malformed_x5c_is_a_wallet_error(self):
+        from atesta_id_wallet import trust
+
+        key = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
+        for x5c in (["not base64 !!"], [common.b64u(b"not a certificate")], "abc", [1], {"a": 1}):
+            token = key.sign_jwt({"x5c": x5c}, {"client_id": "x509_san_dns:v.example"})
+            with self.assertRaisesRegex(common.WalletError, "x5c", msg=x5c):
+                trust.check_request_object(token, "x509_san_dns:v.example")
+            with self.assertRaisesRegex(common.WalletError, "x5c", msg=x5c):
+                vci.issuer_keys(None, {"x5c": x5c}, "https://issuer.example", "https://issuer.example", {})
+
+    def test_short_rsa_keys_do_not_verify(self):
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+        for bits, valid in ((1024, False), (2048, True)):
+            key = rsa.generate_private_key(public_exponent=65537, key_size=bits)
+            signing_input = f"{common.b64u_json({'alg': 'RS256'})}.{common.b64u_json({'a': 1})}"
+            signature = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
+            self.assertEqual(jose._verify_jws(f"{signing_input}.{common.b64u(signature)}", key.public_key()), valid)
+
+    def test_redirects_never_leave_https(self):
+        import http.server
+
+        class Redirecting(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):  # noqa: N802
+                self.send_response(302)
+                self.send_header("Location", "http://192.0.2.1/metadata" if self.path == "/out" else "/out")
+                self.end_headers()
+
+        url = self.serve(self, Redirecting)
+        with self.assertRaisesRegex(common.WalletError, "https.*192.0.2.1"):
+            common.new_session().get(f"{url}/start", timeout=5)
+
+    def test_a_redirect_that_is_only_read_is_not_a_request(self):
+        """The check for the wallet's own client reads a redirect to http://127.0.0.1 without following it."""
+        saved = os.environ.pop("ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP", None)
+        self.addCleanup(lambda: os.environ.__setitem__("ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP", saved) if saved else None)
+
+        class Keycloak(requests.adapters.BaseAdapter):
+            def send(self, request, **kwargs):
+                response = requests.Response()
+                response.status_code, response.url, response.request = 302, request.url, request
+                response.headers["Location"] = "http://127.0.0.1:49152/callback?error=invalid_request"
+                response.raw = io.BytesIO(b"")
+                return response
+
+            def close(self):
+                pass
+
+        def session(*_args, **_kwargs):
+            http = common.new_session()
+            http.mount("https://", Keycloak())
+            return http
+
+        response = session().get("https://kc.example/auth", allow_redirects=False, timeout=5)
+        self.assertEqual(response.status_code, 302)
+        with mock.patch.object(vci, "new_session", session):
+            self.assertFalse(vci.wallet_client_available(session(), {"authorization_endpoint": "https://kc.example/auth"}))
+        with self.assertRaisesRegex(common.WalletError, "https"):  # followed, it would be a request in clear text
+            session().get("https://kc.example/auth", timeout=5)
+        with self.assertRaisesRegex(common.WalletError, "https"):
+            common.new_session().get("http://kc.example/metadata", timeout=5)
+
+    def test_presentation_is_not_posted_again_after_a_redirect(self):
+        import http.server
+
+        posts = []
+
+        class Verifier(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):  # noqa: N802
+                posts.append(self.path)
+                self.rfile.read(int(self.headers["Content-Length"]))
+                self.send_response(307)
+                self.send_header("Location", "/elsewhere")
+                self.end_headers()
+
+        url = self.serve(self, Verifier)
+        identity = vp.VerifierIdentity("x509_san_dns:localhost", "x509_san_dns", "localhost", "localhost")
+        prepared = vp.PreparedPresentation({}, identity, f"{url}/response", "direct_post", "n", [])
+        with self.assertRaisesRegex(common.WalletError, "redirección"):
+            vp.send_presentation(common.new_session(), prepared, {"vp_token": "secret"})
+        self.assertEqual(posts, ["/response"])
+        self.assertEqual(storage.load_history(), [])  # nothing was accepted
+
+    def test_request_values_must_be_text(self):
+        class Session:
+            pass
+
+        for change in ({"nonce": ["n"]}, {"nonce": 7}, {"response_uri": {"a": 1}}, {"state": ["s"]},
+                       {"client_id": 5}):
+            request = {"client_id": "redirect_uri:https://v.example/r", "response_mode": "direct_post",
+                       "response_uri": "https://v.example/r", "nonce": "n", "dcql_query": {}, **change}
+            with mock.patch.object(vp, "fetch_request", return_value=(
+                    request, vp.VerifierIdentity("redirect_uri:https://v.example/r", "redirect_uri",
+                                                 "https://v.example/r", "v.example"))):
+                with self.assertRaises(common.WalletError, msg=change):
+                    vp.prepare_presentation(Session(), "openid4vp://?x", [], allow_unverified=True)
+        token = storage.HolderKey(ec.generate_private_key(ec.SECP256R1())).sign_jwt({}, {"client_id": 5})
+
+        class Response:
+            status_code, text = 200, token
+
+        class Fetching:
+            def get(self, *args, **kwargs):
+                return Response()
+
+        with self.assertRaisesRegex(common.WalletError, "client_id"):
+            vp.fetch_request(Fetching(), "openid4vp://?request_uri=https://v.example/request")
+
+    def test_presentation_definition_from_the_verifier_is_checked(self):
+        holder = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
+        record = {"format": "dc+sd-jwt", "_sd": sdjwt.parse_sd_jwt(base.make_sd_jwt(holder)), "_path": "/x/c.json"}
+
+        def definition(flt):
+            return {"input_descriptors": [{"id": "d", "constraints": {"fields": [{"path": ["$.email"], "filter": flt}]}}]}
+
+        self.assertEqual(len(vp.match_presentation_definition(definition({"pattern": "@example"}), [record], False)), 1)
+        for bad in (definition({"pattern": "("}), definition({"pattern": "a" * 300}), definition({"pattern": 5}),
+                    definition("x"), {"input_descriptors": "x"}, {"input_descriptors": [5]}, [],
+                    {"input_descriptors": [{"id": "d", "constraints": {"fields": [{"path": [1]}]}}]}):
+            with self.assertRaisesRegex(common.WalletError, "presentation_definition", msg=bad):
+                vp.match_presentation_definition(bad, [record], False)
+
+    def test_one_time_code_only_goes_to_the_authorization_server(self):
+        for action, expected in (("https://evil.example/otp", "evil.example"), ("http://kc.example/otp", "https")):
+            class Response:
+                is_redirect, status_code, headers = False, 200, {}
+                url = "https://kc.example/auth"
+                text = f'<form action="{action}"><input name="otp" value=""/></form>'
+
+            class Session:
+                def get(self, *args, **kwargs):
+                    return Response()
+
+                def post(self, *args, **kwargs):
+                    raise AssertionError("the code must not be sent")
+
+            prompter = base.ScriptedPrompter()
+            prompter.text = lambda *a, **k: self.fail("no debe pedir el código")
+            with self.assertRaisesRegex(common.WalletError, expected):
+                vci.headless_login(Session(), "https://kc.example/auth", "https://kc.example/cb", "joan", prompter)
+
+    def test_login_does_not_follow_a_redirect_out_of_https(self):
+        class Response:
+            is_redirect, status_code, text = True, 302, ""
+            headers = {"Location": "http://kc.example/login"}
+
+        class Session:
+            calls = 0
+
+            def get(self, *args, **kwargs):
+                Session.calls += 1
+                return Response()
+
+        with self.assertRaisesRegex(common.WalletError, "https"):
+            vci.headless_login(Session(), "https://kc.example/auth", "https://kc.example/cb", "joan",
+                               base.ScriptedPrompter())
+        self.assertEqual(Session.calls, 1)
+
+    def test_issuer_keys_are_never_fetched_in_clear_text(self):
+        class Session:
+            def get(self, url, **kwargs):
+                raise AssertionError(f"must not be fetched: {url}")
+
+        for uri in ("http://issuer.example/jwks", "ftp://issuer.example/jwks", None, 5):
+            with self.assertRaises(common.WalletError, msg=uri):
+                vci._fetch_jwks(Session(), uri)
+        key = ec.generate_private_key(ec.SECP256R1()).public_key().public_numbers()
+        jwk = {"kty": "EC", "crv": "P-256", "kid": "k1", "x": common.b64u(key.x.to_bytes(32, "big")),
+               "y": common.b64u(key.y.to_bytes(32, "big"))}
+        self.assertEqual(len(vci._jwks_keys({"keys": [jwk, "x", 5, {"kty": "oct"}]}, "k1")), 1)
+        for jwks in (None, [], {"keys": "x"}, {"keys": {"a": 1}}, "x"):
+            self.assertEqual(vci._jwks_keys(jwks, None), [], jwks)
+
+    def test_names_from_outside_cannot_rewrite_the_screen(self):
+        self.assertEqual(common.printable("ok\x1b[2J\x1b[1;1Hbank.example‮gro.live\x07\n"),
+                         "ok�[2J�[1;1Hbank.example�gro.live�\n")
+        self.assertEqual(common.clean_text("  Ayuntamiento\n\tde ‮València\x1b[0m  "), "Ayuntamiento de València [0m")
+        self.assertEqual(len(common.clean_text("x" * 500)), 80)
+        for value in (None, 5, ["a"], {"name": "x"}, "", " \n "):
+            self.assertIsNone(common.clean_text(value), value)
+        display = vci.credential_display({"display": [{"name": ["a list"], "description": 7,
+                                                       "background_color": "#12107c\x1b[31m"}]}, "LegalPerson", "Issuer")
+        self.assertEqual((display["name"], "description" in display), ("Legal Person", False))
+        self.assertNotIn("\x1b", display["background_color"])
+
+        holder = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
+        record = {"format": "dc+sd-jwt", "_sd": sdjwt.parse_sd_jwt(base.make_sd_jwt(holder)), "_path": "/x/c.json",
+                  "display": {"name": "Card\x1b[1A\x1b[2K", "issuer_name": "Issuer"}}
+        identity = vp.VerifierIdentity("x509_hash:abc", "x509_hash", "abc", "bank.example\x1b[2A\x1b[2K", trust="new")
+        prepared = vp.PreparedPresentation({}, identity, "https://v.example/r", "direct_post", "n",
+                                           [vp.Match("q", record, [["email"]])])
+        out = io.StringIO()
+        from contextlib import redirect_stdout
+
+        with redirect_stdout(out), self.assertRaises(common.WalletError):  # no terminal: nothing is sent
+            base.ui.TerminalPrompter().consent(prepared)
+        self.assertNotIn("\x1b", out.getvalue())
+        self.assertIn("PRIMERA VEZ", out.getvalue())
+
+    def test_damaged_settings_file_gives_the_defaults(self):
+        for content in ("[1, 2]", '"text"', "null", "{broken"):
+            storage.write_private(storage.settings_file(), content)
+            self.assertEqual(storage.load_settings(), {}, content)
+            self.assertEqual(storage.unlock_wait(), 0)
+
+    def test_status_check_never_stops_a_presentation(self):
+        from atesta_id_wallet import status
+
+        record = {"_path": "/x/c.json", "display": {"name": "Card"}}
+        failed = []
+        with mock.patch.object(status, "due", return_value=True), \
+                mock.patch.object(status, "check", side_effect=ValueError("bad list")):
+            self.assertEqual(status.refresh(None, [record], failed=failed), [])
+        self.assertEqual(failed, [record])

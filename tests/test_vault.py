@@ -1,6 +1,7 @@
 """Profile encryption and wallet lock (0.8).  Run:  python -m unittest discover -s tests"""
 
 import getpass
+import json
 import io
 import sys
 import tempfile
@@ -280,3 +281,36 @@ class GuiLockTests(VaultTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KdfParameterTests(VaultTestCase):
+    """The scrypt parameters are those stored with the key, within sensible bounds."""
+
+    def test_profile_opens_after_the_defaults_change(self):
+        self.store_something()
+        vault.set_password(storage.DATA_DIR, PASSWORD)
+        vault.lock()
+        self.addCleanup(setattr, vault, "SCRYPT", vault.SCRYPT)
+        vault.SCRYPT = {"n": 2**16, "r": 8, "p": 1}  # a later version with stronger defaults
+        storage.unlock(PASSWORD)
+        self.assertEqual(len(storage.load_credentials()), 1)
+
+    def test_parameters_out_of_bounds_are_refused(self):
+        self.store_something()
+        vault.set_password(storage.DATA_DIR, PASSWORD)
+        vault.lock()
+        path = storage.DATA_DIR / vault.VAULT_FILE
+        original = json.loads(path.read_text(encoding="utf-8"))
+        for change in ({"n": 2**30}, {"n": 2}, {"n": 2**15 + 1}, {"n": "32768"}, {"r": 1024}, {"p": 0},
+                       {"name": "pbkdf2"}, {"salt": "!!"}):
+            meta = dict(original, kdf={**original["kdf"], **change})
+            path.write_text(json.dumps(meta), encoding="utf-8")
+            with self.assertRaisesRegex(base.common.WalletError, "dañado", msg=change):
+                vault.unlock(storage.DATA_DIR, PASSWORD)
+        for meta in (dict(original, wrapped_key="AAAA"), {k: v for k, v in original.items() if k != "kdf"}):
+            path.write_text(json.dumps(meta), encoding="utf-8")
+            with self.assertRaisesRegex(base.common.WalletError, "dañado"):
+                vault.unlock(storage.DATA_DIR, PASSWORD)
+        self.assertEqual(storage.unlock_wait(), 0)  # a damaged file is not a wrong password
+        path.write_text(json.dumps(original), encoding="utf-8")
+        storage.unlock(PASSWORD)

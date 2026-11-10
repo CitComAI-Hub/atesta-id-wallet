@@ -101,10 +101,34 @@ def check_new_password(password: str) -> None:
         raise WalletError(tr("Use a password with at least {n} characters.", n=MIN_PASSWORD))
 
 
-def _derive(password: str, salt: bytes) -> bytes:
+def _derive(password: str, salt: bytes, params: dict[str, int] | None = None) -> bytes:
     from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
-    return Scrypt(salt=salt, length=32, **SCRYPT).derive(password.encode("utf-8"))
+    return Scrypt(salt=salt, length=32, **(params or SCRYPT)).derive(password.encode("utf-8"))
+
+
+def _kdf_params(meta: dict[str, Any]) -> tuple[bytes, bytes, dict[str, int]]:
+    """
+    (wrapped key, salt, scrypt parameters) of a password vault. The parameters are the ones the key
+    was wrapped with, so that a later version with stronger defaults still opens older profiles.
+    vault.json is not authenticated: values outside sensible bounds (a file edited to exhaust the
+    memory, or to make guessing cheap) are refused.
+    """
+    kdf = meta.get("kdf")
+    try:
+        if not isinstance(kdf, dict) or kdf.get("name") != "scrypt":
+            raise ValueError("kdf")
+        params = {name: kdf.get(name, SCRYPT[name]) for name in ("n", "r", "p")}
+        n, r, p = params["n"], params["r"], params["p"]
+        if not all(type(v) is int for v in (n, r, p)) or n & (n - 1) or not (2**14 <= n <= 2**20 and 8 <= r <= 32
+                                                                              and 1 <= p <= 16):
+            raise ValueError("kdf parameters")
+        blob, salt = b64u_decode(meta["wrapped_key"]), b64u_decode(kdf["salt"])
+        if len(blob) < 12 + 16 or len(salt) < 8 or not isinstance(meta.get("id"), str):
+            raise ValueError("wrapped_key")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WalletError(tr("{path} is damaged: {error}", path=VAULT_FILE, error=exc)) from exc
+    return blob, salt, params
 
 
 def _protect(vault_id: str, key: bytes, password: str | None) -> dict[str, Any]:
@@ -147,12 +171,18 @@ def unlock(profile: Path, password: str | None = None) -> None:
         if not stored:
             raise WalletError(tr("The key of this profile is not in the system keyring (was the folder copied from "
                                  "another computer?). Restore a backup into a new profile instead."))
-        _keys[profile] = b64u_decode(stored)
+        try:
+            key = b64u_decode(stored)
+        except ValueError:
+            key = b""
+        if len(key) != 32:  # AESGCM would fail later, on the first file, with an error nobody understands
+            raise WalletError(tr("{path} is damaged: {error}", path=KEYRING_SERVICE, error="key"))
+        _keys[profile] = key
         return
     if password is None:
         raise Locked()
-    blob = b64u_decode(meta["wrapped_key"])
-    kek = _derive(password, b64u_decode(meta["kdf"]["salt"]))
+    blob, salt, params = _kdf_params(meta)
+    kek = _derive(password, salt, params)
     try:
         _keys[profile] = AESGCM(kek).decrypt(blob[:12], blob[12:], meta["id"].encode("ascii"))
     except InvalidTag as exc:

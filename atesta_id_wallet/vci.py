@@ -32,6 +32,7 @@ from .common import (
     _http_error,
     _json,
     _last_deep_link,
+    clean_text,
     humanize,
     b64u,
     b64u_decode,
@@ -39,6 +40,7 @@ from .common import (
     host_of,
     is_local_host,
     log,
+    new_session,
     site_of,
     parse_json,
     require_https,
@@ -353,11 +355,14 @@ def headless_login(session: requests.Session, auth_url: str, redirect_uri: str,
     password_sent = False
     auth_host = host_of(auth_url)
     for _ in range(15):
+        require_https(url, tr("The login page"))  # a redirect or a form must not leave HTTPS halfway
         if method == "GET":
             response = session.get(url, allow_redirects=False, timeout=20)
         else:
             response = session.post(url, data=data, allow_redirects=False, timeout=20)
         if response.is_redirect or response.status_code in (301, 302, 303, 307, 308):
+            if not response.headers.get("Location"):
+                raise WalletError(tr("Unexpected login page: {error}", error=f"HTTP {response.status_code}"))
             location = requests.compat.urljoin(url, response.headers["Location"])
             if location.startswith(redirect_uri):
                 return location, username
@@ -375,7 +380,9 @@ def headless_login(session: requests.Session, auth_url: str, redirect_uri: str,
                      or "otp" in f["inputs"] or f["id"] == "kc-oauth"), forms[0])
         fields = dict(form["inputs"])
         target = requests.compat.urljoin(response.url, form["action"])
-        if "password" in fields:
+        # What the user types (password, one-time code, username) only goes to the authorization
+        # server, over HTTPS: a page that got into the login must not collect it for another site.
+        if any(name in fields for name in ("password", "otp", "username")):
             if host_of(target) != auth_host:
                 raise WalletError(tr(
                     "The login form would send the password to {target}, not to {host}. Aborting; if it is a "
@@ -383,6 +390,7 @@ def headless_login(session: requests.Session, auth_url: str, redirect_uri: str,
                 ), hint=tr("The sign-in page would send your password to another website, so the wallet stopped. "
                            "Nothing was sent."))
             require_https(target, tr("The login form"))  # never the password in clear text
+        if "password" in fields:
             if password_sent:
                 raise WalletError(tr("Login rejected: {error}", error=_page_error(page) or tr("wrong credentials")),
                                   hint=tr("The username or password is not correct. Start again and check them."))
@@ -571,7 +579,7 @@ def wallet_client_available(session: requests.Session, as_meta: dict[str, Any]) 
     if not endpoint:
         return False
     _, challenge = _pkce_pair()
-    probe = requests.Session()
+    probe = new_session()
     probe.headers.update(session.headers)
     probe.verify = session.verify
     params = {"response_type": "code", "client_id": WALLET_CLIENT_ID, "scope": "openid",
@@ -608,7 +616,9 @@ def pre_authorized_flow(
     data = {"grant_type": PRE_AUTH_GRANT, "pre-authorized_code": grant["pre-authorized_code"]}
     if grant.get("tx_code") is not None or grant.get("user_pin_required"):
         if not tx_code:
-            description = (grant.get("tx_code") or {}).get("description", "")
+            tx_info = grant.get("tx_code")
+            description = clean_text(tx_info.get("description"), 200) if isinstance(tx_info, dict) else None
+            description = description or ""
             tx_code = (ui or TerminalPrompter()).text(tr("Transaction code (tx_code) {description}",
                                                          description=description).strip())
         data["tx_code"] = tx_code
@@ -643,6 +653,8 @@ def request_credential(
 ) -> list[str]:
     issuer = issuer_meta["credential_issuer"]
     endpoint = issuer_meta["credential_endpoint"]
+    if not isinstance(token.get("access_token"), str) or not token["access_token"]:
+        raise WalletError(tr("The token response has no access_token."))
     # A DPoP-bound token is only accepted together with a proof made with the same key.
     if str(token.get("token_type", "")).lower() != "dpop":
         dpop = None
@@ -653,11 +665,12 @@ def request_credential(
 
     # If the token carries credential_identifiers (authorization_details), they are used.
     identifier = None
-    for detail in token.get("authorization_details") or []:
-        if detail.get("credential_configuration_id") == configuration_id and detail.get(
-            "credential_identifiers"
-        ):
-            identifier = detail["credential_identifiers"][0]
+    details = token.get("authorization_details")
+    for detail in details if isinstance(details, list) else []:
+        identifiers = detail.get("credential_identifiers") if isinstance(detail, dict) else None
+        if detail.get("credential_configuration_id") == configuration_id and isinstance(identifiers, list) \
+                and identifiers and isinstance(identifiers[0], str):
+            identifier = identifiers[0]
 
     nonce = _fetch_nonce(session, issuer_meta, token, dpop)
     legacy_proof = False
@@ -690,6 +703,8 @@ def request_credential(
             error = response.json()
         except ValueError:
             pass
+        if not isinstance(error, dict):
+            error = {}
         if error.get("error") == "invalid_nonce" or error.get("c_nonce"):
             nonce = error.get("c_nonce") or _fetch_nonce(session, issuer_meta, token, dpop)
             log(tr("The issuer asked for a new nonce; retrying."))
@@ -819,7 +834,8 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     configs = issuer_meta.get("credential_configurations_supported") or {}
     if not isinstance(configs, dict):
         configs = {}
-    published_name = pick_display(issuer_meta.get("display")).get("name")
+    configs = {k: v for k, v in configs.items() if isinstance(v, dict)}
+    published_name = clean_text(pick_display(issuer_meta.get("display")).get("name"))
     issuer_name = published_name or site_of(issuer)  # cards and history
     displays = {c: credential_display(configs.get(c, {}), c, issuer_name) for c in config_ids}
     # The review is where trust is decided: without a published name it shows the full host.
@@ -835,7 +851,8 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     if dpop:
         debug("DPoP: the access token will be bound to a key of this issuance.")
 
-    grants = offer.get("grants") or {}
+    grants = offer.get("grants")
+    grants = grants if isinstance(grants, dict) else {}
     if PRE_AUTH_GRANT in grants and not options.force_auth_code:
         log(tr("Pre-authorized code flow."))
         token = pre_authorized_flow(
@@ -883,7 +900,10 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                 dpop=dpop,
             )
 
-        issuer_state = (grants.get("authorization_code") or {}).get("issuer_state")
+        code_grant = grants.get("authorization_code")
+        issuer_state = code_grant.get("issuer_state") if isinstance(code_grant, dict) else None
+        if not isinstance(issuer_state, str):
+            issuer_state = None
         if issuer_state and client_id == WALLET_CLIENT_ID:
             # Offers are made by portals for their own client, not this one. Keycloak would refuse the
             # offer and, worse, keep its issuer_state in the browser's SSO session for this client, so
@@ -905,7 +925,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
             # the retry would hit the same offer. The login of the first attempt is replayed.
             log(tr("The offer was made for another wallet ({client}); asking the issuer directly for the "
                    "same credential.", client=bound.group(1)))
-            fresh = requests.Session()
+            fresh = new_session()
             fresh.headers.update(session.headers)
             fresh.verify = session.verify
             replay.armed = True
@@ -983,7 +1003,7 @@ def known_issuer_for(session: requests.Session, wanted: list[str]) -> tuple[str,
         for config_id, config in configs.items():
             vct = config.get("vct") if isinstance(config, dict) else None
             if config_id in wanted_set or (vct and vct in wanted_set):
-                name = pick_display(meta.get("display")).get("name") or site_of(issuer)
+                name = clean_text(pick_display(meta.get("display")).get("name")) or site_of(issuer)
                 return issuer, config_id, name
     return None
 
@@ -1100,11 +1120,13 @@ class _Logos:
 
 def credential_display(config: dict[str, Any], config_id: str, issuer_name: str) -> dict[str, Any]:
     """Name and colours the issuer wants the credential shown with (if it publishes them)."""
-    entry = pick_display(config.get("display") or (config.get("credential_metadata") or {}).get("display"))
-    display = {"name": entry.get("name") or humanize(config_id), "issuer_name": issuer_name}
-    for key in ("background_color", "text_color", "description"):
-        if isinstance(entry.get(key), str):
-            display[key] = entry[key]
+    metadata = config.get("credential_metadata")
+    entry = pick_display(config.get("display") or (metadata.get("display") if isinstance(metadata, dict) else None))
+    display = {"name": clean_text(entry.get("name")) or humanize(config_id), "issuer_name": issuer_name}
+    for key, limit in (("background_color", 32), ("text_color", 32), ("description", 300)):
+        value = clean_text(entry.get(key), limit)
+        if value:
+            display[key] = value
     logo_uri = _logo_uri(entry)
     if logo_uri:
         display["logo_uri"] = logo_uri
@@ -1127,7 +1149,9 @@ def _did_web_keys(session: requests.Session, did: str, kid: str | None) -> list[
     if document.get("id") != did:
         raise WalletError(tr("The document {url} belongs to {owner}, not to {did}.", url=url, owner=document.get("id"),
                              did=did))
-    methods = [m for m in document.get("verificationMethod") or [] if m.get("publicKeyJwk")]
+    listed = document.get("verificationMethod")
+    methods = [m for m in listed if isinstance(m, dict) and isinstance(m.get("publicKeyJwk"), dict)] \
+        if isinstance(listed, list) else []
     if kid:
         wanted = {kid, did + kid if kid.startswith("#") else kid}
         methods = [m for m in methods if m.get("id") in wanted or m["publicKeyJwk"].get("kid") == kid] or methods
@@ -1152,6 +1176,22 @@ def _same_public_key(a: Any, b: Any) -> bool:
         return False
 
 
+def _jwks_keys(jwks: Any, kid: Any) -> list[Any]:
+    """The public keys of a JWK Set (those with this 'kid', if the token names one)."""
+    keys = jwks.get("keys") if isinstance(jwks, dict) else None
+    wanted = [j for j in keys if isinstance(j, dict) and (not kid or j.get("kid") == kid)] \
+        if isinstance(keys, list) else []
+    return [k for k in map(jwk_to_public_key, wanted) if k is not None]
+
+
+def _fetch_jwks(session: requests.Session, uri: Any) -> dict[str, Any]:
+    """Keys decide which signatures are believed: never fetched in clear text."""
+    if not isinstance(uri, str):
+        raise WalletError(tr("{what} is not a valid URL: {url}", what="jwks_uri", url=uri))
+    require_https(uri, "jwks_uri")
+    return _json(session.get(uri, timeout=20), "GET", uri)
+
+
 def issuer_keys(
     session: requests.Session, header: dict[str, Any], iss: str, issuer: str,
     as_meta: dict[str, Any] | Callable[[], dict[str, Any]],
@@ -1162,6 +1202,7 @@ def issuer_keys(
     of the authorization server that offered the credential ('as_meta', or a function that fetches it).
     """
     kid = header.get("kid")
+    kid = kid if isinstance(kid, str) else None
     if header.get("x5c"):
         cert = _x5c_chain(header)[0]
         key = cert.public_key()
@@ -1187,23 +1228,17 @@ def issuer_keys(
     if iss.startswith("https://"):
         try:
             meta = _get_first_json(session, _well_known(iss, "jwt-vc-issuer"))
-            jwks = meta.get("jwks") or (
-                _json(session.get(meta["jwks_uri"], timeout=20), "GET", meta["jwks_uri"])
-                if meta.get("jwks_uri") else None
-            )
+            jwks = meta.get("jwks") or (_fetch_jwks(session, meta["jwks_uri"]) if meta.get("jwks_uri") else None)
             if meta.get("issuer", iss) == iss and jwks:
-                keys = [j for j in jwks.get("keys") or [] if not kid or j.get("kid") == kid]
-                return [k for k in map(jwk_to_public_key, keys) if k is not None], True
+                return _jwks_keys(jwks, kid), True
         except (WalletError, requests.RequestException) as exc:
             debug(f"No jwt-vc-issuer metadata: {exc}")
     if callable(as_meta):
         as_meta = as_meta()
     if not as_meta.get("jwks_uri"):
         return [], False
-    jwks = _json(session.get(as_meta["jwks_uri"], timeout=20), "GET", as_meta["jwks_uri"])
-    keys = [j for j in jwks.get("keys") or [] if not kid or j.get("kid") == kid]
     bound = iss == issuer or host_of(iss) == host_of(issuer)
-    return [k for k in map(jwk_to_public_key, keys) if k is not None], bound
+    return _jwks_keys(_fetch_jwks(session, as_meta["jwks_uri"]), kid), bound
 
 
 def verify_issued_credential(
@@ -1224,10 +1259,11 @@ def verify_issued_credential(
     else:
         log(tr("Warning: the signature is valid with the keys of {host}, but they could not be tied to {iss}; "
                "the verifier may reject it.", host=host_of(issuer), iss=iss))
-    cnf = (sd.payload.get("cnf") or {}).get("jwk")
+    cnf = sd.payload.get("cnf")
+    cnf = cnf.get("jwk") if isinstance(cnf, dict) else None
     if cnf is None:
         log(tr("Warning: the credential is not bound to any key (no cnf); anyone who copies it can use it."))
-    elif (cnf.get("x"), cnf.get("y")) != (holder.public_jwk["x"], holder.public_jwk["y"]):
+    elif not isinstance(cnf, dict) or (cnf.get("x"), cnf.get("y")) != (holder.public_jwk["x"], holder.public_jwk["y"]):
         raise WalletError(tr("The credential is bound to another key, not this wallet's; it is not stored."),
                           hint=tr("The credential received could not be checked, so it was not saved. Contact "
                                   "the organisation that gives it and send them the technical details."))

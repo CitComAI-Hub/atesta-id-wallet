@@ -70,8 +70,32 @@ def redact(text: str) -> str:
     return text
 
 
+# Characters that change how a line is shown instead of being shown: C0/C1 controls (ESC starts the
+# terminal sequences that move the cursor or erase the screen) and the bidirectional overrides, which
+# make "evil.example" read as something else. Line breaks and tabs are kept.
+_UNSAFE_CHARS = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+
+
+def printable(text: Any) -> str:
+    """
+    Text from outside (names, claim values, server errors) as it may be written to a terminal or a
+    label: a verifier must not be able to erase the warning printed above its name.
+    """
+    return _UNSAFE_CHARS.sub("\ufffd", str(text))
+
+
+def clean_text(value: Any, limit: int = 80) -> str | None:
+    """A name published by an issuer, as one short line; None if it is not a usable text."""
+    if not isinstance(value, str):
+        return None
+    text = " ".join(_UNSAFE_CHARS.sub(" ", value).split())
+    if len(text) > limit:
+        text = text[: limit - 1] + "…"
+    return text or None
+
+
 def log(message: str) -> None:
-    message = redact(message)
+    message = printable(redact(message))
     if LOG_HANDLER:
         LOG_HANDLER(message, False)
     else:
@@ -81,7 +105,7 @@ def log(message: str) -> None:
 def debug(message: str) -> None:
     if not VERBOSE:
         return
-    message = redact(message)
+    message = printable(redact(message))
     if LOG_HANDLER:
         LOG_HANDLER(message, True)
     else:
@@ -170,6 +194,25 @@ def require_https(url: str, what: str) -> None:
                                    and local_http_allowed()):
         return
     raise WalletError(tr("{what} must use https: {url}", what=what, url=url))
+
+
+class _Session(requests.Session):
+    """
+    A session that only talks HTTPS, also when it follows a redirect: every address the wallet is
+    given is checked with require_https, and a server (or whoever answers in its name) could
+    otherwise send the request on to http:// — metadata and keys read in clear text, or a service on
+    this computer. Each hop of a followed redirect goes through send(); a redirect that is only
+    read (allow_redirects=False, e.g. back to the wallet's loopback address) is not a request.
+    """
+
+    def send(self, request: requests.PreparedRequest, **kwargs: Any) -> requests.Response:
+        require_https(request.url or "", tr("The address"))
+        return super().send(request, **kwargs)
+
+
+def new_session() -> requests.Session:
+    """The HTTP session of a flow (see _Session)."""
+    return _Session()
 
 
 def b64u(data: bytes) -> str:

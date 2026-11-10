@@ -46,6 +46,8 @@ def _verify_jws(token: str, public_key: Any) -> bool:
                 int.from_bytes(signature[:half], "big"), int.from_bytes(signature[half:], "big")
             )
             public_key.verify(der, signing_input, ec.ECDSA(digest))
+        elif isinstance(public_key, rsa.RSAPublicKey) and public_key.key_size < 2048:
+            return False  # RFC 7518 §3.3: a key of 2048 bits or more
         elif alg in ("RS256", "RS384", "RS512") and isinstance(public_key, rsa.RSAPublicKey):
             public_key.verify(signature, signing_input, padding.PKCS1v15(), digest)
         elif alg in ("PS256", "PS384", "PS512") and isinstance(public_key, rsa.RSAPublicKey):
@@ -94,7 +96,14 @@ def _jwk_to_public_key(jwk: dict[str, Any]) -> Any:
 
 
 def _x5c_chain(header: dict[str, Any]) -> list[x509.Certificate]:
-    return [x509.load_der_x509_certificate(base64.b64decode(c)) for c in header.get("x5c") or []]
+    """The certificates of the 'x5c' header (RFC 7515 §4.1.6); WalletError if it is not a list of them."""
+    x5c = header.get("x5c") or []
+    try:
+        if not isinstance(x5c, list) or not all(isinstance(c, str) for c in x5c):
+            raise ValueError("x5c is not an array of strings")
+        return [x509.load_der_x509_certificate(base64.b64decode(c, validate=True)) for c in x5c]
+    except ValueError as exc:  # invalid base64 (binascii.Error) or DER
+        raise WalletError(tr("The x5c certificate chain is not valid: {error}", error=exc)) from exc
 
 
 def cert_fingerprint(cert: x509.Certificate) -> str:
@@ -129,18 +138,23 @@ def _concat_kdf(z: bytes, alg_id: str, apu: bytes, apv: bytes, key_bits: int) ->
 
 def encrypt_response_jwe(payload: dict[str, Any], request: dict[str, Any], *, apv: str | None) -> str:
     """JWE ECDH-ES (direct key agreement) + AxxxGCM for response_mode direct_post.jwt."""
-    meta = request.get("client_metadata") or {}
-    keys = (meta.get("jwks") or {}).get("keys") or []
+    meta = request.get("client_metadata")
+    meta = meta if isinstance(meta, dict) else {}
+    jwks = meta.get("jwks")
+    keys = jwks.get("keys") if isinstance(jwks, dict) else None
     # The verifier key must be usable for ECDH-ES (OpenID4VP 1.0 §8.3: the JWE alg is the key's).
     jwk = next((k for k in keys if isinstance(k, dict) and k.get("kty") == "EC" and k.get("use", "enc") == "enc"
-                and k.get("crv") in _CURVES and k.get("alg", "ECDH-ES") == "ECDH-ES"), None)
+                and isinstance(k.get("crv"), str) and k["crv"] in _CURVES
+                and k.get("alg", "ECDH-ES") == "ECDH-ES"), None) if isinstance(keys, list) else None
     if jwk is None:
         raise WalletError(tr("direct_post.jwt requires an EC encryption key in client_metadata.jwks."))
     enc_values = (
         meta.get("encrypted_response_enc_values_supported")
         or [meta.get("authorization_encrypted_response_enc") or "A128GCM"]
     )
-    enc = next((e for e in enc_values if e in ("A128GCM", "A256GCM")), None)
+    if not isinstance(enc_values, list):
+        enc_values = [enc_values]
+    enc = next((e for e in enc_values if isinstance(e, str) and e in ("A128GCM", "A256GCM")), None)
     if enc is None:
         raise WalletError(tr("Unsupported response encryption algorithm: {values}", values=enc_values))
     key_bits = 128 if enc == "A128GCM" else 256

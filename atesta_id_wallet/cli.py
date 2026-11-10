@@ -18,7 +18,7 @@ from typing import Any
 import requests
 
 from . import common, i18n, status, storage, updates, vault
-from .common import Cancelled, WalletError, __version__, confirm, log
+from .common import Cancelled, WalletError, __version__, confirm, log, new_session, printable
 from .desktop import (
     FROZEN,
     cmd_install_handler,
@@ -83,21 +83,21 @@ def cmd_issue(args: argparse.Namespace) -> int:
     )
     ui = TerminalPrompter(args.yes)
     if args.issuer:
-        issued = issue_from_issuer(requests.Session(), args.issuer, args.credential or [], options, ui)
+        issued = issue_from_issuer(new_session(), args.issuer, args.credential or [], options, ui)
     else:
-        issued = issue(requests.Session(), raw, options, ui)
+        issued = issue(new_session(), raw, options, ui)
     for credential in issued:
         if credential.claims is not None:
-            print(json.dumps(credential.claims, indent=2, ensure_ascii=False))
-        print("\n" + tr("✔ {credential} added to the wallet.", credential=credential.configuration_id))
+            print(printable(json.dumps(credential.claims, indent=2, ensure_ascii=False)))
+        print("\n" + printable(tr("✔ {credential} added to the wallet.", credential=credential.configuration_id)))
     if issued and issued[0].account:
-        print(tr("Issued for the account {account}. If it is not yours, delete it with "
-                 "'atesta-id-wallet remove'.", account=issued[0].account))
+        print(printable(tr("Issued for the account {account}. If it is not yours, delete it with "
+                           "'atesta-id-wallet remove'.", account=issued[0].account)))
     return 0
 
 
 def cmd_present(args: argparse.Namespace) -> int:
-    session = requests.Session()
+    session = new_session()
     records = load_credentials()
 
     if args.qr_image:
@@ -121,8 +121,8 @@ def cmd_present(args: argparse.Namespace) -> int:
         return 0
 
     redirect_uri = send_presentation(session, prepared, body)
-    print("\n" + tr("✔ Presentation accepted by {verifier}. Go back to the browser: the login should complete "
-                    "by itself.", verifier=prepared.identity.name))
+    print("\n" + printable(tr("✔ Presentation accepted by {verifier}. Go back to the browser: the login should "
+                              "complete by itself.", verifier=prepared.identity.name)))
     if redirect_uri:
         log(tr("The verifier indicates redirect_uri: {uri}", uri=redirect_uri))
         if not args.no_browser:
@@ -133,15 +133,15 @@ def cmd_present(args: argparse.Namespace) -> int:
 def cmd_list(args: argparse.Namespace) -> int:
     records = load_credentials()
     if args.check:
-        status.refresh(requests.Session(), records, force=True)
+        status.refresh(new_session(), records, force=True)
     print(tr("Profile: {profile}  ({path})", profile=storage.PROFILE, path=storage.DATA_DIR))
     if not records:
         print(tr("No credentials stored."))
     for index, record in enumerate(records, 1):
-        print(f"\n{index}. {credential_label(record)}")
-        print(f"   id: {Path(record['_path']).stem}  [{record.get('format')}]  {record.get('issuer')}")
+        print(printable(f"\n{index}. {credential_label(record)}"))
+        print(printable(f"   id: {Path(record['_path']).stem}  [{record.get('format')}]  {record.get('issuer')}"))
         if record.get("_sd") and args.details:
-            print(json.dumps(record["_sd"].claims, indent=4, ensure_ascii=False))
+            print(printable(json.dumps(record["_sd"].claims, indent=4, ensure_ascii=False)))
     return 0
 
 
@@ -156,9 +156,9 @@ def cmd_history(_: argparse.Namespace) -> int:
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(event.get("time", 0)))
         kind_id = str(event.get("type") or "")
         kind = tr(HISTORY_TEXT[kind_id]) if kind_id in HISTORY_TEXT else kind_id
-        print(f"{when}  {kind:11} {event.get('party')}: {', '.join(event.get('credentials') or [])}")
+        print(printable(f"{when}  {kind:11} {event.get('party')}: {', '.join(map(str, event.get('credentials') or []))}"))
         if event.get("claims"):
-            print(f"{'':29}" + tr("data: {claims}", claims=", ".join(event["claims"])))
+            print(printable(f"{'':29}" + tr("data: {claims}", claims=", ".join(map(str, event["claims"])))))
     return 0
 
 
@@ -180,7 +180,7 @@ def _resolve_credentials(selectors: list[str], records: list[dict[str, Any]]) ->
 def cmd_remove(args: argparse.Namespace) -> int:
     targets = _resolve_credentials(args.credentials, load_credentials())
     for record in targets:
-        print(f"  - {credential_label(record)}")
+        print(printable(f"  - {credential_label(record)}"))
     if not confirm(tr_n("Delete {n} credential?", "Delete {n} credentials?", len(targets)), assume_yes=args.yes):
         raise Cancelled()
     for record in targets:
@@ -196,7 +196,7 @@ def cmd_reset(args: argparse.Namespace) -> int:
                "will be deleted.", count, profile=storage.PROFILE, path=storage.DATA_DIR))
     print(tr("Deleted credentials cannot be recovered without a backup ('atesta-id-wallet backup')."))
     if not args.yes:
-        if not sys.stdin.isatty():
+        if not sys.stdin or not sys.stdin.isatty():
             raise WalletError(tr("reset needs interactive confirmation (or --yes)."))
         if input(tr("Type the profile name ({profile}) to confirm: ", profile=storage.PROFILE)).strip() != storage.PROFILE:
             raise Cancelled(tr("Cancelled: nothing was deleted."))
@@ -589,19 +589,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         code = _run(argv)
     except WalletError as exc:
-        print("\n" + tr("ERROR: {error}", error=common.redact(str(exc))), file=sys.stderr)
+        print("\n" + tr("ERROR: {error}", error=printable(common.redact(str(exc)))), file=sys.stderr)
         code = 1
     except requests.RequestException as exc:
-        print("\n" + tr("NETWORK ERROR: {error}", error=common.redact(str(exc))), file=sys.stderr)
+        print("\n" + tr("NETWORK ERROR: {error}", error=printable(common.redact(str(exc)))), file=sys.stderr)
         code = 1
     except KeyboardInterrupt:
         print("\n" + tr("Cancelled."), file=sys.stderr)
         return 130
     except Exception as exc:  # unexpected server response, damaged file...
         if common.VERBOSE:
-            print(common.redact(traceback.format_exc()), file=sys.stderr, end="")
+            print(printable(common.redact(traceback.format_exc())), file=sys.stderr, end="")
         print("\n" + tr("UNEXPECTED ERROR: {error} (repeat with --verbose for details)",
-                         error=common.redact(f"{type(exc).__name__}: {exc}")), file=sys.stderr)
+                         error=printable(common.redact(f"{type(exc).__name__}: {exc}"))), file=sys.stderr)
         code = 1
     if "--pause" in argv:
         try:
