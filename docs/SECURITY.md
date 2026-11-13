@@ -233,7 +233,8 @@ Names published by issuers are reduced to one short line of text before they are
   window through a local socket in the user's private runtime directory (`$XDG_RUNTIME_DIR`, or the
   data folder), so other users of the computer cannot receive it. On Windows named pipes are
   global, so the pipe name carries a random suffix stored in the user's data folder: another user
-  cannot guess it and create the pipe first.
+  cannot guess it and create the pipe first. The same suffix names the socket when both folders'
+  paths are too long for one and it goes to the shared temporary folder.
 - Temporary files of the window (themed icons) go to a private, per-process temporary directory.
 - On Windows the clipboard is read with PowerShell by its full path in the system folder, never a
   `powershell.exe` found in the current folder.
@@ -274,7 +275,8 @@ Names published by issuers are reduced to one short line of text before they are
   password (`auth_admin_keep`, action `io.github.citcomaihub.atestaidwallet.update`, with its own
   message). The updater is root-owned, takes no arguments and ignores the caller's environment: it
   refreshes only the wallet's repository and upgrades only `atesta-id-wallet`, with APT checking
-  the signature as for any update. The wallet gains no rights it did not have: the same password
+  the signature as for any update. It may install new dependencies of the new version, but never
+  removes a package (`--no-remove`): a version that conflicted with another one fails to install. The wallet gains no rights it did not have: the same password
   could run `sudo apt upgrade`. `pkexec` runs in a new session without the terminal the window may
   have been started from, so the password is never asked for out of sight; without a polkit agent
   (or without `pkexec`), the wallet shows the command to type in a terminal instead.

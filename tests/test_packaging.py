@@ -351,6 +351,7 @@ class DebUpdateTests(unittest.TestCase):
         self.assertNotRegex(updater, r'\$[1-9@*]')  # what runs as root takes nothing from the caller
         self.assertIn("/etc/apt/sources.list.d/atesta-id-wallet.sources", updater)
         self.assertIn("--only-upgrade", updater)
+        self.assertIn("--no-remove", updater)  # as root, it never uninstalls another package
         self.assertTrue(os.access(self.ROOT / "packaging" / "deb" / "update", os.X_OK))
         build = (self.ROOT / "packaging" / "build_linux.sh").read_text(encoding="utf-8")
         self.assertIn('"$pkg/usr/libexec/atesta-id-wallet/update"', build)
@@ -432,6 +433,18 @@ class GuiPackagingTests(unittest.TestCase):
         self.assertRegex(name, r"^atesta-id-wallet-[0-9a-f]{32}$")
         self.assertEqual(base.gui._instance_name(), name)
         self.assertNotIn(os.environ.get("USERNAME", "user"), name)
+
+    def test_socket_in_shared_temp_folder_is_not_guessable(self):
+        """Paths too long for a Unix socket: the name in /tmp is random, not the user id."""
+        if sys.platform == "win32":
+            self.skipTest("Unix sockets")
+        self.addCleanup(setattr, base.storage, "BASE_DIR", base.storage.BASE_DIR)
+        deep = base.storage.BASE_DIR / ("x" * 120)
+        base.storage.BASE_DIR = deep
+        with unittest.mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(deep)}):
+            name = base.gui._instance_name()
+            self.assertRegex(name, r"^atesta-id-wallet-[0-9a-f]{32}$")
+            self.assertEqual(base.gui._instance_name(), name)
 
     def test_found_version_is_offered_in_settings(self):
         from PySide6.QtWidgets import QLabel

@@ -1323,23 +1323,30 @@ def _choose_startup_profile(requested: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _random_instance_name() -> str:
+    """
+    A name in a shared namespace (Windows named pipes, the temporary folder) that another user
+    cannot guess: with a predictable one, they could create it first and receive the links (an
+    offer's pre-authorized code among them). The random suffix is stored in the user's folder.
+    """
+    token_file = storage.BASE_DIR / "gui-instance"
+    try:
+        token = token_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if not re.fullmatch(r"[0-9a-f]{32}", token):
+        token = secrets.token_hex(16)
+        storage.write_private(token_file, token)
+    return f"atesta-id-wallet-{token}"
+
+
 def _instance_name() -> str:
     """
     Per-user local socket. On Linux/macOS it is a path in a private (0700) folder, so that another
     user cannot take the name and receive the links; on Windows, a named pipe.
     """
     if sys.platform == "win32":
-        # Named pipes are global: with a guessable name, another user of the computer could create it
-        # first and receive the links. The random suffix is stored in the user's folder.
-        token_file = storage.BASE_DIR / "gui-instance"
-        try:
-            token = token_file.read_text(encoding="utf-8").strip()
-        except OSError:
-            token = ""
-        if not re.fullmatch(r"[0-9a-f]{32}", token):
-            token = secrets.token_hex(16)
-            storage.write_private(token_file, token)
-        return f"atesta-id-wallet-{token}"
+        return _random_instance_name()  # named pipes are global
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     candidates = [Path(runtime) / "atesta-id-wallet-gui.sock"] if runtime and Path(runtime).is_dir() else []
     candidates.append(storage.BASE_DIR / "gui.sock")
@@ -1348,7 +1355,8 @@ def _instance_name() -> str:
             if path.parent == storage.BASE_DIR:
                 storage.ensure_data_dir(storage.BASE_DIR)
             return str(path)
-    return f"atesta-id-wallet-{os.getuid()}"  # in the temporary folder; Qt creates it for this user only
+    # Both paths too long: a name in the temporary folder (/tmp), shared by every user.
+    return _random_instance_name()
 
 
 def forward_to_running_instance(entry: str | None, name: str | None = None) -> bool:
