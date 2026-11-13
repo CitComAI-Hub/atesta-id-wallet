@@ -111,7 +111,10 @@ jobs:
             echo "::warning::polkit not available on the runner: the update action was not checked"
           fi
           sudo apt-get remove -y atesta-id-wallet
-          if command -v atesta-id-wallet; then echo "Still installed after apt-get remove"; exit 1; fi
+          # The files, not 'command -v': bash remembers where it found a command it already ran.
+          for f in /usr/bin/atesta-id-wallet /usr/bin/atesta-id-wallet-gui /opt/atesta-id-wallet /usr/libexec/atesta-id-wallet/update; do
+            if [[ -e "$f" ]]; then echo "$f is still there after apt-get remove"; exit 1; fi
+          done
 
   windows:
     needs: test
