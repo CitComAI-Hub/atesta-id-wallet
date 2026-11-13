@@ -44,10 +44,39 @@ and the other libraries. Linux builds run on Ubuntu 22.04, so they need glibc 2.
      AppImage, the installed `.deb` and the installed Windows program (checks that Qt, the SVG
      icons, the translations, zxing-cpp, Pillow and cryptography are all inside);
    - installs and uninstalls the Windows setup silently and checks the link handler registry keys;
-   - publishes the GitHub release with the files, `SHA256SUMS`, generated release notes and (on a
-     public repository) a build provenance attestation.
-6. Edit the release notes if needed. Apps with *New versions* enabled will show the new version
-   within a day.
+   - publishes the GitHub release with the files, `SHA256SUMS`, `SHA256SUMS.sig` (see below),
+     generated release notes and (on a public repository) a build provenance attestation;
+   - publishes the APT repository with the new `.deb` on GitHub Pages
+     (`https://citcomai-hub.github.io/atesta-id-wallet/apt/`).
+6. Edit the release notes if needed. Within a day, AppImage and Windows installations download
+   the new version by themselves (installed when the wallet restarts), `.deb` installations get it
+   with the system updates, and the rest show a notice.
+
+## Automatic updates: keys and one-time setup
+
+Two keys, both kept outside git (the maintainer's copy is in `~/.config/atesta-id-wallet-release/`;
+keep a backup somewhere safe and offline):
+
+| Secret (Settings → Secrets and variables → Actions) | What | Public part, in git |
+|---|---|---|
+| `UPDATE_SIGNING_KEY` | Ed25519 seed, base64 (`update-signing.key`). `packaging/sign_release.py` signs `SHA256SUMS` with it. | `UPDATE_PUBLIC_KEY` in `atesta_id_wallet/updates.py` |
+| `APT_SIGNING_KEY` | Armored secret OpenPGP key (`apt-signing-key.asc`). `packaging/build_apt_repo.sh` signs the APT repository with it. | `packaging/apt-archive-keyring.gpg`, shipped in the `.deb` |
+
+The installed applications only install a file listed in a `SHA256SUMS` signed by
+`UPDATE_SIGNING_KEY`, and APT only accepts the repository signed by `APT_SIGNING_KEY`: files uploaded to a
+release by hand or changed after the build are never installed. Anyone who can push a `v*` tag
+still gets the workflow to sign it; moving both secrets to an environment with a required
+reviewer would add a second pair of eyes. The `publish` and
+`apt` jobs fail if a secret is missing or does not match the public key in git.
+
+Also once: *Settings → Pages → Source: GitHub Actions*, and in *Settings → Environments →
+github-pages*, add the tag rule `v*` to the allowed deployment branches and tags (by default only
+`main` may deploy).
+
+**Changing a key** (lost or leaked): the installed applications keep trusting the old public key,
+so they stop updating by themselves. Put the new public key in git and release; users of that
+release onwards follow the new key, the others have to download it by hand once. For APT, users
+re-install the new `.deb` by hand. If a key leaks, change it at once and say so in the release notes.
 
 ## Building locally
 

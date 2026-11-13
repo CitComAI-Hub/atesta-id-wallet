@@ -233,10 +233,23 @@ Names published by issuers are reduced to one short line of text before they are
   developer's machine. Each release has a `SHA256SUMS` file and, on a public repository, a signed
   build provenance attestation (`gh attestation verify FILE --repo CitComAI-Hub/atesta-id-wallet`).
   Windows builds are not Authenticode-signed yet.
-- The wallet never downloads or installs anything by itself. *Settings → About → New versions*
-  (off by default) or `atesta-id-wallet update` asks the GitHub API for the latest release. The
-  request carries no wallet data: GitHub sees the IP address and the version in the User-Agent.
-  The download page that is opened must be under the project's releases page.
+- *Settings → About → New versions* (on by default; it can be turned off) asks the GitHub API
+  for the latest release once a day, and `atesta-id-wallet update` when asked. The request
+  carries no wallet data: GitHub sees the IP address and the version in the User-Agent. The
+  download page that is opened must be under the project's releases page.
+- Automatic updates (AppImage and Windows installer) only install a file whose SHA-256 is in a
+  `SHA256SUMS` with a valid Ed25519 signature by the release key (`UPDATE_PUBLIC_KEY` in
+  `updates.py`; the private key is an encrypted secret of the release workflow, never in git).
+  A file uploaded to a release by hand or changed after the build is therefore refused. Whoever
+  can push a `v*` tag through the workflow still gets it signed; requiring a reviewer for the
+  release secrets (a protected environment) would close that gap. The file name must carry the new version (an old
+  signed list replayed under a newer tag is refused), the version must be newer than the running
+  one (no downgrades), and downloads only come from the project's release URLs, with a size
+  limit. The AppImage is replaced atomically; the Windows installer runs silently, per user,
+  without administrator rights, and its checksum is checked again just before it runs.
+- `.deb` installations get updates from the project's APT repository on GitHub Pages, signed
+  with its own OpenPGP key. The package trusts that key only for that repository (`Signed-By`),
+  not for the rest of the system.
 
 ## Known gaps
 

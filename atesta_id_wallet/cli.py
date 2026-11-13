@@ -342,20 +342,31 @@ def cmd_trust(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_check_update() -> int:
+def cmd_check_update(*, install: bool = False) -> int:
     log(tr("Asking GitHub for the latest version…"))
     release = updates.newer_release()
     if release is None:
         print(tr("✔ This is the latest version ({version}).", version=__version__))
-    else:
-        print(tr("Version {version} is available (this is {current}). Download it from:\n  {url}",
-                 version=release.version, current=__version__, url=release.url))
+        return 0
+    kind = updates.install_kind()
+    if install and kind in updates.SELF_UPDATING:
+        log(tr("Downloading version {version} and checking its signature…", version=release.version))
+        updates.download_update(release, kind)
+        if kind == "appimage":
+            print(tr("✔ Updated to version {version}. It is used from the next start.", version=release.version))
+        elif updates.install_pending():
+            print(tr("✔ Installing version {version}…", version=release.version))
+        return 0
+    print(tr("Version {version} is available (this is {current}). Download it from:\n  {url}",
+             version=release.version, current=__version__, url=release.url))
+    if kind == "deb":
+        print(tr("With the .deb it arrives with the system updates ('sudo apt update && sudo apt upgrade')."))
     return 0
 
 
 def cmd_update(args: argparse.Namespace) -> int:
-    if args.check or FROZEN:  # packages (AppImage, .deb, installer) are updated by downloading the new one
-        return cmd_check_update()
+    if args.check or FROZEN:  # packages: the AppImage and the Windows installer update themselves
+        return cmd_check_update(install=not args.check)
     marker = Path(sys.prefix) / "atesta-id-wallet-source"
     if not marker.exists():
         raise WalletError(tr("This installation was not made with install.sh. Update with 'git pull' and "
@@ -470,8 +481,8 @@ def build_parser() -> argparse.ArgumentParser:
     trust.add_argument("--yes", "-y", action="store_true")
     trust.set_defaults(func=cmd_trust)
 
-    update = sub.add_parser("update", help=tr("Update from the git repository (installation with install.sh), or "
-                                              "check for a new version (packaged application)"))
+    update = sub.add_parser("update", help=tr("Install the latest version (AppImage, Windows installer, or git "
+                                              "repository with install.sh), or tell where to get it"))
     update.add_argument("--check", action="store_true",
                         help=tr("Only check whether a newer version has been published (asks GitHub)."))
     update.set_defaults(func=cmd_update)

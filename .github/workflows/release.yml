@@ -17,6 +17,7 @@ env:
   PYTHON_VERSION: "3.12"
   PYINSTALLER_VERSION: "6.22.3"
   CYCLONEDX_VERSION: "7.6.0"
+  CRYPTOGRAPHY_VERSION: "50.0.2"
 
 jobs:
   test:
@@ -144,6 +145,9 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          path: source
       - uses: actions/download-artifact@v8
         with:
           path: release
@@ -151,6 +155,15 @@ jobs:
       - name: Checksums
         working-directory: release
         run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+      # The installed applications only update themselves to files listed in a SHA256SUMS signed
+      # with this key (updates.UPDATE_PUBLIC_KEY). Fails if the secret is missing or another key.
+      - name: Signature for the automatic updates
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/sign"
+          "$RUNNER_TEMP/sign/bin/pip" install --quiet "cryptography==${{ env.CRYPTOGRAPHY_VERSION }}"
+          "$RUNNER_TEMP/sign/bin/python" source/packaging/sign_release.py release/SHA256SUMS
       # Signed provenance (Sigstore): 'gh attestation verify FILE --repo CitComAI-Hub/atesta-id-wallet'.
       # GitHub only offers it on public repositories (or private ones with Enterprise Cloud).
       - uses: actions/attest-build-provenance@v4
@@ -163,3 +176,36 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
             --title "Atesta ID Wallet ${GITHUB_REF_NAME#v}" --generate-notes
+
+  # APT repository on GitHub Pages with the new .deb: installed .deb packages get it with the
+  # system updates. Needs Settings -> Pages -> Source: GitHub Actions, and the v* tags allowed in
+  # the github-pages environment. See docs/RELEASING.md.
+  apt:
+    if: github.ref_type == 'tag'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}apt/
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux
+          path: release
+      - name: Repository
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          packaging/build_apt_repo.sh release/*.deb site/apt
+          touch site/.nojekyll
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v5

@@ -6,6 +6,8 @@
 #   FORMATS="deb"                    only some formats (default: "appimage deb")
 #   APPIMAGETOOL=/path/appimagetool  to avoid downloading it
 #   MAINTAINER="Name <email>"        Maintainer field of the .deb
+# The .deb adds the project's APT repository (packaging/build_apt_repo.sh), so it is updated with
+# the system updates.
 set -euo pipefail
 umask 022
 
@@ -17,6 +19,7 @@ MAINTAINER="${MAINTAINER:-Joan Ciprià <joamoteo@upv.es>}"
 [[ -x "$BUNDLE/atesta-id-wallet-gui" ]] || { echo "No GUI executable in $BUNDLE" >&2; exit 1; }
 VERSION="$("$BUNDLE/atesta-id-wallet" --version | awk '{print $2}')"
 ICON="$ROOT/atesta_id_wallet/gui/icons/app-icon.png"
+APT_URL="https://citcomai-hub.github.io/atesta-id-wallet/apt/"
 APPIMAGETOOL_VERSION=1.9.1
 APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
 WORK="$(mktemp -d)"
@@ -73,12 +76,22 @@ APPRUN
 build_deb() {
     local pkg="$WORK/deb"
     mkdir -p "$pkg/DEBIAN" "$pkg/opt" "$pkg/usr/bin" "$pkg/usr/share/applications" \
-             "$pkg/usr/share/icons/hicolor/256x256/apps"
+             "$pkg/usr/share/icons/hicolor/256x256/apps" "$pkg/usr/share/keyrings" "$pkg/etc/apt/sources.list.d"
     cp -a "$BUNDLE" "$pkg/opt/atesta-id-wallet"
     ln -s /opt/atesta-id-wallet/atesta-id-wallet "$pkg/usr/bin/atesta-id-wallet"
     ln -s /opt/atesta-id-wallet/atesta-id-wallet-gui "$pkg/usr/bin/atesta-id-wallet-gui"
     desktop_entry /opt/atesta-id-wallet/atesta-id-wallet-gui > "$pkg/usr/share/applications/atesta-id-wallet.desktop"
     cp "$ICON" "$pkg/usr/share/icons/hicolor/256x256/apps/atesta-id-wallet.png"
+    # Updates: the project's APT repository, trusted only for its own key (not for the whole system).
+    cp "$ROOT/packaging/apt-archive-keyring.gpg" "$pkg/usr/share/keyrings/atesta-id-wallet-archive-keyring.gpg"
+    cat > "$pkg/etc/apt/sources.list.d/atesta-id-wallet.sources" <<SOURCES
+# Atesta ID Wallet updates (https://github.com/CitComAI-Hub/atesta-id-wallet). Removed with 'apt purge'.
+Types: deb
+URIs: $APT_URL
+Suites: ./
+Signed-By: /usr/share/keyrings/atesta-id-wallet-archive-keyring.gpg
+SOURCES
+    echo /etc/apt/sources.list.d/atesta-id-wallet.sources > "$pkg/DEBIAN/conffiles"
     # Only what PyInstaller leaves out of the bundle: libc and the graphics driver (EGL). The X11/xcb,
     # xkbcommon and fontconfig libraries are inside /opt/atesta-id-wallet/_internal.
     cat > "$pkg/DEBIAN/control" <<CONTROL

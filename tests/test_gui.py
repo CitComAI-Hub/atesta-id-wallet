@@ -306,6 +306,35 @@ class GuiFlowTests(unittest.TestCase):
         self.window.check_revocations()  # no credential with a status list: says so, asks nobody
         self.assertEqual(shown, ["Ninguna de tus credenciales ofrece esta comprobación."])
 
+    def test_self_update_downloads_then_offers_restart(self):
+        from atesta_id_wallet import updates
+
+        release = updates.Release("99.0.0", updates.RELEASES_PAGE)
+        downloaded, started, quit_calls, shown = [], [], [], []
+        for name, value in (("can_update_itself", lambda: True),
+                            ("download_update", lambda r: downloaded.append(r.version)),
+                            ("install_pending", lambda: False),
+                            ("relaunch_command", lambda: ["/apps/Atesta.AppImage"])):
+            self.addCleanup(setattr, updates, name, getattr(updates, name))
+            setattr(updates, name, value)
+        self.addCleanup(setattr, gui.subprocess, "Popen", gui.subprocess.Popen)
+        gui.subprocess.Popen = lambda command, **kwargs: started.append(command)
+        self.addCleanup(setattr, gui.QApplication, "quit", gui.QApplication.quit)
+        gui.QApplication.quit = staticmethod(lambda: quit_calls.append(True))
+        self.window.toast.show_message = lambda message, *_: shown.append(message)
+
+        self.window._on_update_checked(release, True)  # the daily check: downloads without asking
+        deadline = time.time() + 5
+        while self.window.update_ready is None and time.time() < deadline:
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.assertEqual((downloaded, self.window.update_ready), (["99.0.0"], "99.0.0"))
+        self.assertIn("99.0.0", shown[-1])
+        self.window._go("settings")
+        [restart] = [b for b in self.window.settings_page.findChildren(gui.QPushButton) if b.text() == "Reiniciar"]
+        restart.click()
+        self.assertEqual((started, quit_calls), ([["/apps/Atesta.AppImage"]], [True]))
+
     def test_consent_declined_sends_nothing(self):
         holder = storage.HolderKey.load_or_create()
         storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")

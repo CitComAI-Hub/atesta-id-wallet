@@ -13,6 +13,7 @@ import argparse
 import os
 import re
 import secrets
+import subprocess
 import sys
 import threading
 import time
@@ -135,6 +136,7 @@ class Bridge(QObject):
     finished = Signal(object, object)  # (callback, resultado)
     failed = Signal(object, str)  # (exception, traceback)
     update_checked = Signal(object, bool)  # (Release, None or exception; automatic)
+    update_downloaded = Signal(object, object, bool)  # (Release, None or exception; automatic)
     status_checked = Signal(object)  # (paths whose revocation state changed, manual, any failure)
 
 
@@ -200,6 +202,7 @@ class MainWindow(QMainWindow):
         self.bridge.finished.connect(self._on_finished)
         self.bridge.failed.connect(self._on_failed)
         self.bridge.update_checked.connect(self._on_update_checked)
+        self.bridge.update_downloaded.connect(self._on_update_downloaded)
         self.bridge.status_checked.connect(self._on_status_checked)
         self._status_started = 0.0  # last background revocation check (at most one every few minutes)
         self._status_running = False
@@ -215,6 +218,8 @@ class MainWindow(QMainWindow):
         self._page_name = "wallet"
         self._flow = "issue"  # of the flow running (or the last one): "issue" or "present"; for its error messages
         self.available_release: updates.Release | None = None
+        self.update_ready: str | None = None  # version downloaded and verified, used after a restart
+        self._downloading_update = False
         self._pending_entry: str | None = None  # link that arrived while the wallet was locked
         self._idle_timer = QTimer(self)
         self._idle_timer.setSingleShot(True)
@@ -1165,14 +1170,81 @@ class MainWindow(QMainWindow):
                 self.toast.show_message(tr("This is the latest version ({version})", version=__version__))
             return
         self.available_release = result
+        if updates.can_update_itself():
+            if self.update_ready == result.version:
+                if not automatic:
+                    self._offer_restart()
+            else:
+                self._download_update(result, automatic)
+            return
         if self._page_name == "settings":
             self.settings_page.refresh()
         if automatic:
             self.toast.show_message(tr("Version {version} is available: see Settings", version=result.version), 6000)
         else:
             self._confirm(tr("Version {version} is available", version=result.version),
-                          tr("You have version {current}. Open the download page?", current=__version__),
-                          self.open_release, confirm_text=tr("Download"), icon="download")
+                          self.release_hint(), self.open_release, confirm_text=tr("Download"), icon="download")
+
+    def release_hint(self) -> str:
+        if updates.install_kind() == "deb":
+            return tr("It arrives with the system updates (Software Updater, or 'sudo apt upgrade').")
+        return tr("You have version {current}. Open the download page?", current=__version__)
+
+    def _download_update(self, release: updates.Release, automatic: bool) -> None:
+        """Downloads and verifies in the background; the automatic check only speaks up when it is ready."""
+        if self._downloading_update:
+            return
+        self._downloading_update = True
+        if not automatic:
+            self.toast.show_message(tr("Downloading version {version}…", version=release.version))
+
+        def work() -> None:
+            error: Exception | None = None
+            try:
+                updates.download_update(release)
+            except (requests.RequestException, OSError, WalletError) as exc:
+                error = exc
+            self.bridge.update_downloaded.emit(release, error, automatic)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_update_downloaded(self, release: updates.Release, error: Any, automatic: bool) -> None:
+        self._downloading_update = False
+        if error is not None:
+            common.debug(f"Update download failed: {error}")
+            if not automatic:
+                self._result(False, tr("Could not download version {version}", version=release.version), esc(error))
+            else:  # e.g. an AppImage in a read-only folder: the usual notice, with the download page
+                self.toast.show_message(tr("Version {version} is available: see Settings", version=release.version),
+                                        6000)
+        else:
+            self.update_ready = release.version
+            if automatic:
+                self.toast.show_message(tr("Version {version} is ready: restart the wallet to use it",
+                                           version=release.version), 6000)
+            else:
+                self._offer_restart()
+        if self._page_name == "settings":
+            self.settings_page.refresh()
+
+    def _offer_restart(self) -> None:
+        self._confirm(tr("Version {version} is ready", version=self.update_ready),
+                      tr("Restart the wallet now to use it? Your credentials and settings are kept."),
+                      self.restart_to_update, confirm_text=tr("Restart"), icon="download")
+
+    def restart_to_update(self) -> None:
+        """Closes the window and starts the new version (Windows: through its installer)."""
+        server = getattr(self, "_instance_server", None)
+        if server is not None:
+            server.close()  # so the new instance does not hand itself over to this one
+        if not updates.install_pending():
+            command = updates.relaunch_command()
+            if command:
+                try:
+                    subprocess.Popen(command, start_new_session=True, close_fds=True)
+                except OSError as exc:
+                    return self._result(False, tr("Could not restart the wallet"), esc(exc))
+        QApplication.quit()
 
     def open_release(self) -> None:
         webbrowser.open(self.available_release.url if self.available_release else updates.RELEASES_PAGE)
@@ -1314,6 +1386,8 @@ def main(argv: list[str] | None = None) -> int:
         print(tr("ERROR: {error}", error=exc), file=sys.stderr)
         return 1
 
+    if not args.entry and updates.install_pending():  # Windows: the installer reopens the wallet
+        return 0
     window = MainWindow()
     common.LOG_HANDLER = window.bridge.logged.emit
     window._instance_server = listen_for_instances(window)

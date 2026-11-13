@@ -36,8 +36,18 @@ To check a download: `sha256sum -c SHA256SUMS --ignore-missing` (Linux) or
 `Get-FileHash FILE` (PowerShell) and compare with `SHA256SUMS`. The Windows builds are not
 code-signed yet, so SmartScreen shows a warning (*More info → Run anyway*).
 
-Updating: install the new version over the old one; your data is kept. *Settings → About*
-can check for new versions (off by default) and `atesta-id-wallet update` does it from the terminal.
+Updating is automatic. Once a day the wallet asks GitHub for a new version (*Settings → About →
+New versions*, on by default; nothing about your wallet is sent):
+
+| Installed from | Update |
+|---|---|
+| AppImage | Downloaded and replaced by itself; the new version starts the next time. |
+| Windows installer | Downloaded by itself; installed when you restart the wallet (*Restart*) or at the next start. |
+| `.deb` | With the system updates (Software Updater or `sudo apt upgrade`): the package adds its signed APT repository. |
+| Windows zip, source | A notice; install the new version over the old one, or `atesta-id-wallet update` from source. |
+
+Only files signed with the project's release key are installed. Your data is always kept.
+`atesta-id-wallet update` does the same from the terminal.
 Uninstall: Windows *Settings → Apps*; `sudo apt remove atesta-id-wallet`; delete the AppImage. The
 wallet data (see [Data](#data)) is never deleted by uninstalling.
 
@@ -283,7 +293,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 | `vci` | OpenID4VCI: offers, metadata checks, authorization server login, issuance, issuer signature |
 | `vp` | OpenID4VP: request, DCQL / Presentation Exchange, `prepare_presentation` → `build_response` → `send_presentation` |
 | `desktop` | Clipboard, screenshots with QR codes, link handler (also for the packaged executables) |
-| `updates` | New-version check against GitHub Releases (only when asked or enabled) |
+| `updates` | New versions from GitHub Releases: daily check, signed download and self-update (AppImage, Windows installer) |
 | `ui` | `Prompter` interface: everything the flows ask the user; terminal implementation |
 | `cli` | Command line |
 | `gui` | Qt window (`app`: window, worker thread and single-instance socket; `pages`; `sheets` for flow panels; `widgets`; `theme` with light and dark palettes) |

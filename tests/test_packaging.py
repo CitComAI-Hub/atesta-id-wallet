@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import unittest
+import unittest.mock
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -73,7 +74,9 @@ class UpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(common.WalletError, "limitando las peticiones"):
             updates.newer_release()
 
-    def test_automatic_check_is_off_by_default_and_daily(self):
+    def test_automatic_check_is_on_by_default_and_daily(self):
+        self.assertTrue(updates.automatic_check_due())
+        updates.set_automatic_check(False)
         self.assertFalse(updates.automatic_check_due())
         updates.set_automatic_check(True)
         self.assertTrue(updates.automatic_check_due())
@@ -98,6 +101,150 @@ class UpdateTests(unittest.TestCase):
         with redirect_stdout(out):
             self.assertEqual(cli.main(["update"]), 0)
         self.assertIn(common.__version__, out.getvalue())
+
+
+class SelfUpdateTests(unittest.TestCase):
+    """Automatic update: only files listed in a SHA256SUMS signed by the release key."""
+
+    VERSION = "99.0.0"
+
+    def setUp(self):
+        import base64
+        import hashlib
+
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        self.home = base.isolated_home(self)
+        self.key = Ed25519PrivateKey.generate()
+        public = self.key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        self.addCleanup(setattr, updates, "UPDATE_PUBLIC_KEY", updates.UPDATE_PUBLIC_KEY)
+        updates.UPDATE_PUBLIC_KEY = base64.b64encode(public).decode()
+        self.addCleanup(setattr, updates.storage, "BASE_DIR", updates.storage.BASE_DIR)
+        updates.storage.BASE_DIR = self.home
+        self.files = {}
+        self.payload = b"new AppImage " * 1000
+        self.publish({updates.asset_name("appimage", self.VERSION): self.payload,
+                      updates.asset_name("windows-installer", self.VERSION): b"setup.exe"})
+        saved = updates.requests.get
+        self.addCleanup(setattr, updates.requests, "get", saved)
+        updates.requests.get = self.get
+        self._hashlib, self._b64 = hashlib, base64
+
+    def publish(self, files, sign=True):
+        import base64
+        import hashlib
+
+        self.files = dict(files)
+        sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items()).encode()
+        self.files[updates.SUMS] = sums
+        if sign:
+            self.files[updates.SIGNATURE] = base64.b64encode(self.key.sign(sums))
+
+    def get(self, url, **kwargs):
+        name = url.rsplit("/", 1)[-1]
+        data = self.files.get(name)
+        response = FakeResponse(200 if data is not None else 404, data)
+        response.iter_content = lambda size: [data[i:i + size] for i in range(0, len(data), size)]
+        response.__enter__ = lambda: response
+        response.__exit__ = lambda *exc: None
+        return type("Ctx", (), {"__enter__": lambda s: response, "__exit__": lambda s, *e: None})()
+
+    def release(self, version=VERSION):
+        names = [updates.asset_name("appimage", version), updates.asset_name("windows-installer", version),
+                 updates.SUMS, updates.SIGNATURE]
+        return updates.Release(version, updates.RELEASES_PAGE,
+                               tuple((n, f"{updates.DOWNLOAD_PREFIX}v{version}/{n}") for n in names))
+
+    def appimage(self):
+        current = self.home / "Atesta_ID_Wallet-0.1.0-x86_64.AppImage"
+        current.write_bytes(b"old")
+        os.chmod(current, 0o755)
+        return current
+
+    def test_appimage_is_replaced_in_place(self):
+        current = self.appimage()
+        with unittest.mock.patch.dict(os.environ, {"APPIMAGE": str(current)}):
+            updates.download_update(self.release(), "appimage")
+        self.assertEqual(current.read_bytes(), self.payload)
+        if sys.platform != "win32":
+            self.assertTrue(os.access(current, os.X_OK))
+        self.assertEqual(list(current.parent.glob(".*.new")), [])
+        self.assertFalse(updates.updates_dir().exists())
+
+    def test_unsigned_or_foreign_signature_is_refused(self):
+        current = self.appimage()
+        self.publish({updates.asset_name("appimage", self.VERSION): b"evil"}, sign=False)
+        self.files[updates.SIGNATURE] = b"bm90IGEgc2lnbmF0dXJl"
+        with unittest.mock.patch.dict(os.environ, {"APPIMAGE": str(current)}):
+            with self.assertRaisesRegex(common.WalletError, "firma"):
+                updates.download_update(self.release(), "appimage")
+        self.assertEqual(current.read_bytes(), b"old")
+
+    def test_file_not_matching_the_signed_checksum_is_refused(self):
+        current = self.appimage()
+        self.files[updates.asset_name("appimage", self.VERSION)] = b"tampered"
+        with unittest.mock.patch.dict(os.environ, {"APPIMAGE": str(current)}):
+            with self.assertRaises(common.WalletError):
+                updates.download_update(self.release(), "appimage")
+        self.assertEqual(current.read_bytes(), b"old")
+        self.assertEqual(list(updates.updates_dir().glob("*")), [])
+
+    def test_signed_list_of_another_version_is_refused(self):
+        """An old, validly signed SHA256SUMS replayed under a newer tag names other files."""
+        self.publish({updates.asset_name("appimage", "0.0.1"): b"old release"})
+        self.files[updates.asset_name("appimage", self.VERSION)] = b"old release"
+        with self.assertRaises(common.WalletError):
+            updates.download_update(self.release(), "appimage")
+
+    def test_older_version_and_other_hosts_are_refused(self):
+        with self.assertRaises(common.WalletError):
+            updates.download_update(self.release("0.0.1"), "appimage")
+        evil = updates.Release(self.VERSION, updates.RELEASES_PAGE, ((updates.SUMS, "https://evil.example/S"),))
+        with self.assertRaisesRegex(common.WalletError, "evil.example"):
+            updates.download_update(evil, "appimage")
+        with self.assertRaises(common.WalletError):
+            updates.download_update(self.release(), "deb")
+
+    def test_windows_installer_waits_until_restart(self):
+        path = updates.download_update(self.release(), "windows-installer")
+        pending = updates.pending_update()
+        self.assertEqual((pending["version"], pending["path"]), (self.VERSION, path))
+        path.write_bytes(b"changed afterwards")
+        self.assertIsNone(updates.pending_update())
+        self.assertFalse(updates.updates_dir().exists())
+
+    def test_installer_is_started_once(self):
+        updates.download_update(self.release(), "windows-installer")
+        started = []
+        self.addCleanup(setattr, updates, "install_kind", updates.install_kind)
+        updates.install_kind = lambda: "windows-installer"
+        with unittest.mock.patch.object(updates.subprocess, "Popen", lambda cmd, **kw: started.append(cmd)):
+            self.assertTrue(updates.install_pending())
+            self.assertFalse(updates.install_pending())
+        self.assertEqual(started[0][1:], ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS",
+                                          "/LAUNCH=1"])
+
+    def test_release_assets_only_from_the_project(self):
+        fake_github(self, tag_name="v9.0.0", html_url=updates.RELEASES_PAGE + "/tag/v9.0.0", assets=[
+            {"name": "SHA256SUMS", "browser_download_url": updates.DOWNLOAD_PREFIX + "v9.0.0/SHA256SUMS"},
+            {"name": "x.AppImage", "browser_download_url": "https://evil.example/x.AppImage"}])
+        release = updates.latest_release()
+        self.assertEqual([name for name, _ in release.assets], ["SHA256SUMS"])
+
+    def test_install_kind(self):
+        self.addCleanup(setattr, updates, "FROZEN", updates.FROZEN)
+        updates.FROZEN = False
+        self.assertEqual(updates.install_kind(), "source")
+        self.assertFalse(updates.can_update_itself())
+        if sys.platform.startswith("linux"):
+            updates.FROZEN = True
+            with unittest.mock.patch.dict(os.environ, {"APPIMAGE": "/tmp/x.AppImage"}):
+                self.assertEqual(updates.install_kind(), "appimage")
+            with unittest.mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("APPIMAGE", None)
+                with unittest.mock.patch.object(sys, "executable", "/opt/atesta-id-wallet/atesta-id-wallet"):
+                    self.assertEqual(updates.install_kind(), "deb")
 
 
 class FrozenLauncherTests(unittest.TestCase):

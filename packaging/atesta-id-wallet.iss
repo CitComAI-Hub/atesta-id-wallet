@@ -66,3 +66,11 @@ Root: HKCU; Subkey: "Software\Classes\openid-credential-offer\shell\open\command
 
 [Run]
 Filename: "{app}\atesta-id-wallet-gui.exe"; Description: "{cm:LaunchProgram,Atesta ID Wallet}"; Flags: nowait postinstall skipifsilent
+; Automatic update (updates.install_pending): silent, and the wallet opens again when done.
+Filename: "{app}\atesta-id-wallet-gui.exe"; Flags: nowait; Check: LaunchAfterUpdate
+
+[Code]
+function LaunchAfterUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:LAUNCH|0}') = '1';
+end;

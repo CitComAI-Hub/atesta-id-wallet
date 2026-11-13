@@ -637,14 +637,20 @@ class SettingsPage(Page):
         about = [
             _setting(f"Atesta ID Wallet {__version__}", "OpenID4VCI 1.0 + OpenID4VP · SD-JWT VC\n"
                      + tr("Data: {path}", path=storage.DATA_DIR), leading=app_logo(40)),
-            _setting(tr("New versions"), tr("Check once a day whether a newer version has been published on GitHub. "
-                                            "Nothing about your wallet is sent."),
+            _setting(tr("New versions"), tr("Check once a day for a new version on GitHub and, where the wallet can "
+                                            "update itself, download it. Nothing about your wallet is sent."),
                      auto_update, self._action(tr("Check now"), w.check_for_updates)),
             _setting(tr("Licenses"), tr("Open source software this application is built with."),
                      self._action(tr("Show"), w.show_licenses, "info")),
         ]
-        if w.available_release:
+        if w.update_ready:
+            about.append(_setting(tr("Version {version} is ready", version=w.update_ready),
+                                  tr("Restart the wallet to use it; your credentials and settings are kept."),
+                                  self._action(tr("Restart"), w.restart_to_update, "download", "primary")))
+        elif w.available_release:
             about.append(_setting(tr("Version {version} is available", version=w.available_release.version),
+                                  tr("It arrives with the system updates (Software Updater, or 'sudo apt upgrade').")
+                                  if updates.install_kind() == "deb" else
                                   tr("Install it over this one; your credentials and settings are kept."),
                                   self._action(tr("Download"), w.open_release, "download", "primary")))
         self._section(tr("About"), about)
