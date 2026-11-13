@@ -166,6 +166,12 @@ the full manual Windows test and the CITCOM verifier trust list.
   without an agent the wallet gets the terminal fallback. **Still to check by hand on a real
   desktop**: right password → installed → restart (from 0.13.2 to the next version; meanwhile
   `pkexec /usr/libexec/atesta-id-wallet/update` checks the dialog), on GNOME and on KDE or XFCE.
+- **Ubuntu LTS in CI** (November 2026): the tests run on 22.04, 24.04 and 26.04, each with its own
+  system Python (3.10, 3.12, 3.14: what `install.sh` uses), and the AppImage and the `.deb` are
+  installed and started on the three (`release.yml`, `linux-test`). Found on the way: the `.deb`
+  declared only libc and libEGL, but the bundle also needs the system's libGL, libdrm, xcb, Wayland
+  and zlib, and fontconfig's configuration and fonts: on a minimal system the window did not open
+  (`libGL.so.1: cannot open`). Since 0.13.2 they are all in `Depends`.
 - **0.13.1: security audit (November 2026)**; regression tests in `tests/test_hardening.py`
   (`AuditNovember2026Tests`), `test_present.py`, `test_vault.py` and `test_packaging.py`:
   - [x] `x509_hash` verifiers were shown with the first DNS name of a certificate nobody vouches for,

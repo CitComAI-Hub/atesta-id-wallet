@@ -1,4 +1,5 @@
-# Release builds: AppImage and .deb (Linux), installer and zip (Windows), SHA256SUMS(.sig).
+# Release builds: AppImage and .deb (Linux, tested on Ubuntu 22.04, 24.04 and 26.04), installer and
+# zip (Windows), SHA256SUMS(.sig).
 #   git tag v0.6.0 && git push origin v0.6.0   -> builds, tests and publishes it as a pre-release;
 #   marking it as the latest release on GitHub delivers it (automatic updates, APT: apt.yml)
 #   push to main, or Actions -> Release -> Run workflow -> builds and tests; files kept as artifacts
@@ -58,17 +59,49 @@ jobs:
           version=$(python -c "import atesta_id_wallet.common as c; print(c.__version__)")
           "$RUNNER_TEMP/sbom/bin/cyclonedx-py" environment --pyproject pyproject.toml --of JSON --output-reproducible \
             -o "dist/release/Atesta_ID_Wallet-$version-linux.cdx.json" "$(command -v python)"
-      - name: Smoke test (AppImage and .deb)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: linux
+          path: dist/release/*
+          if-no-files-found: error
+
+  # The Linux files as users get them, on every supported Ubuntu LTS (they are built on the oldest
+  # one, 22.04, so that they run on the others): the AppImage starts; the .deb installs with its
+  # dependencies, starts, its updater works with the project's APT repository and polkit knows its
+  # action; it uninstalls.
+  linux-test:
+    needs: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: linux
+          path: release
+      - name: AppImage
         env:
           QT_QPA_PLATFORM: offscreen
           APPIMAGE_EXTRACT_AND_RUN: "1"
+          ATESTA_ID_WALLET_HOME: ${{ runner.temp }}/wallet-appimage
         run: |
-          appimage=$(ls dist/release/*.AppImage)
-          ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-appimage" "$appimage" --smoke-test
-          ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-appimage" "$appimage" cli --version
-          sudo apt-get install -y ./dist/release/*.deb
-          ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-deb" atesta-id-wallet-gui --smoke-test
-          ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-deb" atesta-id-wallet --version
+          # The graphics driver (EGL) is the system's on every desktop; the AppImage brings the rest.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libegl1
+          appimage=$(ls release/*.AppImage)
+          chmod +x "$appimage"  # artifacts do not keep file permissions
+          "$appimage" --smoke-test
+          "$appimage" cli --version
+      - name: .deb
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ATESTA_ID_WALLET_HOME: ${{ runner.temp }}/wallet-deb
+        run: |
+          sudo apt-get install -y ./release/*.deb
+          atesta-id-wallet-gui --smoke-test
+          atesta-id-wallet --version
           # The in-app update of the .deb: its updater refreshes the project's APT repository and
           # finds nothing newer than this build; polkit knows its action.
           sudo /usr/libexec/atesta-id-wallet/update
@@ -78,11 +111,7 @@ jobs:
             echo "::warning::polkit not available on the runner: the update action was not checked"
           fi
           sudo apt-get remove -y atesta-id-wallet
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
-        with:
-          name: linux
-          path: dist/release/*
-          if-no-files-found: error
+          if command -v atesta-id-wallet; then echo "Still installed after apt-get remove"; exit 1; fi
 
   windows:
     needs: test
@@ -182,7 +211,7 @@ jobs:
 
   publish:
     if: github.ref_type == 'tag'
-    needs: [linux, windows]
+    needs: [linux, linux-test, windows]
     runs-on: ubuntu-latest
     # The signing key (UPDATE_SIGNING_KEY) is a secret of this environment, which requires a reviewer:
     # pushing a tag alone does not get a build signed (docs/RELEASING.md).

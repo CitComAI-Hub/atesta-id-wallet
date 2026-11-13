@@ -1,5 +1,5 @@
-# Tests (Linux, Windows) and static analysis, for every branch and pull request; release.yml calls
-# it before building, so nothing is published if any check fails.
+# Tests (Ubuntu 22.04, 24.04 and 26.04, Windows) and static analysis, for every branch and pull
+# request; release.yml calls it before building, so nothing is published if any check fails.
 name: Checks
 
 on:
@@ -19,21 +19,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest]
+        # Every supported Ubuntu LTS with its own Python, the one install.sh uses there (3.10 on
+        # 22.04, 3.12 on 24.04, newer on 26.04); Windows with PYTHON_VERSION, as the builds.
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7
+        if: runner.os == 'Windows'
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Qt libraries
+      - name: System Python and Qt libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0
-      - run: pip install ".[gui]"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+          /usr/bin/python3 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - run: python --version && pip install ".[gui]"
       - name: Version matches the tag
         shell: bash
         run: |
-          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)  # no tomllib before Python 3.11
           python -c "import sys, atesta_id_wallet.common as c; sys.exit(c.__version__ != '$version')" \
             || { echo "pyproject.toml ($version) and common.__version__ differ"; exit 1; }
           if [[ "$GITHUB_REF_TYPE" == tag && "${GITHUB_REF_NAME#v}" != "$version" ]]; then

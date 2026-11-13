@@ -4,7 +4,8 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`), never on
 machine, so every published file comes from a known commit.
 
 Every push to any branch and every pull request run `.github/workflows/checks.yml`: the tests on
-Linux and Windows, `ruff` (bug-class rules only, `[tool.ruff]` in `pyproject.toml`), `bandit`
+every supported Ubuntu LTS (22.04, 24.04 and 26.04, each with its own system Python, the one
+`install.sh` uses there) and on Windows, `ruff` (bug-class rules only, `[tool.ruff]` in `pyproject.toml`), `bandit`
 (medium and high) and `pip-audit` (known vulnerabilities in the dependencies). `release.yml` calls
 the same workflow first, so nothing is built or published if a check fails. Dependabot proposes
 dependency and action updates every week (`.github/dependabot.yml`).
@@ -43,7 +44,10 @@ What goes into a release is pinned, because the result is signed for the automat
 
 All of them hold the same PyInstaller folder (`packaging/atesta-id-wallet.spec`): two executables,
 `atesta-id-wallet-gui` (no console on Windows) and `atesta-id-wallet`, sharing one copy of Python, Qt
-and the other libraries. Linux builds run on Ubuntu 22.04, so they need glibc 2.35 or newer.
+and the other libraries. Linux builds run on Ubuntu 22.04, so they need glibc 2.35 or newer, and
+are tested on 22.04, 24.04 and 26.04. When a new Ubuntu LTS comes out, add it to the matrices of
+`checks.yml` (`test`) and `release.yml` (`linux-test`) once GitHub offers its runner; when one
+leaves support, build on the next oldest.
 
 ## Steps
 
@@ -60,10 +64,12 @@ and the other libraries. Linux builds run on Ubuntu 22.04, so they need glibc 2.
    ```
 
 5. The workflow then:
-   - runs the tests on Linux and Windows;
+   - runs the tests on Ubuntu 22.04, 24.04 and 26.04 and on Windows;
    - builds the Linux and Windows files and runs `atesta-id-wallet-gui --smoke-test` on the bundle, the
      AppImage, the installed `.deb` and the installed Windows program (checks that Qt, the SVG
-     icons, the translations, zxing-cpp, Pillow and cryptography are all inside);
+     icons, the translations, zxing-cpp, Pillow and cryptography are all inside); the AppImage and
+     the `.deb` on each of the three Ubuntu LTS, where the `.deb` is also installed with its
+     dependencies, its updater run against the APT repository, and removed;
    - installs the Windows setup silently, checks the link handler registry keys, runs an automatic
      update the way the wallet does it (installer waiting in `updates\`, the wallet starts it and
      exits, the installer reopens it) and uninstalls;

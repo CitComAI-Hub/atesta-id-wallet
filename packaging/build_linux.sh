@@ -97,15 +97,19 @@ SOURCES
     # administrator password with the message of the policy (packaging/deb/).
     install -m 755 "$ROOT/packaging/deb/update" "$pkg/usr/libexec/atesta-id-wallet/update"
     install -m 644 "$ROOT/packaging/deb/io.github.citcomaihub.atestaidwallet.policy" "$pkg/usr/share/polkit-1/actions/"
-    # Only what PyInstaller leaves out of the bundle: libc and the graphics driver (EGL). The X11/xcb,
-    # xkbcommon and fontconfig libraries are inside /opt/atesta-id-wallet/_internal.
+    # Only what PyInstaller leaves out of the bundle (the libraries its files need and do not carry):
+    # libc and zlib; the graphics driver (EGL, GL, DRM); the connection to the display, X11 (xcb) or
+    # Wayland. Every desktop has them, a minimal system may not (without libgl1 the window does not
+    # open); fontconfig, for its configuration and a font (the library itself is bundled). The other
+    # X11/xcb and xkbcommon libraries are inside _internal.
     cat > "$pkg/DEBIAN/control" <<CONTROL
 Package: atesta-id-wallet
 Version: $VERSION
 Architecture: amd64
 Maintainer: $MAINTAINER
 Installed-Size: $(du -sk "$pkg" | cut -f1)
-Depends: libc6 (>= 2.35), libegl1
+Depends: libc6 (>= 2.35), zlib1g, libegl1, libgl1, libdrm2, libxcb1, libwayland-client0, libwayland-cursor0,
+ libwayland-egl1, fontconfig
 Recommends: wl-clipboard | xclip, pkexec | policykit-1
 Section: utils
 Priority: optional
