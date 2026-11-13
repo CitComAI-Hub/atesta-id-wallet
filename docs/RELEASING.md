@@ -70,8 +70,12 @@ reviewer would add a second pair of eyes. The `publish` and
 `apt` jobs fail if a secret is missing or does not match the public key in git.
 
 Also once: *Settings → Pages → Source: GitHub Actions*, and in *Settings → Environments →
-github-pages*, add the tag rule `v*` to the allowed deployment branches and tags (by default only
-`main` may deploy).
+github-pages*, add a rule of type **Tag** `v*` to the allowed deployment branches and tags (by
+default only `main` may deploy; keep it too).
+
+The APT repository is built by `.github/workflows/apt.yml` from the `.deb` of the published release.
+If that step fails, the release is still published: fix it and use *Actions → APT repository →
+Run workflow* (empty tag: the latest release) instead of re-running the release.
 
 **Changing a key** (lost or leaked): the installed applications keep trusting the old public key,
 so they stop updating by themselves. Put the new public key in git and release; users of that

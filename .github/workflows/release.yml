@@ -177,35 +177,15 @@ jobs:
           gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
             --title "Atesta ID Wallet ${GITHUB_REF_NAME#v}" --generate-notes
 
-  # APT repository on GitHub Pages with the new .deb: installed .deb packages get it with the
-  # system updates. Needs Settings -> Pages -> Source: GitHub Actions, and the v* tags allowed in
-  # the github-pages environment. See docs/RELEASING.md.
+  # APT repository on GitHub Pages with the new .deb (apt.yml).
   apt:
     if: github.ref_type == 'tag'
     needs: publish
-    runs-on: ubuntu-latest
     permissions:
       contents: read
       pages: write
       id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}apt/
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: linux
-          path: release
-      - name: Repository
-        env:
-          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
-        run: |
-          packaging/build_apt_repo.sh release/*.deb site/apt
-          touch site/.nojekyll
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v5
+    uses: ./.github/workflows/apt.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
