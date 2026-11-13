@@ -296,7 +296,7 @@ class DebUpdateTests(unittest.TestCase):
 
         exists = Path.is_file
         with unittest.mock.patch.object(updates.subprocess, "run", side_effect=run), \
-                unittest.mock.patch.object(Path, "is_file", lambda path: pkexec if str(path) == updates.PKEXEC
+                unittest.mock.patch.object(Path, "is_file", lambda path: pkexec if Path(path) == Path(updates.PKEXEC)
                                            else exists(path)):
             updates.install_deb_update(self.release)
         return calls
@@ -307,7 +307,8 @@ class DebUpdateTests(unittest.TestCase):
         self.assertEqual(argv, ["/usr/bin/pkexec", "/usr/libexec/atesta-id-wallet/update"])  # no arguments
         self.assertTrue(kwargs["start_new_session"])  # never a password prompt in a hidden terminal
         self.assertIs(kwargs["stdin"], updates.subprocess.DEVNULL)
-        self.assertEqual(updates.relaunch_command(), ["/opt/atesta-id-wallet/atesta-id-wallet-gui"])
+        self.assertEqual([Path(c) for c in updates.relaunch_command()],  # Path: also when tested on Windows
+                         [Path("/opt/atesta-id-wallet/atesta-id-wallet-gui")])
 
     def test_terminal_update_gives_the_command(self):
         fake_github(self, tag_name="v9.0.0", html_url=updates.RELEASES_PAGE + "/tag/v9.0.0")
