@@ -364,6 +364,25 @@ class GuiPackagingTests(unittest.TestCase):
         self.assertIn("La versión 9.0.0 está disponible", texts)
         self.assertIn("update_checked_at", storage.load_settings())
 
+    def test_deb_offers_no_download(self):
+        """APT installs the new version: no button that opens GitHub to download another copy."""
+        from PySide6.QtWidgets import QPushButton
+
+        self.addCleanup(setattr, updates, "install_kind", updates.install_kind)
+        updates.install_kind = lambda: "deb"
+        window = base.gui.MainWindow()
+        self.addCleanup(window.close)
+        release = updates.Release("9.0.0", updates.RELEASES_PAGE + "/tag/v9.0.0")
+        with unittest.mock.patch.object(base.gui.webbrowser, "open") as browser:
+            window._on_update_checked(release, False)  # "Check now"
+            buttons = [b.text() for b in window.findChildren(QPushButton) if b.isVisibleTo(window)]
+            self.assertNotIn("Descargar", buttons)
+            window._close_sheet()
+            window._go("settings")
+            buttons = [b.text() for b in window.settings_page.findChildren(QPushButton) if b.isVisibleTo(window)]
+            self.assertNotIn("Descargar", buttons)
+        browser.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

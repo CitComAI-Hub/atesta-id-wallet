@@ -1181,6 +1181,9 @@ class MainWindow(QMainWindow):
             self.settings_page.refresh()
         if automatic:
             self.toast.show_message(tr("Version {version} is available: see Settings", version=result.version), 6000)
+        elif updates.install_kind() == "deb":  # nothing to download: APT installs it
+            self._result(True, tr("Version {version} is available", version=result.version), esc(self.release_hint()),
+                         icon="download", tone="accent")
         else:
             self._confirm(tr("Version {version} is available", version=result.version),
                           self.release_hint(), self.open_release, confirm_text=tr("Download"), icon="download")

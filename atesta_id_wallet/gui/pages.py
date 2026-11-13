@@ -647,10 +647,12 @@ class SettingsPage(Page):
             about.append(_setting(tr("Version {version} is ready", version=w.update_ready),
                                   tr("Restart the wallet to use it; your credentials and settings are kept."),
                                   self._action(tr("Restart"), w.restart_to_update, "download", "primary")))
+        elif w.available_release and updates.install_kind() == "deb":
+            # APT installs it: a download page would only offer a second copy of the same package.
+            about.append(_setting(tr("Version {version} is available", version=w.available_release.version),
+                                  tr("It arrives with the system updates (Software Updater, or 'sudo apt upgrade').")))
         elif w.available_release:
             about.append(_setting(tr("Version {version} is available", version=w.available_release.version),
-                                  tr("It arrives with the system updates (Software Updater, or 'sudo apt upgrade').")
-                                  if updates.install_kind() == "deb" else
                                   tr("Install it over this one; your credentials and settings are kept."),
                                   self._action(tr("Download"), w.open_release, "download", "primary")))
         self._section(tr("About"), about)

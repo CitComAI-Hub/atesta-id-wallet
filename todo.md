@@ -156,8 +156,10 @@ the full manual Windows test and the CITCOM verifier trust list.
   themselves (daily check, now on by default) and use it after a restart; the `.deb` adds the
   project's signed APT repository on GitHub Pages. Only files in a `SHA256SUMS` signed with the
   release key (Ed25519, `UPDATE_PUBLIC_KEY`) are installed; no downgrades, no replayed lists.
-  0.12.0 and older have to install 0.13.0 by hand once. Still to check by hand: the first real
-  update (0.13.0 → 0.13.1) on Windows and with the AppImage.
+  0.12.0 and older have to install 0.13.0 by hand once. The first real update (0.13.0 → 0.13.1)
+  works with the AppImage (November 2026); still to check by hand on Windows. With the `.deb`,
+  0.13.0 showed a *Download* button that opened GitHub although APT installs the update: since
+  0.13.2 it only says that the update comes with the system updates.
 - **0.13.1: security audit (November 2026)**; regression tests in `tests/test_hardening.py`
   (`AuditNovember2026Tests`), `test_present.py`, `test_vault.py` and `test_packaging.py`:
   - [x] `x509_hash` verifiers were shown with the first DNS name of a certificate nobody vouches for,
