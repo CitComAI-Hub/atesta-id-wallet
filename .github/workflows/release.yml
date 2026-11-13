@@ -99,7 +99,8 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           ATESTA_ID_WALLET_HOME: ${{ runner.temp }}/wallet-deb
         run: |
-          sudo apt-get install -y ./release/*.deb
+          # With its recommended packages, as apt does on a desktop: pkexec (or policykit-1 on 22.04).
+          sudo apt-get install -y --install-recommends ./release/*.deb
           atesta-id-wallet-gui --smoke-test
           atesta-id-wallet --version
           # The in-app update of the .deb: its updater refreshes the project's APT repository and
