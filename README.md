@@ -43,7 +43,7 @@ New versions*, on by default; nothing about your wallet is sent):
 |---|---|
 | AppImage | Downloaded and replaced by itself; the new version starts the next time. |
 | Windows installer | Downloaded by itself; installed when you restart the wallet (*Restart*) or at the next start. |
-| `.deb` | With the system updates (Software Updater or `sudo apt upgrade`): the package adds its signed APT repository. |
+| `.deb` | *Settings → About → Update*: the system asks for an administrator password and installs it from the package's signed APT repository; restart to use it. It also arrives with the system updates (Software Updater or `sudo apt upgrade`). Where the desktop cannot ask for the password (some window managers), the wallet shows the command to run in a terminal. |
 | Windows zip, source | A notice; install the new version over the old one, or `atesta-id-wallet update` from source. |
 
 Only files signed with the project's release key are installed. Your data is always kept.

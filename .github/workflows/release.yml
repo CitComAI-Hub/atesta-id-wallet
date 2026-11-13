@@ -69,6 +69,14 @@ jobs:
           sudo apt-get install -y ./dist/release/*.deb
           ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-deb" atesta-id-wallet-gui --smoke-test
           ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-deb" atesta-id-wallet --version
+          # The in-app update of the .deb: its updater refreshes the project's APT repository and
+          # finds nothing newer than this build; polkit knows its action.
+          sudo /usr/libexec/atesta-id-wallet/update
+          if command -v pkaction >/dev/null && action=$(pkaction --action-id io.github.citcomaihub.atestaidwallet.update --verbose); then
+            grep -q "exec.path -> /usr/libexec/atesta-id-wallet/update" <<<"$action"
+          else
+            echo "::warning::polkit not available on the runner: the update action was not checked"
+          fi
           sudo apt-get remove -y atesta-id-wallet
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:

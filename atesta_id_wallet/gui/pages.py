@@ -647,6 +647,10 @@ class SettingsPage(Page):
             about.append(_setting(tr("Version {version} is ready", version=w.update_ready),
                                   tr("Restart the wallet to use it; your credentials and settings are kept."),
                                   self._action(tr("Restart"), w.restart_to_update, "download", "primary")))
+        elif w.available_release and updates.deb_updater_installed():
+            about.append(_setting(tr("Version {version} is available", version=w.available_release.version),
+                                  tr("The system will ask for an administrator password to install it."),
+                                  self._action(tr("Update"), w.install_deb_update, "download", "primary")))
         elif w.available_release and updates.install_kind() == "deb":
             # APT installs it: a download page would only offer a second copy of the same package.
             about.append(_setting(tr("Version {version} is available", version=w.available_release.version),

@@ -159,7 +159,13 @@ the full manual Windows test and the CITCOM verifier trust list.
   0.12.0 and older have to install 0.13.0 by hand once. The first real update (0.13.0 → 0.13.1)
   works with the AppImage (November 2026); still to check by hand on Windows. With the `.deb`,
   0.13.0 showed a *Download* button that opened GitHub although APT installs the update: since
-  0.13.2 it only says that the update comes with the system updates.
+  0.13.2 it has its own *Update* button: the package's updater (`packaging/deb/update`) through
+  pkexec and polkit, which asks for the administrator password; where the desktop has no polkit
+  agent, the command for a terminal. Tested in containers (Debian 12/13, Ubuntu 22.04/24.04): the
+  updater upgrades as root, polkit shows the action's message and refuses a wrong password, and
+  without an agent the wallet gets the terminal fallback. **Still to check by hand on a real
+  desktop**: right password → installed → restart (from 0.13.2 to the next version; meanwhile
+  `pkexec /usr/libexec/atesta-id-wallet/update` checks the dialog), on GNOME and on KDE or XFCE.
 - **0.13.1: security audit (November 2026)**; regression tests in `tests/test_hardening.py`
   (`AuditNovember2026Tests`), `test_present.py`, `test_vault.py` and `test_packaging.py`:
   - [x] `x509_hash` verifiers were shown with the first DNS name of a certificate nobody vouches for,

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Updates Atesta ID Wallet, and nothing else, from its signed APT repository. Installed by the .deb
+# as /usr/libexec/atesta-id-wallet/update; the wallet runs it with pkexec (Settings -> About ->
+# Update), and polkit asks for an administrator password with the message of
+# /usr/share/polkit-1/actions/io.github.citcomaihub.atestaidwallet.policy. Without a polkit agent
+# (some window managers) the wallet shows the same thing to type in a terminal:
+#   sudo /usr/libexec/atesta-id-wallet/update
+# It takes no arguments and ignores the caller's environment: what runs as root is fixed here.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+DEBIAN_FRONTEND=noninteractive
+LC_ALL=C.UTF-8
+export PATH DEBIAN_FRONTEND LC_ALL
+SOURCES=/etc/apt/sources.list.d/atesta-id-wallet.sources
+
+if [ "$(id -u)" != 0 ]; then
+    echo "Run it as root: sudo $0" >&2
+    exit 1
+fi
+if [ ! -f "$SOURCES" ]; then
+    echo "$SOURCES is missing: the wallet's repository was removed. Reinstall the .deb from the releases page." >&2
+    exit 2
+fi
+# Only this repository's lists are refreshed (the other lists are kept as they are), and apt checks
+# its signature with the key in Signed-By. A running unattended upgrade is waited for.
+apt-get update -q -o Dir::Etc::SourceList="$SOURCES" -o Dir::Etc::SourceParts=- \
+    -o APT::Get::List-Cleanup=0
+apt-get install -q -y --only-upgrade --no-install-recommends -o DPkg::Lock::Timeout=300 \
+    -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold atesta-id-wallet
+dpkg-query -W -f='${Version}\n' atesta-id-wallet

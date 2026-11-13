@@ -357,10 +357,14 @@ def cmd_check_update(*, install: bool = False) -> int:
         elif updates.install_pending():
             print(tr("✔ Installing version {version}…", version=release.version))
         return 0
+    if kind == "deb":  # APT installs it: nothing to download
+        print(tr("Version {version} is available (this is {current}). To install it now:\n  {command}",
+                 version=release.version, current=__version__,
+                 command=updates.DEB_UPDATE_COMMAND if updates.deb_updater_installed()
+                 else "sudo apt update && sudo apt upgrade"))
+        return 0
     print(tr("Version {version} is available (this is {current}). Download it from:\n  {url}",
              version=release.version, current=__version__, url=release.url))
-    if kind == "deb":
-        print(tr("With the .deb it arrives with the system updates ('sudo apt update && sudo apt upgrade')."))
     return 0
 
 

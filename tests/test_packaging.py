@@ -271,6 +271,91 @@ class SelfUpdateTests(unittest.TestCase):
                     self.assertEqual(updates.install_kind(), "deb")
 
 
+class DebUpdateTests(unittest.TestCase):
+    """.deb: the package's updater through pkexec, or the command to type where that is not possible."""
+
+    ROOT = Path(__file__).resolve().parent.parent
+
+    def setUp(self):
+        base.isolated_home(self)
+        i18n.set_language("es")  # cli.main() switches to the system language
+        self.addCleanup(i18n.set_language, "es")
+        self.addCleanup(setattr, updates, "install_kind", updates.install_kind)
+        updates.install_kind = lambda: "deb"
+        self.release = updates.Release("9.0.0", updates.RELEASES_PAGE + "/tag/v9.0.0")
+        self.installed = "9.0.0"
+
+    def run_updater(self, returncode, stderr="", pkexec=True):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            if argv[0].endswith("dpkg-query"):
+                return unittest.mock.Mock(returncode=0, stdout=self.installed, stderr="")
+            return unittest.mock.Mock(returncode=returncode, stdout="", stderr=stderr)
+
+        exists = Path.is_file
+        with unittest.mock.patch.object(updates.subprocess, "run", side_effect=run), \
+                unittest.mock.patch.object(Path, "is_file", lambda path: pkexec if str(path) == updates.PKEXEC
+                                           else exists(path)):
+            updates.install_deb_update(self.release)
+        return calls
+
+    def test_installs_through_pkexec_without_a_terminal(self):
+        calls = self.run_updater(0)
+        argv, kwargs = calls[0]
+        self.assertEqual(argv, ["/usr/bin/pkexec", "/usr/libexec/atesta-id-wallet/update"])  # no arguments
+        self.assertTrue(kwargs["start_new_session"])  # never a password prompt in a hidden terminal
+        self.assertIs(kwargs["stdin"], updates.subprocess.DEVNULL)
+        self.assertEqual(updates.relaunch_command(), ["/opt/atesta-id-wallet/atesta-id-wallet-gui"])
+
+    def test_terminal_update_gives_the_command(self):
+        fake_github(self, tag_name="v9.0.0", html_url=updates.RELEASES_PAGE + "/tag/v9.0.0")
+        self.addCleanup(setattr, cli, "FROZEN", cli.FROZEN)
+        self.addCleanup(setattr, updates, "deb_updater_installed", updates.deb_updater_installed)
+        cli.FROZEN = True
+        for installed, command in ((True, "sudo /usr/libexec/atesta-id-wallet/update"),
+                                   (False, "sudo apt update && sudo apt upgrade")):
+            updates.deb_updater_installed = lambda installed=installed: installed
+            out = io.StringIO()
+            with redirect_stdout(out):
+                self.assertEqual(cli.main(["update"]), 0)
+            self.assertIn(command, out.getvalue())
+            self.assertNotIn("releases/tag", out.getvalue())  # nothing to download from GitHub
+
+    def test_every_answer_of_pkexec(self):
+        with self.assertRaises(common.Cancelled):  # the password dialog was closed
+            self.run_updater(126)
+        with self.assertRaises(updates.NeedsTerminal):  # no polkit agent (i3, sway...)
+            self.run_updater(127, "Error creating textual authentication agent")
+        with self.assertRaises(updates.NeedsTerminal):  # pkexec not installed
+            self.run_updater(0, pkexec=False)
+        with self.assertRaisesRegex(common.WalletError, "Could not get lock"):
+            self.run_updater(100, "E: Could not get lock /var/lib/dpkg/lock-frontend")
+        self.installed = "0.13.1"  # GitHub says 9.0.0, APT does not have it yet
+        with self.assertRaisesRegex(common.WalletError, "9.0.0"):
+            self.run_updater(0)
+
+    def test_updater_policy_and_package_agree(self):
+        import xml.etree.ElementTree as ET
+
+        policy = ET.parse(self.ROOT / "packaging" / "deb" / "io.github.citcomaihub.atestaidwallet.policy").getroot()
+        action = policy.find("action")
+        exec_path = action.find("annotate[@key='org.freedesktop.policykit.exec.path']").text
+        self.assertEqual(exec_path, updates.DEB_UPDATER)
+        self.assertEqual(action.find("defaults/allow_active").text, "auth_admin_keep")  # never without a password
+        self.assertEqual({m.get("{http://www.w3.org/XML/1998/namespace}lang") for m in action.findall("message")},
+                         {None, "es", "da", "de", "fr", "lb"})
+        updater = (self.ROOT / "packaging" / "deb" / "update").read_text(encoding="utf-8")
+        self.assertNotRegex(updater, r'\$[1-9@*]')  # what runs as root takes nothing from the caller
+        self.assertIn("/etc/apt/sources.list.d/atesta-id-wallet.sources", updater)
+        self.assertIn("--only-upgrade", updater)
+        self.assertTrue(os.access(self.ROOT / "packaging" / "deb" / "update", os.X_OK))
+        build = (self.ROOT / "packaging" / "build_linux.sh").read_text(encoding="utf-8")
+        self.assertIn('"$pkg/usr/libexec/atesta-id-wallet/update"', build)
+        self.assertIn("pkexec | policykit-1", build)  # the package name changed in Debian 12 / Ubuntu 24.04
+
+
 class FrozenLauncherTests(unittest.TestCase):
     def setUp(self):
         self.addCleanup(setattr, desktop, "FROZEN", desktop.FROZEN)
@@ -382,6 +467,60 @@ class GuiPackagingTests(unittest.TestCase):
             buttons = [b.text() for b in window.settings_page.findChildren(QPushButton) if b.isVisibleTo(window)]
             self.assertNotIn("Descargar", buttons)
         browser.assert_not_called()
+
+
+    def deb_window(self):
+        self.addCleanup(setattr, updates, "install_kind", updates.install_kind)
+        self.addCleanup(setattr, updates, "deb_updater_installed", updates.deb_updater_installed)
+        updates.install_kind = lambda: "deb"
+        updates.deb_updater_installed = lambda: True
+        window = base.gui.MainWindow()
+        self.addCleanup(window.close)
+        window.available_release = updates.Release("9.0.0", updates.RELEASES_PAGE + "/tag/v9.0.0")
+        return window
+
+    def wait_for_update(self, window):
+        deadline = time.time() + 5
+        self.app.processEvents()
+        while window._downloading_update and time.time() < deadline:
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.app.processEvents()
+
+    def visible_buttons(self, window, parent=None):
+        from PySide6.QtWidgets import QPushButton
+
+        return {b.text(): b for b in (parent or window).findChildren(QPushButton) if b.isVisibleTo(window)}
+
+    def test_deb_updates_from_the_window_and_offers_a_restart(self):
+        window = self.deb_window()
+        window._go("settings")
+        update = self.visible_buttons(window, window.settings_page)["Actualizar"]
+        with unittest.mock.patch.object(updates, "install_deb_update") as install:
+            update.click()
+            self.wait_for_update(window)
+        install.assert_called_once_with(window.available_release)
+        self.assertEqual(window.update_ready, "9.0.0")
+        self.assertIn("Reiniciar", self.visible_buttons(window))
+
+    def test_deb_without_a_password_dialog_shows_the_command(self):
+        window = self.deb_window()
+        with unittest.mock.patch.object(updates, "install_deb_update",
+                                        side_effect=updates.NeedsTerminal("No authentication agent")):
+            window.install_deb_update()
+            self.wait_for_update(window)
+        copy = self.visible_buttons(window)["Copiar comando"]
+        copy.click()
+        self.assertEqual(base.QApplication.clipboard().text(), "sudo /usr/libexec/atesta-id-wallet/update")
+        self.assertIsNone(window.update_ready)
+
+    def test_deb_password_dialog_closed_is_not_an_error(self):
+        window = self.deb_window()
+        with unittest.mock.patch.object(updates, "install_deb_update", side_effect=common.Cancelled()):
+            window.install_deb_update()
+            self.wait_for_update(window)
+        self.assertNotIn("Cerrar", self.visible_buttons(window))
+        self.assertIsNone(window.update_ready)
 
 
 if __name__ == "__main__":

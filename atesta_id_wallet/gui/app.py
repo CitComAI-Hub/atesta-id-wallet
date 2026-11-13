@@ -1181,7 +1181,11 @@ class MainWindow(QMainWindow):
             self.settings_page.refresh()
         if automatic:
             self.toast.show_message(tr("Version {version} is available: see Settings", version=result.version), 6000)
-        elif updates.install_kind() == "deb":  # nothing to download: APT installs it
+        elif updates.deb_updater_installed():  # APT installs it, after the system asks for the password
+            self._confirm(tr("Version {version} is available", version=result.version),
+                          esc(tr("The system will ask for an administrator password to install it.")),
+                          self.install_deb_update, confirm_text=tr("Update"), icon="download")
+        elif updates.install_kind() == "deb":  # a .deb older than its updater: nothing to download
             self._result(True, tr("Version {version} is available", version=result.version), esc(self.release_hint()),
                          icon="download", tone="accent")
         else:
@@ -1211,8 +1215,47 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=work, daemon=True).start()
 
+    def install_deb_update(self) -> None:
+        """.deb: the package manager installs the new version (packaging/deb/update, through pkexec)."""
+        release = self.available_release
+        if release is None or self._downloading_update:
+            return
+        self._downloading_update = True
+        self.toast.show_message(tr("Updating to version {version}…", version=release.version))
+
+        def work() -> None:
+            error: Exception | None = None
+            try:
+                updates.install_deb_update(release)
+            except (OSError, WalletError) as exc:
+                error = exc
+            self.bridge.update_downloaded.emit(release, error, False)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _deb_update_in_terminal(self, release: updates.Release, error: Exception) -> None:
+        """No password dialog on this desktop (no pkexec or polkit agent): the command to type."""
+        def copy() -> None:
+            QGuiApplication.clipboard().setText(updates.DEB_UPDATE_COMMAND)
+            self.toast.show_message(tr("Command copied"))
+
+        self._result(False, tr("Could not update to version {version}", version=release.version),
+                     esc(tr("This desktop cannot ask for the administrator password from the wallet. Open a "
+                            "terminal and run:")) + f"<br><br><b>{esc(updates.DEB_UPDATE_COMMAND)}</b>",
+                     details=str(error), icon="download", tone="warn", action=(tr("Copy command"), copy))
+
     def _on_update_downloaded(self, release: updates.Release, error: Any, automatic: bool) -> None:
         self._downloading_update = False
+        if isinstance(error, Cancelled):  # the password dialog was closed
+            if self._page_name == "settings":
+                self.settings_page.refresh()
+            return
+        if isinstance(error, updates.NeedsTerminal):
+            self._deb_update_in_terminal(release, error)
+            return
+        if error is not None and updates.install_kind() == "deb":
+            self._result(False, tr("Could not update to version {version}", version=release.version), esc(error))
+            return
         if error is not None:
             common.debug(f"Update download failed: {error}")
             if not automatic:

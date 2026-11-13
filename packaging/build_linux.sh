@@ -76,7 +76,8 @@ APPRUN
 build_deb() {
     local pkg="$WORK/deb"
     mkdir -p "$pkg/DEBIAN" "$pkg/opt" "$pkg/usr/bin" "$pkg/usr/share/applications" \
-             "$pkg/usr/share/icons/hicolor/256x256/apps" "$pkg/usr/share/keyrings" "$pkg/etc/apt/sources.list.d"
+             "$pkg/usr/share/icons/hicolor/256x256/apps" "$pkg/usr/share/keyrings" "$pkg/etc/apt/sources.list.d" \
+             "$pkg/usr/libexec/atesta-id-wallet" "$pkg/usr/share/polkit-1/actions"
     cp -a "$BUNDLE" "$pkg/opt/atesta-id-wallet"
     ln -s /opt/atesta-id-wallet/atesta-id-wallet "$pkg/usr/bin/atesta-id-wallet"
     ln -s /opt/atesta-id-wallet/atesta-id-wallet-gui "$pkg/usr/bin/atesta-id-wallet-gui"
@@ -92,6 +93,10 @@ Suites: ./
 Signed-By: /usr/share/keyrings/atesta-id-wallet-archive-keyring.gpg
 SOURCES
     echo /etc/apt/sources.list.d/atesta-id-wallet.sources > "$pkg/DEBIAN/conffiles"
+    # Settings -> About -> Update: this package's own updater, run with pkexec; polkit asks for an
+    # administrator password with the message of the policy (packaging/deb/).
+    install -m 755 "$ROOT/packaging/deb/update" "$pkg/usr/libexec/atesta-id-wallet/update"
+    install -m 644 "$ROOT/packaging/deb/io.github.citcomaihub.atestaidwallet.policy" "$pkg/usr/share/polkit-1/actions/"
     # Only what PyInstaller leaves out of the bundle: libc and the graphics driver (EGL). The X11/xcb,
     # xkbcommon and fontconfig libraries are inside /opt/atesta-id-wallet/_internal.
     cat > "$pkg/DEBIAN/control" <<CONTROL
@@ -101,7 +106,7 @@ Architecture: amd64
 Maintainer: $MAINTAINER
 Installed-Size: $(du -sk "$pkg" | cut -f1)
 Depends: libc6 (>= 2.35), libegl1
-Recommends: wl-clipboard | xclip
+Recommends: wl-clipboard | xclip, pkexec | policykit-1
 Section: utils
 Priority: optional
 Homepage: https://github.com/CitComAI-Hub/atesta-id-wallet

@@ -36,7 +36,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from . import storage
-from .common import WalletError, __version__, _json, debug
+from .common import Cancelled, WalletError, __version__, _json, debug
 from .i18n import tr
 from .storage import load_settings, save_settings
 
@@ -52,6 +52,13 @@ MAX_DOWNLOAD = 400 * 1024 * 1024
 FROZEN = bool(getattr(sys, "frozen", False))
 SELF_UPDATING = ("appimage", "windows-installer")
 VERSION_TAG = re.compile(r"v?\d{1,4}(\.\d{1,4}){1,3}")
+# .deb: the package's own updater (packaging/deb/update), run as root through pkexec; polkit asks for
+# an administrator password (packaging/deb/*.policy). Without pkexec or a polkit agent (some window
+# managers), the same command is shown to type in a terminal.
+DEB_FOLDER = Path("/opt/atesta-id-wallet")
+DEB_UPDATER = "/usr/libexec/atesta-id-wallet/update"
+DEB_UPDATE_COMMAND = f"sudo {DEB_UPDATER}"
+PKEXEC = "/usr/bin/pkexec"
 
 
 @dataclass(frozen=True)
@@ -147,7 +154,7 @@ def install_kind() -> str:
     if sys.platform.startswith("linux"):
         if os.environ.get("APPIMAGE"):
             return "appimage"
-        if folder == Path("/opt/atesta-id-wallet"):
+        if folder == DEB_FOLDER:
             return "deb"
     return "other"
 
@@ -294,6 +301,61 @@ def install_pending() -> bool:
 
 def relaunch_command() -> list[str] | None:
     """Command that starts the (already replaced) application again, or None."""
-    if install_kind() == "appimage":
+    kind = install_kind()
+    if kind == "appimage":
         return [os.environ["APPIMAGE"]]
+    if kind == "deb":
+        return [str(DEB_FOLDER / "atesta-id-wallet-gui")]
     return None
+
+
+# -- .deb: through the system's package manager -------------------------------
+
+class NeedsTerminal(WalletError):
+    """No graphical password prompt here (no pkexec, or no polkit agent): DEB_UPDATE_COMMAND does it."""
+
+
+def deb_updater_installed() -> bool:
+    """The .deb has its updater (0.13.2 onwards; older ones are updated with apt)."""
+    return install_kind() == "deb" and Path(DEB_UPDATER).is_file()
+
+
+def installed_deb_version() -> str:
+    try:
+        result = subprocess.run(["/usr/bin/dpkg-query", "-W", "-f=${Version}", "atesta-id-wallet"],
+                                capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def install_deb_update(release: Release) -> None:
+    """
+    Installs the new version from the project's APT repository (packaging/deb/update), after the
+    system asks for an administrator password. Cancelled if the user closes that dialog;
+    NeedsTerminal if there is no way to ask here; WalletError if apt fails or the repository does
+    not have the version yet (GitHub marks a release as the latest before APT is deployed).
+    """
+    if not Path(PKEXEC).is_file():
+        raise NeedsTerminal(tr("pkexec is not installed."))
+    try:
+        # A new session, without the terminal the window may have been started from: pkexec would
+        # ask for the password there, out of sight, instead of failing over to the terminal hint.
+        result = subprocess.run([PKEXEC, DEB_UPDATER], capture_output=True, text=True, timeout=30 * 60,
+                                stdin=subprocess.DEVNULL, start_new_session=True)
+    except subprocess.TimeoutExpired:
+        raise WalletError(tr("The update took too long and was stopped.")) from None
+    except OSError as exc:
+        raise NeedsTerminal(str(exc)) from None
+    output = (result.stderr or result.stdout or "").strip()
+    debug(f"{DEB_UPDATER}: exit {result.returncode}: {output[-500:]}")
+    if result.returncode == 126:  # the user closed the password dialog
+        raise Cancelled()
+    if result.returncode == 127:  # no polkit agent, or not authorised
+        raise NeedsTerminal(output.splitlines()[-1] if output else "pkexec")
+    if result.returncode != 0:
+        raise WalletError(tr("The update could not be installed: {error}",
+                             error=(output.splitlines() or [str(result.returncode)])[-1]))
+    if parse_version(installed_deb_version()) < parse_version(release.version):
+        raise WalletError(tr("Version {version} is not in the system's repository yet; try again later.",
+                             version=release.version))

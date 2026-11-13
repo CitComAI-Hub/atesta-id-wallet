@@ -269,6 +269,15 @@ Names published by issuers are reduced to one short line of text before they are
   not for the rest of the system. The repository is only built from a `.deb` listed in the
   release's signed `SHA256SUMS` (`packaging/verify_release.py`), the same rule as the automatic
   updates, since APT installs it as root.
+- *Update* in the window of a `.deb` installation runs the package's own updater,
+  `/usr/libexec/atesta-id-wallet/update`, through `pkexec`. polkit asks for an administrator
+  password (`auth_admin_keep`, action `io.github.citcomaihub.atestaidwallet.update`, with its own
+  message). The updater is root-owned, takes no arguments and ignores the caller's environment: it
+  refreshes only the wallet's repository and upgrades only `atesta-id-wallet`, with APT checking
+  the signature as for any update. The wallet gains no rights it did not have: the same password
+  could run `sudo apt upgrade`. `pkexec` runs in a new session without the terminal the window may
+  have been started from, so the password is never asked for out of sight; without a polkit agent
+  (or without `pkexec`), the wallet shows the command to type in a terminal instead.
 - **What goes into a build is pinned**: the Python packages with their hashes
   (`packaging/requirements-release.txt`, `requirements-sign.txt`, checked by `pip-audit` in CI) and
   the GitHub actions by commit SHA, so neither a new upload to PyPI nor a moved tag of an action
