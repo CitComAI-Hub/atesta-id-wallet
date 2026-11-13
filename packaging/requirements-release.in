@@ -1,0 +1,6 @@
+# Release builds (.github/workflows/release.yml): the wallet's dependencies (pyproject.toml, with the
+# GUI) and PyInstaller, pinned with hashes in requirements-release.txt. Regenerate after changing
+# either (docs/RELEASING.md):
+#   uv pip compile pyproject.toml --extra gui packaging/requirements-release.in --universal \
+#     --python-version 3.12 --generate-hashes -o packaging/requirements-release.txt
+pyinstaller==6.22.3

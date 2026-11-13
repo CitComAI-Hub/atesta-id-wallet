@@ -1,0 +1,5 @@
+# Signing and checking SHA256SUMS in the workflows that hold the release keys (release.yml, apt.yml):
+# only 'cryptography', pinned with hashes in requirements-sign.txt (docs/RELEASING.md):
+#   uv pip compile packaging/requirements-sign.in --universal --python-version 3.12 --generate-hashes \
+#     -o packaging/requirements-sign.txt
+cryptography==50.0.2

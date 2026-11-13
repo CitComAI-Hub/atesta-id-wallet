@@ -157,8 +157,37 @@ the full manual Windows test and the CITCOM verifier trust list.
   project's signed APT repository on GitHub Pages. Only files in a `SHA256SUMS` signed with the
   release key (Ed25519, `UPDATE_PUBLIC_KEY`) are installed; no downgrades, no replayed lists.
   0.12.0 and older have to install 0.13.0 by hand once. Still to check by hand: the first real
-  update (0.13.0 → 0.13.1) on Windows and with the AppImage. Possible next step: the release
-  secrets in an environment with a required reviewer.
+  update (0.13.0 → 0.13.1) on Windows and with the AppImage.
+- **Security audit (November 2026, after 0.13.0)**; regression tests in `tests/test_hardening.py`
+  (`AuditNovember2026Tests`), `test_present.py`, `test_vault.py` and `test_packaging.py`:
+  - [x] `x509_hash` verifiers were shown with the first DNS name of a certificate nobody vouches for,
+        and could send the data anywhere: a self-signed certificate naming the marketplace showed
+        "marketplace… is asking for your data" (amber, like a real first visit) and posted to
+        another host. Now shown as the host of `response_uri`, which must be one of the
+        certificate's DNS names when it has any.
+  - [x] `x509_san_dns` verifiers vouched for by a trusted CA could send the data to any host; now
+        bound to their DNS name like the others. CITCOM's verifier (Let's Encrypt, not trusted) was
+        already bound and is unaffected.
+  - [x] A signed request object must carry its `client_id` (the QR code's one was enough before).
+        FIWARE VCVerifier, used by CITCOM, always includes it.
+  - [x] APT repository: `apt.yml` signed whatever `.deb` the release had; now only one listed in the
+        signed `SHA256SUMS` (`packaging/verify_release.py`), like the automatic updates.
+  - [x] Release builds: Python packages pinned with hashes (`packaging/requirements-*.txt`,
+        `pip-audit` on them), actions pinned by commit SHA, signing job in the `release` environment.
+        **To do by hand once**: required reviewers and the secrets moved into the environments
+        (docs/RELEASING.md).
+  - [x] Trusted CAs encrypted and authenticated like the rest of the profile (`*.pem.enc`); plain
+        files of older versions migrated once, planted ones ignored.
+  - [x] Changing the wallet password replaces the data key and re-encrypts the profile (resumed at
+        the next unlock if interrupted).
+  - [x] "Not this computer or the local network" recognises every spelling of an address (`127.1`,
+        `0x7f000001`, `localhost.`...) and every non-public range.
+  - [x] Release versions must be digits and dots before they are used in file names; PowerShell by
+        full path on Windows; a missing credential is matched against issuer catalogs kept at
+        issuance instead of asking every known issuer.
+  - [ ] Not changed: the pending Windows installer is checked against its recorded checksum, not
+        the signature again (same-user attacker, who could replace the program folder anyway;
+        re-checking the signature would also break the CI test of the update). See SECURITY.md.
 
 ## Next: roadmap to the pilot (TRL 6)
 

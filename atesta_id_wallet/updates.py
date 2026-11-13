@@ -51,6 +51,7 @@ SUMS, SIGNATURE = "SHA256SUMS", "SHA256SUMS.sig"
 MAX_DOWNLOAD = 400 * 1024 * 1024
 FROZEN = bool(getattr(sys, "frozen", False))
 SELF_UPDATING = ("appimage", "windows-installer")
+VERSION_TAG = re.compile(r"v?\d{1,4}(\.\d{1,4}){1,3}")
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,9 @@ def latest_release(timeout: float = 10) -> Release:
         raise WalletError(tr("GitHub is limiting requests from this network; try again in an hour."))
     data = _json(response, "GET", LATEST_API)
     tag = str(data.get("tag_name") or "")
+    # The version goes into file names and paths (asset_name): digits and dots only.
+    if not VERSION_TAG.fullmatch(tag):
+        raise WalletError(tr("Version {version} is not newer than this one.", version=tag[:40]))
     url = str(data.get("html_url") or "")
     # Only a page under the project's releases is opened in the browser, never another address.
     if not url.startswith(RELEASES_PAGE + "/"):
@@ -211,7 +215,7 @@ def download_update(release: Release, kind: str | None = None) -> Path:
     AppImage: replaced right away (the next launch is the new version). Windows: the installer
     waits in updates/ for install_pending() (window restart or next start)."""
     kind = kind or install_kind()
-    if parse_version(release.version) <= parse_version(__version__):
+    if not VERSION_TAG.fullmatch(release.version) or parse_version(release.version) <= parse_version(__version__):
         raise WalletError(tr("Version {version} is not newer than this one.", version=release.version))
     name = asset_name(kind, release.version)
     checksums = verify_checksums(_download_bytes(release.asset_url(SUMS)),

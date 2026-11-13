@@ -197,6 +197,30 @@ class SelfUpdateTests(unittest.TestCase):
         with self.assertRaises(common.WalletError):
             updates.download_update(self.release(), "appimage")
 
+    def test_apt_workflow_checks_the_same_signature(self):
+        """packaging/verify_release.py (apt.yml) accepts what the wallets accept, and nothing else."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "verify_release", Path(__file__).resolve().parent.parent / "packaging" / "verify_release.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        root = self.home / "root"
+        (root / "atesta_id_wallet").mkdir(parents=True)
+        (root / "atesta_id_wallet" / "updates.py").write_text(
+            f'UPDATE_PUBLIC_KEY = "{updates.UPDATE_PUBLIC_KEY}"\n', encoding="utf-8")
+        module.ROOT = root
+        sums, sig = self.home / updates.SUMS, self.home / updates.SIGNATURE
+        sums.write_bytes(self.files[updates.SUMS])
+        sig.write_bytes(self.files[updates.SIGNATURE])
+        with unittest.mock.patch.object(sys, "argv", ["verify_release.py", str(sums)]), \
+                redirect_stdout(io.StringIO()), unittest.mock.patch.object(sys, "stderr", io.StringIO()):
+            self.assertEqual(module.main(), 0)
+            sums.write_bytes(self.files[updates.SUMS] + b"0" * 64 + b"  evil.deb\n")  # a file added by hand
+            self.assertEqual(module.main(), 1)
+            sig.unlink()
+            self.assertEqual(module.main(), 1)
+
     def test_older_version_and_other_hosts_are_refused(self):
         with self.assertRaises(common.WalletError):
             updates.download_update(self.release("0.0.1"), "appimage")

@@ -9,6 +9,27 @@ Linux and Windows, `ruff` (bug-class rules only, `[tool.ruff]` in `pyproject.tom
 the same workflow first, so nothing is built or published if a check fails. Dependabot proposes
 dependency and action updates every week (`.github/dependabot.yml`).
 
+What goes into a release is pinned, because the result is signed for the automatic updates:
+
+- **Python packages**: the builds install `packaging/requirements-release.txt` (the wallet's
+  dependencies with the GUI, and PyInstaller) with `pip install --require-hashes`, and the jobs that
+  sign or check signatures install `packaging/requirements-sign.txt` (only `cryptography`) the same
+  way. A new upload to PyPI never reaches a release by itself. `checks.yml` runs `pip-audit` on both
+  files. To update them (after changing `pyproject.toml`, or when `pip-audit` reports a
+  vulnerability), with [uv](https://docs.astral.sh/uv/):
+
+  ```bash
+  uv pip compile pyproject.toml --extra gui packaging/requirements-release.in --universal \
+    --python-version 3.12 --generate-hashes -o packaging/requirements-release.txt
+  uv pip compile packaging/requirements-sign.in --universal --python-version 3.12 --generate-hashes \
+    -o packaging/requirements-sign.txt
+  ```
+
+  The tests in `checks.yml` still install the newest versions allowed by `pyproject.toml`, so a
+  breaking upstream change shows up there before the release files are updated.
+- **GitHub actions**: by commit SHA, with the tag in a comment (`@<sha>  # v7`). A tag can be moved
+  by whoever controls the action's repository; a commit cannot. Dependabot updates both.
+
 ## What a release contains
 
 | File | Built with | Notes |
@@ -73,10 +94,23 @@ keep a backup somewhere safe and offline):
 
 The installed applications only install a file listed in a `SHA256SUMS` signed by
 `UPDATE_SIGNING_KEY`, and APT only accepts the repository signed by `APT_SIGNING_KEY`: files uploaded to a
-release by hand or changed after the build are never installed. Anyone who can push a `v*` tag
-still gets the workflow to sign it; moving both secrets to an environment with a required
-reviewer would add a second pair of eyes. The `publish` and
-`apt` jobs fail if a secret is missing or does not match the public key in git.
+release by hand or changed after the build are never installed. `apt.yml` checks `SHA256SUMS.sig`
+(`packaging/verify_release.py`) before it signs the `.deb` into the APT repository, so the same
+holds for `.deb` installations. The `publish` and `apt` jobs fail if a secret is missing or does
+not match the public key in git.
+
+**Required reviewer (once).** The `publish` job runs in the environment `release`. Without
+protection, anyone who can push a `v*` tag gets a build signed. In *Settings → Environments*:
+
+1. Create `release` (the first tagged run creates it, unprotected, if it does not exist), tick
+   **Required reviewers** and add the maintainers; under *Deployment branches and tags* allow only
+   tags `v*`.
+2. Move `UPDATE_SIGNING_KEY` from the repository secrets to the secrets of `release`.
+3. In `github-pages` (used by `apt.yml`), add `APT_SIGNING_KEY` as an environment secret, tick
+   **Required reviewers** too, and delete both secrets from the repository secrets.
+
+From then on a tag builds and tests everything, and waits on the run page for a reviewer to approve
+the signing and the publication.
 
 Also once: *Settings → Pages → Source: GitHub Actions*, and in *Settings → Environments →
 github-pages*, add a rule of type **Tag** `v*` to the allowed deployment branches and tags (by

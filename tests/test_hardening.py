@@ -202,7 +202,7 @@ class StorageRobustnessTests(unittest.TestCase):
         second = storage.add_trusted_ca(folder_b / "ca.pem")
         self.assertNotEqual(first, second)
         self.assertEqual(storage.add_trusted_ca(folder_a / "ca.pem"), first)  # the same one: not duplicated
-        self.assertEqual(len(list(storage.TRUST_DIR.glob("*.pem"))), 2)
+        self.assertEqual(len(list(storage.TRUST_DIR.glob("*.pem.enc"))), 2)
         (self.home / "bad.pem").write_text("no")
         with self.assertRaises(common.WalletError):
             storage.add_trusted_ca(self.home / "bad.pem")
@@ -769,3 +769,55 @@ class SecondReviewTests(unittest.TestCase):
                 mock.patch.object(status, "check", side_effect=ValueError("bad list")):
             self.assertEqual(status.refresh(None, [record], failed=failed), [])
         self.assertEqual(failed, [record])
+
+
+class AuditNovember2026Tests(unittest.TestCase):
+    """Regressions from the security audit of November 2026 (0.13.0)."""
+
+    def setUp(self):
+        base.isolated_home(self)
+
+    def test_every_spelling_of_a_local_address(self):
+        for host in ("localhost.", "127.1", "2130706433", "0x7f000001", "100.64.0.1", "::ffff:127.0.0.1",
+                     "224.0.0.1", "0.0.0.0", "fe80::1", "10.1.2.3", "[::1]"):
+            self.assertTrue(common.is_local_host(host), host)
+        for host in ("8.8.8.8", "example.org", "keycloak.pgtec-vrain-dataspace.eu", "2001:4860::1", "1e100.net"):
+            self.assertFalse(common.is_local_host(host), host)
+
+    def test_release_version_is_only_digits_and_dots(self):
+        from atesta_id_wallet import updates
+
+        def answer(tag):
+            response = mock.Mock(status_code=200, headers={})
+            response.json.return_value = {"tag_name": tag, "html_url": updates.RELEASES_PAGE, "assets": []}
+            return response
+
+        with mock.patch.object(updates.requests, "get", return_value=answer("v99.1.0")):
+            self.assertEqual(updates.latest_release().version, "99.1.0")
+        for tag in ("v99.0.0/../../x", "99.0.0-evil", "v99", "99.0.0 "):
+            with mock.patch.object(updates.requests, "get", return_value=answer(tag)):
+                with self.assertRaises(common.WalletError, msg=tag):
+                    updates.latest_release()
+        with self.assertRaises(common.WalletError):
+            updates.download_update(updates.Release("99.0.0/../x", updates.RELEASES_PAGE), "appimage")
+
+    def test_missing_credential_is_matched_without_contacting_the_issuers(self):
+        meta = {"credential_configurations_supported": {"LegalPersonCredential": {"vct": "LegalPerson"}},
+                "display": [{"name": "City"}]}
+        storage.save_config({"issuers": {"https://i.example": {"catalog": vci._catalog(meta, "https://i.example")},
+                                         "https://j.example": {}}})
+        session = mock.Mock()
+        session.get.side_effect = AssertionError("an issuer was contacted")
+        self.assertEqual(vci.known_issuer_for(session, ["LegalPerson"]),
+                         ("https://i.example", "LegalPersonCredential", "City"))
+        # An issuer used before the catalog existed is asked once, and its answer kept.
+        with mock.patch.object(vci, "_get_first_json", return_value=meta) as fetch:
+            self.assertIsNone(vci.known_issuer_for(session, ["Other"]))
+            self.assertIsNone(vci.known_issuer_for(session, ["Other"]))
+        self.assertEqual(fetch.call_count, 1)
+        self.assertIn("catalog", storage.load_config()["issuers"]["https://j.example"])
+
+    def test_windows_clipboard_runs_powershell_by_full_path(self):
+        with mock.patch.object(desktop.sys, "platform", "win32"), mock.patch.dict(os.environ, {"SystemRoot": r"C:\Win"}):
+            program = desktop._clipboard_commands()[0][0]
+        self.assertTrue(program.endswith("powershell.exe") and "Win" in program, program)

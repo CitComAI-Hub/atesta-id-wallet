@@ -8,6 +8,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 import sys
 from typing import Any, Callable
 from urllib.parse import SplitResult, quote, unquote, urlsplit
@@ -160,14 +161,21 @@ def site_of(url: str) -> str:
 
 def is_local_host(host: str | None) -> bool:
     """This computer or the local network: localhost, loopback, private and link-local addresses."""
-    host = (host or "").lower().strip("[]")
+    host = (host or "").lower().strip("[]").rstrip(".")  # "localhost." is localhost too
     if host == "localhost" or host.endswith(".localhost"):
         return True
     try:
-        address = ipaddress.ip_address(host)
+        address: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(host)
     except ValueError:
-        return False
-    return address.is_loopback or address.is_private or address.is_link_local or address.is_unspecified
+        # The other spellings the resolver accepts for an IPv4 address: 127.1, 2130706433, 0x7f000001.
+        if not re.fullmatch(r"(0x[0-9a-f]+|\d+)(\.(0x[0-9a-f]+|\d+)){0,3}", host):
+            return False
+        try:
+            address = ipaddress.IPv4Address(socket.inet_aton(host))
+        except OSError:
+            return False
+    # Not only private ranges: also shared (100.64/10), reserved, multicast and IPv4-mapped addresses.
+    return not address.is_global or address.is_multicast or address.is_reserved or address.is_unspecified
 
 
 def local_http_allowed() -> bool:

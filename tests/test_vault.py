@@ -119,6 +119,64 @@ class PasswordTests(VaultTestCase):
         self.assertEqual(storage.vault_state(), "open")
         self.assertEqual(len(storage.load_credentials()), 1)
 
+    def test_changing_the_password_replaces_the_data_key(self):
+        """An old vault.json and the old password do not open what is written afterwards (audit, Nov 2026)."""
+        self.store_something()
+        vault.set_password(storage.DATA_DIR, PASSWORD)
+        old_vault = (storage.DATA_DIR / vault.VAULT_FILE).read_bytes()
+        vault.set_password(storage.DATA_DIR, "another long password")
+        self.assertNotIn("previous_key", vault.load_meta(storage.DATA_DIR))
+        vault.lock()
+        storage.unlock("another long password")
+        self.assertEqual(len(storage.load_credentials()), 1)
+        self.assertEqual(storage.load_config()["issuers"]["https://issuer.example"]["username"], "alice")
+        # Someone kept the old vault.json and knows the old password.
+        current = (storage.DATA_DIR / vault.VAULT_FILE).read_bytes()
+        (storage.DATA_DIR / vault.VAULT_FILE).write_bytes(old_vault)
+        vault.lock()
+        vault.unlock(storage.DATA_DIR, PASSWORD)
+        with self.assertRaises(common.WalletError):
+            storage.read_secret(storage.KEY_FILE)
+        (storage.DATA_DIR / vault.VAULT_FILE).write_bytes(current)
+
+    def test_an_interrupted_key_change_is_finished_at_the_next_unlock(self):
+        self.store_something()
+        vault.set_password(storage.DATA_DIR, PASSWORD)
+        finish = vault._finish_rotation
+        vault._finish_rotation = lambda *args: None  # the process stops before re-encrypting the files
+        try:
+            vault.set_password(storage.DATA_DIR, "another long password")
+        finally:
+            vault._finish_rotation = finish
+        self.assertIn("previous_key", vault.load_meta(storage.DATA_DIR))
+        vault.lock()
+        storage.unlock("another long password")
+        self.assertNotIn("previous_key", vault.load_meta(storage.DATA_DIR))
+        vault._previous.clear()
+        self.assertEqual(len(storage.load_credentials()), 1)
+        self.assertEqual(len(storage.load_history()), 1)
+
+    def test_trusted_cas_are_encrypted_and_planted_ones_ignored(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        from atesta_id_wallet import trust
+
+        def pem(name):
+            return base.make_cert(ec.generate_private_key(ec.SECP256R1()), name, ca=True).public_bytes(
+                serialization.Encoding.PEM)
+
+        # A CA left in clear text by an older version is kept, encrypted.
+        storage.ensure_data_dir(storage.TRUST_DIR)
+        (storage.TRUST_DIR / "old.pem").write_bytes(pem("Old CA"))
+        self.assertEqual([c.subject.rfc4514_string() for c in trust.load_trust_anchors()], ["CN=Old CA"])
+        self.assertEqual([p.name for p in storage.TRUST_DIR.iterdir()], ["old.pem.enc"])
+        self.assertTrue((storage.TRUST_DIR / "old.pem.enc").read_bytes().startswith(vault.FILE_MAGIC))
+        # After that, a certificate dropped into the folder is not believed.
+        (storage.TRUST_DIR / "planted.pem").write_bytes(pem("Planted CA"))
+        (storage.TRUST_DIR / "planted.pem.enc").write_bytes(pem("Planted CA"))
+        self.assertEqual([c.subject.rfc4514_string() for c in trust.load_trust_anchors()], ["CN=Old CA"])
+
     def test_short_password_is_refused(self):
         with self.assertRaisesRegex(common.WalletError, "al menos 12"):
             vault.set_password(storage.DATA_DIR, "eleven chrs")

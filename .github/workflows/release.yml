@@ -16,9 +16,8 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.12"
-  PYINSTALLER_VERSION: "6.22.3"
+  # PyInstaller and cryptography (signing) are pinned with hashes in packaging/requirements-*.txt.
   CYCLONEDX_VERSION: "7.6.0"
-  CRYPTOGRAPHY_VERSION: "50.0.2"
 
 jobs:
   test:
@@ -29,8 +28,8 @@ jobs:
     # The oldest supported one: the AppImage and the .deb need glibc >= 2.35.
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Qt libraries (bundled into the AppImage)
@@ -38,7 +37,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
             libxcb-keysyms1 libxcb-render-util0 libxcb-shape0
-      - run: pip install ".[gui]" "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
+      # Exact versions with hashes (packaging/requirements-release.txt): what goes into the build is
+      # signed for the automatic updates, so a new upload to PyPI must not slip in by itself.
+      - run: |
+          pip install --require-hashes -r packaging/requirements-release.txt
+          pip install --no-deps --no-build-isolation .
       - run: pyinstaller --noconfirm packaging/atesta-id-wallet.spec
       - name: Smoke test (bundle)
         env:
@@ -67,7 +70,7 @@ jobs:
           ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-deb" atesta-id-wallet-gui --smoke-test
           ATESTA_ID_WALLET_HOME="$RUNNER_TEMP/wallet-deb" atesta-id-wallet --version
           sudo apt-get remove -y atesta-id-wallet
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: linux
           path: dist/release/*
@@ -77,11 +80,15 @@ jobs:
     needs: test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: pip install ".[gui]" "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
+      # Exact versions with hashes (packaging/requirements-release.txt): what goes into the build is
+      # signed for the automatic updates, so a new upload to PyPI must not slip in by itself.
+      - run: |
+          pip install --require-hashes -r packaging/requirements-release.txt
+          pip install --no-deps --no-build-isolation .
       - run: pyinstaller --noconfirm packaging/atesta-id-wallet.spec
       - name: Smoke test (bundle)
         env:
@@ -159,7 +166,7 @@ jobs:
           # The uninstaller relaunches itself from %TEMP%: -Wait returns before it is done.
           for ($i = 0; $i -lt 60 -and (Test-Path "HKCU:\Software\Classes\openid4vp"); $i++) { Start-Sleep 1 }
           if (Test-Path "HKCU:\Software\Classes\openid4vp") { throw "Link handler left after uninstalling" }
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: windows
           path: dist/release/*
@@ -169,15 +176,18 @@ jobs:
     if: github.ref_type == 'tag'
     needs: [linux, windows]
     runs-on: ubuntu-latest
+    # The signing key (UPDATE_SIGNING_KEY) is a secret of this environment, which requires a reviewer:
+    # pushing a tag alone does not get a build signed (docs/RELEASING.md).
+    environment: release
     permissions:
       contents: write
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           path: source
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
         with:
           path: release
           merge-multiple: true
@@ -191,11 +201,11 @@ jobs:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           python3 -m venv "$RUNNER_TEMP/sign"
-          "$RUNNER_TEMP/sign/bin/pip" install --quiet "cryptography==${{ env.CRYPTOGRAPHY_VERSION }}"
+          "$RUNNER_TEMP/sign/bin/pip" install --quiet --require-hashes -r source/packaging/requirements-sign.txt
           "$RUNNER_TEMP/sign/bin/python" source/packaging/sign_release.py release/SHA256SUMS
       # Signed provenance (Sigstore): 'gh attestation verify FILE --repo CitComAI-Hub/atesta-id-wallet'.
       # GitHub only offers it on public repositories (or private ones with Enterprise Cloud).
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4
         if: ${{ !github.event.repository.private }}
         with:
           subject-path: release/*

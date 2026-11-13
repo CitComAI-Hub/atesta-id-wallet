@@ -37,6 +37,8 @@ MIN_PASSWORD = 12
 SCRYPT = {"n": 2**15, "r": 8, "p": 1}
 
 _keys: dict[Path, bytes] = {}  # unlocked data keys, by profile folder
+# The data key replaced by set_password(), while the files are re-encrypted with the new one.
+_previous: dict[Path, bytes] = {}
 
 
 class Locked(WalletError):
@@ -178,6 +180,7 @@ def unlock(profile: Path, password: str | None = None) -> None:
         if len(key) != 32:  # AESGCM would fail later, on the first file, with an error nobody understands
             raise WalletError(tr("{path} is damaged: {error}", path=KEYRING_SERVICE, error="key"))
         _keys[profile] = key
+        _resume_rotation(profile, meta)
         return
     if password is None:
         raise Locked()
@@ -187,13 +190,16 @@ def unlock(profile: Path, password: str | None = None) -> None:
         _keys[profile] = AESGCM(kek).decrypt(blob[:12], blob[12:], meta["id"].encode("ascii"))
     except InvalidTag as exc:
         raise WrongPassword() from exc
+    _resume_rotation(profile, meta)
 
 
 def lock(profile: Path | None = None) -> None:
     if profile is None:
         _keys.clear()
+        _previous.clear()
     else:
         _keys.pop(profile, None)
+        _previous.pop(profile, None)
 
 
 def is_open(profile: Path) -> bool:
@@ -213,17 +219,62 @@ def is_open(profile: Path) -> bool:
 
 
 def set_password(profile: Path, password: str | None) -> None:
-    """Protects the (unlocked) data key with a new password, or moves it to the keyring (None)."""
-    key = _key(profile)
+    """
+    Protects the profile with a new password, or moves its key to the keyring (None). The data key
+    is replaced too, and every file re-encrypted with the new one: a copy of the old vault.json and
+    the old password (one that leaked, the reason to change it) must not open the files written
+    from now on.
+    """
+    old_key = _key(profile)
     meta = load_meta(profile)
     if meta is None:  # _key has just created it
         raise Locked()
     if password is None and not keyring_available():
         raise PasswordNeeded()
-    new = _protect(meta["id"], key, password)
+    if password is None and meta["mode"] == "keyring":
+        return  # already there: replacing the key in the keyring in place could not be undone halfway
+    new_key = secrets.token_bytes(32)
+    new = _protect(meta["id"], new_key, password)
+    # The old key goes along, wrapped with the new one, until every file is re-encrypted: an
+    # interruption halfway leaves a profile that still opens, and the next unlock finishes the job.
+    nonce = secrets.token_bytes(12)
+    new["previous_key"] = b64u(nonce + AESGCM(new_key).encrypt(nonce, old_key, b"previous:" + meta["id"].encode()))
     _save_meta(profile, new)
+    _keys[profile], _previous[profile] = new_key, old_key
     if meta["mode"] == "keyring" and new["mode"] == "password":
         _forget_keyring(meta["id"])
+    _finish_rotation(profile, new)
+
+
+def _resume_rotation(profile: Path, meta: dict[str, Any]) -> None:
+    """After unlocking: finishes a key change that was interrupted (see set_password)."""
+    if "previous_key" not in meta:
+        return
+    try:
+        blob = b64u_decode(meta["previous_key"])
+        _previous[profile] = AESGCM(_keys[profile]).decrypt(blob[:12], blob[12:],
+                                                            b"previous:" + meta["id"].encode())
+    except (InvalidTag, ValueError, TypeError) as exc:
+        raise WalletError(tr("{path} is damaged: {error}", path=VAULT_FILE, error="previous_key")) from exc
+    _finish_rotation(profile, meta)
+
+
+def _finish_rotation(profile: Path, meta: dict[str, Any]) -> None:
+    """Re-encrypts with the current key every file still under the previous one, then forgets it."""
+    from .storage import write_private  # storage uses this module for its files
+
+    for path in sorted(profile.rglob("*.enc")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        name = path.relative_to(profile).as_posix()
+        try:
+            data = decrypt(profile, name, path.read_bytes())
+        except WalletError:  # damaged already: it is ignored when read, and stays as it is
+            continue
+        write_private(path, encrypt(profile, name, data))
+    meta = {k: v for k, v in meta.items() if k != "previous_key"}
+    _save_meta(profile, meta)
+    _previous.pop(profile, None)
 
 
 def destroy(profile: Path) -> None:
@@ -264,7 +315,13 @@ def decrypt(profile: Path, name: str, blob: bytes) -> bytes:
     if not blob.startswith(FILE_MAGIC):
         raise WalletError(tr("{name} is not an encrypted wallet file.", name=name))
     nonce, sealed = blob[len(FILE_MAGIC):len(FILE_MAGIC) + 12], blob[len(FILE_MAGIC) + 12:]
+    aad = FILE_MAGIC + name.encode("utf-8")
     try:
-        return AESGCM(_key(profile)).decrypt(nonce, sealed, FILE_MAGIC + name.encode("utf-8"))
+        return AESGCM(_key(profile)).decrypt(nonce, sealed, aad)
     except InvalidTag as exc:
+        if profile in _previous:  # a file not re-encrypted yet after a password change
+            try:
+                return AESGCM(_previous[profile]).decrypt(nonce, sealed, aad)
+            except InvalidTag:
+                pass
         raise WalletError(tr("{name} is damaged or does not belong to this profile.", name=name)) from exc

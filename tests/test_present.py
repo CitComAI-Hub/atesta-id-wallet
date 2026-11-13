@@ -32,7 +32,7 @@ class VerifierTrustTests(unittest.TestCase):
             {"x5c": [der_b64(self.leaf), der_b64(self.ca)]}, {"client_id": "x509_san_dns:v.example"})
 
     def add_ca(self):
-        storage.write_private(storage.TRUST_DIR / "ca.pem", self.ca.public_bytes(serialization.Encoding.PEM).decode())
+        storage.write_secret(storage.TRUST_DIR / "ca.pem.enc", self.ca.public_bytes(serialization.Encoding.PEM))
 
     def test_new_then_pinned_then_changed(self):
         identity = trust.check_request_object(self.token, "x509_san_dns:v.example")
@@ -40,30 +40,62 @@ class VerifierTrustTests(unittest.TestCase):
         trust.remember_verifier(identity)
         self.assertEqual(trust.check_request_object(self.token, "x509_san_dns:v.example").trust, "pinned")
         other_key = ec.generate_private_key(ec.SECP256R1())
-        other = storage.HolderKey(other_key).sign_jwt({"x5c": [der_b64(make_cert(other_key, "v.example"))]}, {})
+        other = storage.HolderKey(other_key).sign_jwt({"x5c": [der_b64(make_cert(other_key, "v.example"))]},
+                                                      {"client_id": "x509_san_dns:v.example"})
         self.assertEqual(trust.check_request_object(other, "x509_san_dns:v.example").trust, "changed")
 
     def test_trusted_ca(self):
         self.add_ca()
         self.assertEqual(trust.check_request_object(self.token, "x509_san_dns:v.example").trust, "trusted")
 
-    def test_response_uri_must_match_dns_unless_trusted(self):
+    def test_response_uri_must_match_dns_even_if_trusted(self):
         identity = trust.check_request_object(self.token, "x509_san_dns:v.example")
         trust.check_response_uri(identity, "https://v.example/response")
         with self.assertRaisesRegex(common.WalletError, "evil.example"):
             trust.check_response_uri(identity, "https://evil.example/response")
         with self.assertRaisesRegex(common.WalletError, "https"):
             trust.check_response_uri(identity, "http://v.example/response")
+        # A CA the user added vouches for who signs, not for wherever the request sends the data.
         self.add_ca()
         trusted = trust.check_request_object(self.token, "x509_san_dns:v.example")
-        trust.check_response_uri(trusted, "https://other.example/response")
+        self.assertEqual(trusted.trust, "trusted")
+        trust.check_response_uri(trusted, "https://v.example/response")
+        with self.assertRaisesRegex(common.WalletError, "other.example"):
+            trust.check_response_uri(trusted, "https://other.example/response")
 
     def test_x509_hash(self):
         client_id = "x509_hash:" + jose.cert_fingerprint(self.leaf)
-        identity = trust.check_request_object(self.token, client_id)
-        self.assertEqual((identity.name, identity.trust), ("v.example", "new"))
+        token = storage.HolderKey(self.key).sign_jwt({"x5c": [der_b64(self.leaf)]}, {"client_id": client_id})
+        identity = trust.check_request_object(token, client_id)
+        self.assertEqual(identity.trust, "new")
+        trust.check_response_uri(identity, "https://v.example/response")
+        self.assertEqual(identity.name, "v.example")
+        bad = storage.HolderKey(self.key).sign_jwt({"x5c": [der_b64(self.leaf)]}, {"client_id": "x509_hash:AAAA"})
         with self.assertRaises(common.WalletError):
-            trust.check_request_object(self.token, "x509_hash:AAAA")
+            trust.check_request_object(bad, "x509_hash:AAAA")
+
+    def test_x509_hash_cannot_borrow_another_name(self):
+        """A self-signed certificate that names a known site, with the data sent elsewhere (audit, Nov 2026)."""
+        key = ec.generate_private_key(ec.SECP256R1())
+        cert = make_cert(key, "marketplace.example")
+        client_id = "x509_hash:" + jose.cert_fingerprint(cert)
+        token = storage.HolderKey(key).sign_jwt({"x5c": [der_b64(cert)]}, {"client_id": client_id})
+        identity = trust.check_request_object(token, client_id)
+        self.assertNotEqual(identity.name, "marketplace.example")  # not named before the destination is known
+        with self.assertRaisesRegex(common.WalletError, "attacker.example"):
+            trust.check_response_uri(identity, "https://attacker.example/cb")
+        # Without a DNS name in the certificate, the verifier is shown as where the data goes.
+        bare = trust.VerifierIdentity(client_id, "x509_hash", client_id[10:], client_id[10:], trust="new")
+        trust.check_response_uri(bare, "https://attacker.example/cb")
+        self.assertEqual(bare.name, "attacker.example")
+
+    def test_signed_client_id_required(self):
+        """The client_id checked against the certificate must be inside the signature, not only in the QR code."""
+        unsigned_id = storage.HolderKey(self.key).sign_jwt({"x5c": [der_b64(self.leaf)]}, {"nonce": "n"})
+        with self.assertRaisesRegex(common.WalletError, "client_id"):
+            trust.check_request_object(unsigned_id, "x509_san_dns:v.example")
+        with self.assertRaisesRegex(common.WalletError, "client_id"):
+            trust.check_request_object(self.token, "x509_hash:" + jose.cert_fingerprint(self.leaf))
 
     def test_unsigned_and_expired(self):
         unsigned = common.b64u_json({"alg": "none"}) + "." + common.b64u_json({}) + ".sig"

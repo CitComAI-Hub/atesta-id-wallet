@@ -30,16 +30,25 @@ jobs:
       name: github-pages
       url: https://citcomai-hub.github.io/atesta-id-wallet/apt/
     steps:
-      - uses: actions/checkout@v7
-      - name: The .deb of the release
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      # Only a .deb listed in a SHA256SUMS signed by the release workflow (UPDATE_SIGNING_KEY), as the
+      # automatic updates require: a file uploaded to the release by hand never reaches APT, which
+      # installs it as root.
+      - name: The .deb of the release, checked against the signed SHA256SUMS
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           mkdir release
           gh release download ${TAG:+"$TAG"} --repo "$GITHUB_REPOSITORY" --dir release \
-            --pattern '*.deb' --pattern SHA256SUMS
-          cd release && sha256sum -c SHA256SUMS --ignore-missing
+            --pattern '*.deb' --pattern SHA256SUMS --pattern SHA256SUMS.sig
+          python3 -m venv "$RUNNER_TEMP/verify"
+          "$RUNNER_TEMP/verify/bin/pip" install --quiet --require-hashes -r packaging/requirements-sign.txt
+          "$RUNNER_TEMP/verify/bin/python" packaging/verify_release.py release/SHA256SUMS
+          debs=(release/*.deb)
+          [[ ${#debs[@]} -eq 1 && -f "${debs[0]}" ]] || { echo "Expected one .deb, found: ${debs[*]}"; exit 1; }
+          cd release && sha256sum -c SHA256SUMS --ignore-missing --strict
+          grep -q " [ *]$(basename "${debs[0]}")$" SHA256SUMS || { echo "The .deb is not in SHA256SUMS"; exit 1; }
       - name: Repository
         env:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
@@ -48,8 +57,8 @@ jobs:
           sudo apt-get install -y -qq apt-utils gnupg  # apt-ftparchive
           packaging/build_apt_repo.sh release/*.deb site/apt
           touch site/.nojekyll
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5
         with:
           path: site
-      - uses: actions/deploy-pages@v5
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5

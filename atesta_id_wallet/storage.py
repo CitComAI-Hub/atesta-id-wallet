@@ -507,8 +507,7 @@ def _backup_entries() -> list[tuple[str, bytes]]:
             entries.append((name, read_secret(path)))
     if CRED_DIR.is_dir():
         entries += [(f"credentials/{p.stem}.json", read_secret(p)) for p in sorted(CRED_DIR.glob("*.enc"))]
-    if TRUST_DIR.is_dir():
-        entries += [(f"trusted_cas/{p.name}", p.read_bytes()) for p in sorted(TRUST_DIR.glob("*.pem"))]
+    entries += [(f"trusted_cas/{path.name[:-4]}", pem) for path, pem in trusted_ca_files()]
     return entries
 
 
@@ -523,7 +522,7 @@ def _restore_target(name: str) -> tuple[Path, bool] | None:
     if folder == "credentials" and file.endswith(".json"):
         return CRED_DIR / f"{file[:-5]}.enc", True
     if folder == "trusted_cas" and file.endswith(".pem"):
-        return TRUST_DIR / file, False
+        return TRUST_DIR / f"{file}.enc", True
     return None
 
 
@@ -575,16 +574,60 @@ def read_ca_file(source: Path) -> list[Any]:
     return certs
 
 
+# Trusted CAs decide which verifiers are shown as trusted, and a trusted verifier is not asked to
+# confirm the risk: they are encrypted like the rest of the profile (trusted_cas/NAME.pem.enc), so a
+# certificate dropped into the folder by another program is not believed.
+CA_SUFFIX = ".pem.enc"
+CAS_ENCRYPTED = "trusted_cas_encrypted"  # config flag: the plain .pem files of older versions were moved
+
+
+def _migrate_plain_cas() -> None:
+    """Older versions kept the CAs as plain .pem files: encrypted once, then plain files are ignored."""
+    config = load_config()
+    if config.get(CAS_ENCRYPTED) is True:
+        return
+    for path in sorted(TRUST_DIR.glob("*.pem")) if TRUST_DIR.is_dir() else []:
+        write_secret(path.with_name(path.name + ".enc"), path.read_bytes())
+        path.unlink()
+    config[CAS_ENCRYPTED] = True
+    save_config(config)
+
+
+def trusted_ca_files() -> list[tuple[Path, bytes]]:
+    """(file, PEM) of each CA trusted in the active profile; files that do not decrypt are left out."""
+    _migrate_plain_cas()
+    found = []
+    for path in sorted(TRUST_DIR.glob("*" + CA_SUFFIX)) if TRUST_DIR.is_dir() else []:
+        try:
+            found.append((path, read_secret(path)))
+        except WalletError as exc:
+            log(tr("Warning: {file} is not a valid PEM certificate: {error}", file=path.name, error=exc))
+    plain = list(TRUST_DIR.glob("*.pem")) if TRUST_DIR.is_dir() else []
+    for path in plain:
+        log(tr("Warning: {file} is not a valid PEM certificate: {error}", file=path.name,
+               error="not added with the wallet; ignored"))
+    return found
+
+
+def ca_file(name: str) -> Path:
+    """The file of a trusted CA from its name as listed ('ca', 'ca.pem' or 'ca.pem.enc')."""
+    base = Path(name).name
+    for suffix in (".enc", ".pem"):
+        base = base[: -len(suffix)] if base.endswith(suffix) else base
+    return TRUST_DIR / f"{base}{CA_SUFFIX}"
+
+
 def add_trusted_ca(source: Path) -> Path:
     """Copies the PEM to the profile's trusted_cas/ without overwriting another CA with the same file name."""
     certs = read_ca_file(source)
-    pem = "".join(c.public_bytes(serialization.Encoding.PEM).decode("ascii") for c in certs)
-    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", source.stem)[:60] or "ca"
-    target, suffix = TRUST_DIR / f"{stem}.pem", 1
-    while target.exists() and target.read_text(encoding="utf-8") != pem:
+    pem = "".join(c.public_bytes(serialization.Encoding.PEM).decode("ascii") for c in certs).encode("ascii")
+    existing = dict(trusted_ca_files())
+    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", source.stem)[:60].lstrip(".") or "ca"
+    target, suffix = TRUST_DIR / f"{stem}{CA_SUFFIX}", 1
+    while target.exists() and existing.get(target) != pem:
         suffix += 1
-        target = TRUST_DIR / f"{stem}_{suffix}.pem"
-    write_private(target, pem)
+        target = TRUST_DIR / f"{stem}_{suffix}{CA_SUFFIX}"
+    write_secret(target, pem)
     return target
 
 

@@ -22,8 +22,8 @@ jobs:
         os: [ubuntu-22.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Qt libraries
@@ -57,8 +57,8 @@ jobs:
   static:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: python -m pip install --upgrade pip setuptools
@@ -70,4 +70,8 @@ jobs:
       - name: Security patterns (bandit, medium and high)
         run: bandit -q -r atesta_id_wallet -ll
       - name: Known vulnerabilities in the dependencies (pip-audit)
-        run: pip-audit --skip-editable --progress-spinner off
+        run: |
+          pip-audit --skip-editable --progress-spinner off
+          # The exact versions the release builds and signs (packaging/requirements-*.txt)
+          pip-audit --progress-spinner off --require-hashes --disable-pip -r packaging/requirements-release.txt
+          pip-audit --progress-spinner off --require-hashes --disable-pip -r packaging/requirements-sign.txt

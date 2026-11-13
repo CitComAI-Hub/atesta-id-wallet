@@ -89,7 +89,11 @@ def decode_qr_image(path_text: str, *, quiet: bool = False) -> str:
 
 def _clipboard_commands() -> list[list[str]]:
     if sys.platform == "win32":
-        return [["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"]]
+        # By full path: Windows also looks for a bare program name in the current folder, where a
+        # downloaded "powershell.exe" could be waiting.
+        system_root = os.environ.get("SystemRoot") or r"C:\Windows"
+        powershell = str(Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
+        return [[powershell, "-NoProfile", "-Command", "Get-Clipboard -Raw"]]
     if sys.platform == "darwin":
         return [["pbpaste"]]
     return [["wl-paste", "--no-newline"], ["xclip", "-o", "-selection", "clipboard"],

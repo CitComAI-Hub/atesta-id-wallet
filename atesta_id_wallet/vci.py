@@ -974,7 +974,9 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
             claims = parse_sd_jwt(raw_credential).claims if fmt in SD_JWT_FORMATS else None
             issued.append(IssuedCredential(config_id, path, claims, account))
     config = load_config()
-    config.setdefault("issuers", {}).setdefault(issuer, {})
+    # What this issuer offers, kept so that a later request for a missing credential is matched here,
+    # without contacting the issuers the user has accounts with (known_issuer_for).
+    config.setdefault("issuers", {}).setdefault(issuer, {})["catalog"] = _catalog(issuer_meta, issuer)
     save_config(config)
     event = {"type": "issued", "party": issuer_name, "party_id": issuer,
              "credentials": [displays[c.configuration_id]["name"] for c in issued]}
@@ -991,21 +993,37 @@ def known_issuer_for(session: requests.Session, wanted: list[str]) -> tuple[str,
     is read; errors just mean "no".
     """
     wanted_set = {w for w in wanted if w}
-    for issuer in list(load_config().get("issuers", {}))[:8]:
-        try:
-            require_https(issuer, "credential_issuer")
-            meta = _get_first_json(session, _well_known(issuer, "openid-credential-issuer"))
-        except (WalletError, requests.RequestException):
-            continue
-        configs = meta.get("credential_configurations_supported") or {}
-        if not isinstance(configs, dict):
-            continue
-        for config_id, config in configs.items():
-            vct = config.get("vct") if isinstance(config, dict) else None
+    config = load_config()
+    issuers = config.get("issuers", {})
+    for issuer in list(issuers)[:8]:
+        catalog = issuers[issuer].get("catalog") if isinstance(issuers[issuer], dict) else None
+        if not isinstance(catalog, dict):
+            # Issuers used before 0.14 have no catalog yet: their metadata is read once and kept.
+            try:
+                require_https(issuer, "credential_issuer")
+                catalog = _catalog(_get_first_json(session, _well_known(issuer, "openid-credential-issuer")), issuer)
+            except (WalletError, requests.RequestException):
+                continue
+            config = load_config()
+            if isinstance(config.get("issuers", {}).get(issuer), dict):
+                config["issuers"][issuer]["catalog"] = catalog
+                save_config(config)
+        offered = catalog.get("credentials")
+        for config_id, vct in (offered.items() if isinstance(offered, dict) else ()):
             if config_id in wanted_set or (vct and vct in wanted_set):
-                name = clean_text(pick_display(meta.get("display")).get("name")) or site_of(issuer)
-                return issuer, config_id, name
+                return issuer, config_id, str(catalog.get("name") or site_of(issuer))
     return None
+
+
+def _catalog(meta: dict[str, Any], issuer: str) -> dict[str, Any]:
+    """{"name": issuer name, "credentials": {configuration id: vct or None}} from the issuer metadata."""
+    configs = meta.get("credential_configurations_supported") or {}
+    configs = configs if isinstance(configs, dict) else {}
+    return {
+        "name": clean_text(pick_display(meta.get("display")).get("name")) or site_of(issuer),
+        "credentials": {str(c): (v.get("vct") if isinstance(v, dict) and isinstance(v.get("vct"), str) else None)
+                        for c, v in list(configs.items())[:100]},
+    }
 
 
 def issue_from_issuer(session: requests.Session, issuer: str, config_ids: list[str], options: IssueOptions,

@@ -34,12 +34,11 @@ class VerifierIdentity:
 
 def load_trust_anchors() -> list[x509.Certificate]:
     anchors: list[x509.Certificate] = []
-    if storage.TRUST_DIR.is_dir():
-        for path in sorted(storage.TRUST_DIR.glob("*.pem")):
-            try:
-                anchors += x509.load_pem_x509_certificates(path.read_bytes())
-            except ValueError as exc:
-                log(tr("Warning: {file} is not a valid PEM certificate: {error}", file=path.name, error=exc))
+    for path, pem in storage.trusted_ca_files():
+        try:
+            anchors += x509.load_pem_x509_certificates(pem)
+        except ValueError as exc:
+            log(tr("Warning: {file} is not a valid PEM certificate: {error}", file=path.name, error=exc))
     return anchors
 
 
@@ -82,6 +81,10 @@ def check_request_object(token: str, client_id: str) -> VerifierIdentity:
     if isinstance(payload.get("exp"), (int, float)) and payload["exp"] < time.time():
         raise WalletError(tr("The verifier's request has expired; reload the QR code."),
                           hint=tr("The request has expired. Reload the page with the QR code and scan it again."))
+    # The client_id the identity is checked against must be the signed one, not only the QR code's
+    # (OpenID4VP 1.0 §5: the request object carries it).
+    if header.get("x5c") and payload.get("client_id") != client_id:
+        raise WalletError(tr("The client_id of the QR code and of the request object do not match."))
     chain = _x5c_chain(header)
     if not chain:
         log(tr("Warning: the request object has no x5c; the verifier cannot be verified."))
@@ -99,7 +102,7 @@ def check_request_object(token: str, client_id: str) -> VerifierIdentity:
     elif prefix == "x509_hash":
         if cert_fingerprint(cert) != value:
             raise WalletError(tr("The x5c certificate hash does not match the x509_hash client_id."))
-        identity.name = (_dns_names(cert) or [value])[0]
+        # Named after where the data goes (check_response_uri), never after what the certificate says.
         trusted = chain_is_trusted(chain, None)
     else:
         # Other signed schemes (DID, attestation, federation) are not supported yet.
@@ -116,14 +119,29 @@ def check_request_object(token: str, client_id: str) -> VerifierIdentity:
 
 
 def check_response_uri(identity: VerifierIdentity, response_uri: str) -> None:
-    """Stops a request signed by A from sending the data to B (x509_san_dns rules in OpenID4VP 1.0)."""
+    """
+    Stops a request signed by A from sending the data to B. The rules of OpenID4VP 1.0 §5.9.3, and
+    stricter: also for verifiers a trusted CA vouches for (any CA the user adds would otherwise vouch
+    for any destination), and for x509_hash, whose certificate nobody needs to vouch for, so the name
+    shown is where the data goes, not a name the certificate claims.
+    """
     require_https(response_uri, "response_uri")
-    if identity.prefix == "x509_san_dns" and identity.trust != "trusted":
-        if host_of(response_uri) != identity.value.lower():
-            raise WalletError(tr("The request is signed by {signer} but asks to send the data to {target}. Aborting.",
-                                 signer=identity.value, target=host_of(response_uri)),
-                              hint=tr("This request would send your data to a different website from the one asking "
-                                      "for it, so the wallet stopped. Nothing was sent."))
+    target = host_of(response_uri)
+
+    def refuse(signer: str) -> WalletError:
+        return WalletError(tr("The request is signed by {signer} but asks to send the data to {target}. Aborting.",
+                              signer=signer, target=target),
+                           hint=tr("This request would send your data to a different website from the one asking "
+                                   "for it, so the wallet stopped. Nothing was sent."))
+
+    if identity.prefix == "x509_san_dns":
+        if target != identity.value.lower():
+            raise refuse(identity.value)
+    elif identity.prefix == "x509_hash":
+        names = _dns_names(identity.cert) if identity.cert is not None else []
+        if names and target not in names:
+            raise refuse(", ".join(names))
+        identity.name = target
     elif identity.prefix == "redirect_uri" and response_uri != identity.value:
         raise WalletError(tr("response_uri ({uri}) does not match the client_id ({client_id}).", uri=response_uri,
                              client_id=identity.value))

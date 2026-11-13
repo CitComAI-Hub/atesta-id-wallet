@@ -313,7 +313,7 @@ def cmd_trust(args: argparse.Namespace) -> int:
         print(tr("✔ CA added to {path}", path=add_trusted_ca(source)))
         return 0
     if args.action == "remove-ca":
-        target = storage.TRUST_DIR / f"{Path(args.target).stem}.pem"
+        target = storage.ca_file(args.target)
         if not target.exists():
             raise WalletError(tr("{file} does not exist in {path}.", file=target.name, path=storage.TRUST_DIR))
         target.unlink()

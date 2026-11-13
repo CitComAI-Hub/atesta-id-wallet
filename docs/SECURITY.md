@@ -1,7 +1,7 @@
 # Security model
 
 This page explains what the wallet protects against, what it trusts and what it does not.
-It describes version 0.12.0 and the review that followed it.
+It describes version 0.13.0 and the security audit that followed it (November 2026).
 
 ## Assets
 
@@ -12,7 +12,7 @@ It describes version 0.12.0 and the review that followed it.
 | Settings, pinned verifier certificates | `config.enc` | Encrypted, `0600`, written atomically (a crash cannot leave it empty and silently drop the pins). |
 | Activity history | `history.enc` | Encrypted, `0600`. Records who received what; it is personal data too. |
 | Profile data key | System keyring, or `vault.json` wrapped with the wallet password | See *Encryption at rest*. |
-| Trusted CA certificates | `trusted_cas/*.pem` | Public certificates: not encrypted, `0600`. |
+| Trusted CA certificates | `trusted_cas/*.pem.enc` | Public, but they decide which verifiers are trusted: encrypted and authenticated like the rest, `0600`. A certificate dropped into the folder by another program is ignored; plain `.pem` files of older versions are encrypted once, at the first start. |
 | Keycloak password | Never stored | Typed into the window or the terminal, sent only over HTTPS to the authorization server's host. Kept in memory until that login ends; if the offer is tied to another wallet, it is sent once more to the same host for the retry without the offer (see *Issuance*). |
 | Log and technical details | Memory only (*Settings → Advanced*, "Show technical details", CLI errors) | Codes, tokens, `state`, passwords and every JWT (credentials, proofs, presentations) are replaced by `<redacted>` before they are shown, so they can be pasted into a support request. |
 | Backups | File chosen by the user | AES-256-GCM, key derived from a password with scrypt (N=2¹⁵, r=8, p=1). Restore rejects archive entries outside the profile (no path traversal, no links). |
@@ -39,6 +39,12 @@ another. The data key is kept in one of two ways:
   `settings.json` so that restarting does not reset it; a right password clears it. This only slows
   down guessing through the wallet: whoever copies the files attacks scrypt offline, so a long
   password is what matters. Wallet and backup passwords need at least 12 characters.
+- **Changing the password** (or moving the key between the keyring and a password) replaces the
+  data key and re-encrypts every file with the new one, so a copy of the old `vault.json` and the
+  old password (perhaps the reason for the change) do not open what is written afterwards. Until
+  all files are done, the old key is kept in `vault.json` wrapped with the new one; if the wallet
+  stops halfway, the next unlock finishes the job. Files copied before the change are still
+  readable with the old password: a password change does not reach copies made earlier.
 
 Without a usable keyring (headless systems, some minimal desktops) a wallet password is required:
 the data is never stored in clear text. Unlocked keys live in the process memory until it locks
@@ -62,13 +68,14 @@ is refused for risky verifiers. Shared and declined requests are recorded in the
 | client_id | Check |
 |---|---|
 | `x509_san_dns:<host>` | The request object must be signed with the key of the `x5c` leaf certificate, and `<host>` must be a DNS SAN of that certificate. |
-| `x509_hash:<hash>` | Same signature check, plus `<hash>` must be the SHA-256 of the leaf certificate. |
+| `x509_hash:<hash>` | Same signature check, plus `<hash>` must be the SHA-256 of the leaf certificate. Nobody vouches for the names in that certificate, so the verifier is shown as the host of `response_uri`, where the data goes; if the certificate names DNS hosts, `response_uri` must be one of them. |
 | `redirect_uri:<uri>` and unsigned requests | Identity cannot be verified. Refused unless `--allow-unverified` is given, and then always asks. |
 | Anything else (DID, attestation, federation) | Treated as unverified. |
 
 Signatures are checked strictly: the algorithm must match the key type and curve (`ES256` only with
-P-256, and so on), and `none` or HMAC algorithms are never accepted. The client_id in the QR code
-must equal the one in the signed request, and an expired request (`exp`) is rejected.
+P-256, and so on), and `none` or HMAC algorithms are never accepted. A signed request must carry
+its `client_id`, equal to the one in the QR code (the identity is checked against the signed one),
+and an expired request (`exp`) is rejected.
 
 A signature only proves possession of a key. Anyone can create a self-signed certificate for any
 domain, so the wallet also decides how far it can **trust** that certificate:
@@ -81,9 +88,11 @@ domain, so the wallet also decides how far it can **trust** that certificate:
 | `changed` | A different certificate for a client_id seen before. Possible impersonation. | red + risk checkbox |
 | `unverified` | No usable signature. | red + risk checkbox |
 
-**3. Response destination.** For `x509_san_dns` verifiers that are not `trusted`, the host of
-`response_uri` must equal the certificate's DNS name (OpenID4VP 1.0 §5.9.3). This stops an
-attacker from relaying a legitimate verifier's request and having your data posted elsewhere.
+**3. Response destination.** For `x509_san_dns` verifiers the host of `response_uri` must equal
+the certificate's DNS name (OpenID4VP 1.0 §5.9.3), also for `trusted` ones: OpenID4VP would let a
+trusted verifier choose any address, but a CA the user adds vouches for who signs, not for where
+the data goes. This stops an attacker from relaying a legitimate verifier's request and having
+your data posted elsewhere. For `x509_hash`, see the table above.
 `redirect_uri` verifiers must use their client_id as `response_uri`. HTTPS is required for every
 URL the wallet fetches or posts to. `http://localhost` is only accepted with
 `ATESTA_ID_WALLET_ALLOW_LOCAL_HTTP=1` (development and tests): otherwise a QR code could make the wallet
@@ -226,6 +235,13 @@ Names published by issuers are reduced to one short line of text before they are
   global, so the pipe name carries a random suffix stored in the user's data folder: another user
   cannot guess it and create the pipe first.
 - Temporary files of the window (themed icons) go to a private, per-process temporary directory.
+- On Windows the clipboard is read with PowerShell by its full path in the system folder, never a
+  `powershell.exe` found in the current folder.
+- When a verifier asks for a credential the profile does not have, the wallet suggests an issuer
+  already used that offers it. It finds it in what it kept from each issuer's metadata when it
+  received a credential from it, without contacting the issuers (which would tell them, and
+  anyone watching the network, that this user has an account there, every time a verifier asks).
+  Issuers used before 0.14 are asked once and their answer kept.
 
 ## Releases and updates
 
@@ -240,16 +256,28 @@ Names published by issuers are reduced to one short line of text before they are
 - Automatic updates (AppImage and Windows installer) only install a file whose SHA-256 is in a
   `SHA256SUMS` with a valid Ed25519 signature by the release key (`UPDATE_PUBLIC_KEY` in
   `updates.py`; the private key is an encrypted secret of the release workflow, never in git).
-  A file uploaded to a release by hand or changed after the build is therefore refused. Whoever
-  can push a `v*` tag through the workflow still gets it signed; requiring a reviewer for the
-  release secrets (a protected environment) would close that gap. The file name must carry the new version (an old
+  A file uploaded to a release by hand or changed after the build is therefore refused. The
+  signing job runs in a protected environment (`release`) whose required reviewer approves each
+  release, so pushing a `v*` tag alone does not get a build signed (see docs/RELEASING.md for the
+  one-time setup). The file name must carry the new version (an old
   signed list replayed under a newer tag is refused), the version must be newer than the running
   one (no downgrades), and downloads only come from the project's release URLs, with a size
   limit. The AppImage is replaced atomically; the Windows installer runs silently, per user,
   without administrator rights, and its checksum is checked again just before it runs.
 - `.deb` installations get updates from the project's APT repository on GitHub Pages, signed
   with its own OpenPGP key. The package trusts that key only for that repository (`Signed-By`),
-  not for the rest of the system.
+  not for the rest of the system. The repository is only built from a `.deb` listed in the
+  release's signed `SHA256SUMS` (`packaging/verify_release.py`), the same rule as the automatic
+  updates, since APT installs it as root.
+- **What goes into a build is pinned**: the Python packages with their hashes
+  (`packaging/requirements-release.txt`, `requirements-sign.txt`, checked by `pip-audit` in CI) and
+  the GitHub actions by commit SHA, so neither a new upload to PyPI nor a moved tag of an action
+  reaches a signed release by itself.
+- The version a release announces is used in file names only if it is made of digits and dots.
+- The Windows installer waiting in `updates\` is checked against the checksum recorded when its
+  signature was verified, not against the signature again. That folder, like the program folder
+  of a per-user install, can be written by any program running as the user, which could replace
+  the program itself just as well: the check is against a damaged download, not that attacker.
 
 ## Known gaps
 
@@ -258,7 +286,7 @@ Names published by issuers are reduced to one short line of text before they are
 | Keys are software keys | Without a wallet password, malware running as the user can ask the keyring for the data key. With one, it can still read the key from memory while the wallet is unlocked. There is no hardware-backed key (TPM, secure element). | Hardware-backed holder keys if the pilot needs them. |
 | No default trust list | Most verifiers start as `new`. Users must judge the domain shown. | Ship the project's verifier CA or trust list. |
 | Issuer trust is not anchored | Any HTTPS issuer the user accepts can issue credentials. An `x5c` issuer certificate is not validated against a CA, only used to check the signature: for an `https` issuer, a certificate that names the issuer's host counts as the issuer's key even if it is self-signed. This also applies to status lists, so whoever controls the address of a status list (or the TLS connection to it) could sign one with such a certificate and make a credential look revoked or valid in the wallet (the verifier still checks for itself). | Issuer allow-list or trust list; validate `x5c` chains against it. |
-| Addresses are checked by name, not by where they resolve | A public host name that resolves to a private address (DNS rebinding) passes the "not this computer or the local network" checks for logos and status lists. Only HTTPS requests are made, and their answers are not shown. | — |
+| Addresses are checked by name, not by where they resolve | A public host name that resolves to a private address (DNS rebinding) passes the "not this computer or the local network" checks for logos and status lists. Addresses written as numbers are recognised in every spelling (`127.1`, `2130706433`, `0x7f000001`, `localhost.`, IPv4-mapped IPv6), and every range that is not public counts as local (also `100.64.0.0/10`, reserved and multicast). Only HTTPS requests are made, and their answers are not shown. | — |
 | Verifier certificates are not checked for expiry unless a CA vouches for them | A pinned (trust on first use) certificate keeps its level after it expires. | Part of the trust list work. |
 | A credential is stored with a warning if no issuer key is found | The wallet may hold a credential whose signature it could not check. The verifier will check it anyway. | Make it an error once the pilot issuers are known. |
 | One key per profile | Verifiers can link presentations from the same profile. | One key per credential (batch issuance). |
