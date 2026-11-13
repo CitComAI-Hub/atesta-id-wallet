@@ -10,13 +10,13 @@
   fallback), Spanish, Danish, German, French and Luxembourgish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
-## Status (0.12.0, November 2026)
+## Status (0.13.0, November 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
-GUI, a CLI, six languages, an offline test suite (256 tests, GUI and a UX audit included) and nightly tests
-against real Keycloak 26.6, 26.7 and latest. Release 0.12.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
-smoke-tested by CI (including a silent install/uninstall on Windows), but nobody outside the team
+GUI, a CLI, six languages, an offline test suite (266 tests, GUI and a UX audit included) and nightly tests
+against real Keycloak 26.6, 26.7 and latest. Release 0.13.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
+smoke-tested by CI, and updates itself (AppImage, Windows installer) or through APT (.deb) (including a silent install/uninstall on Windows), but nobody outside the team
 has used it and nobody has tested it by hand on real Windows or macOS.
 
 **TRL 6 target**: a pilot with real users in the CITCOM environment. Blocking for that, in order:
@@ -152,6 +152,13 @@ the full manual Windows test and the CITCOM verifier trust list.
         damaged `vault.json` or `settings.json` is reported, not a crash.
   - [x] Request values (`nonce`, `state`, `response_uri`, `client_id`) must be strings; Presentation
         Exchange definitions and `pattern` filters are checked.
+- **0.13.0: automatic updates**: the AppImage and the Windows installer download the new version by
+  themselves (daily check, now on by default) and use it after a restart; the `.deb` adds the
+  project's signed APT repository on GitHub Pages. Only files in a `SHA256SUMS` signed with the
+  release key (Ed25519, `UPDATE_PUBLIC_KEY`) are installed; no downgrades, no replayed lists.
+  0.12.0 and older have to install 0.13.0 by hand once. Still to check by hand: the first real
+  update (0.13.0 → 0.13.1) on Windows and with the AppImage. Possible next step: the release
+  secrets in an environment with a required reviewer.
 
 ## Next: roadmap to the pilot (TRL 6)
 
