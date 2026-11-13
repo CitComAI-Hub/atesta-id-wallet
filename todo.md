@@ -10,12 +10,12 @@
   fallback), Spanish, Danish, German, French and Luxembourgish, chosen automatically from the system or by hand (Settings /
   `atesta-id-wallet language`).
 
-## Status (0.13.0, November 2026)
+## Status (0.13.1, November 2026)
 
 **TRL 5**: the wallet works end to end against the real Keycloak and the CITCOM marketplace on
 Linux, and receives credentials from the PGTEC onboarding portal (offers made for Lissi), with a
 GUI, a CLI, six languages, an offline test suite (266 tests, GUI and a UX audit included) and nightly tests
-against real Keycloak 26.6, 26.7 and latest. Release 0.13.0 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
+against real Keycloak 26.6, 26.7 and latest. Release 0.13.1 is public on GitHub (Windows installer and zip, .deb, AppImage), built and
 smoke-tested by CI, and updates itself (AppImage, Windows installer) or through APT (.deb) (including a silent install/uninstall on Windows), but nobody outside the team
 has used it and nobody has tested it by hand on real Windows or macOS.
 
@@ -158,7 +158,7 @@ the full manual Windows test and the CITCOM verifier trust list.
   release key (Ed25519, `UPDATE_PUBLIC_KEY`) are installed; no downgrades, no replayed lists.
   0.12.0 and older have to install 0.13.0 by hand once. Still to check by hand: the first real
   update (0.13.0 → 0.13.1) on Windows and with the AppImage.
-- **Security audit (November 2026, after 0.13.0)**; regression tests in `tests/test_hardening.py`
+- **0.13.1: security audit (November 2026)**; regression tests in `tests/test_hardening.py`
   (`AuditNovember2026Tests`), `test_present.py`, `test_vault.py` and `test_packaging.py`:
   - [x] `x509_hash` verifiers were shown with the first DNS name of a certificate nobody vouches for,
         and could send the data anywhere: a self-signed certificate naming the marketplace showed

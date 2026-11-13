@@ -998,7 +998,7 @@ def known_issuer_for(session: requests.Session, wanted: list[str]) -> tuple[str,
     for issuer in list(issuers)[:8]:
         catalog = issuers[issuer].get("catalog") if isinstance(issuers[issuer], dict) else None
         if not isinstance(catalog, dict):
-            # Issuers used before 0.14 have no catalog yet: their metadata is read once and kept.
+            # Issuers used before 0.13.1 have no catalog yet: their metadata is read once and kept.
             try:
                 require_https(issuer, "credential_issuer")
                 catalog = _catalog(_get_first_json(session, _well_known(issuer, "openid-credential-issuer")), issuer)

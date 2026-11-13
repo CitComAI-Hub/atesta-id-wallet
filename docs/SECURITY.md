@@ -1,7 +1,7 @@
 # Security model
 
 This page explains what the wallet protects against, what it trusts and what it does not.
-It describes version 0.13.0 and the security audit that followed it (November 2026).
+It describes version 0.13.1, which includes the security audit of November 2026.
 
 ## Assets
 
@@ -241,7 +241,7 @@ Names published by issuers are reduced to one short line of text before they are
   already used that offers it. It finds it in what it kept from each issuer's metadata when it
   received a credential from it, without contacting the issuers (which would tell them, and
   anyone watching the network, that this user has an account there, every time a verifier asks).
-  Issuers used before 0.14 are asked once and their answer kept.
+  Issuers used before 0.13.1 are asked once and their answer kept.
 
 ## Releases and updates
 
