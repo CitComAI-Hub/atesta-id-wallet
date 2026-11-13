@@ -1,16 +1,14 @@
-# APT repository on GitHub Pages with the .deb of a published release, so installed .deb packages
-# get it with the system updates (packaging/build_apt_repo.sh). Called by release.yml after
-# publishing; Actions -> APT repository -> Run workflow redoes it for the latest release.
+# APT repository on GitHub Pages with the .deb of a release, so installed .deb packages get it
+# with the system updates (packaging/build_apt_repo.sh). Runs when a release becomes the latest
+# one (a tested pre-release marked as a release); Actions -> APT repository -> Run workflow redoes
+# it for the latest release.
 # Needs Settings -> Pages -> Source: GitHub Actions, and the v* tags (and main) allowed in the
 # github-pages environment. See docs/RELEASING.md.
 name: APT repository
 
 on:
-  workflow_call:
-    inputs:
-      tag:
-        type: string
-        required: true
+  release:
+    types: [released]  # published as a release, or a pre-release turned into one
   workflow_dispatch:
     inputs:
       tag:
@@ -36,7 +34,7 @@ jobs:
       - name: The .deb of the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           mkdir release
           gh release download ${TAG:+"$TAG"} --repo "$GITHUB_REPOSITORY" --dir release \

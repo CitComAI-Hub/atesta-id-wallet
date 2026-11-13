@@ -43,14 +43,23 @@ and the other libraries. Linux builds run on Ubuntu 22.04, so they need glibc 2.
    - builds the Linux and Windows files and runs `atesta-id-wallet-gui --smoke-test` on the bundle, the
      AppImage, the installed `.deb` and the installed Windows program (checks that Qt, the SVG
      icons, the translations, zxing-cpp, Pillow and cryptography are all inside);
-   - installs and uninstalls the Windows setup silently and checks the link handler registry keys;
-   - publishes the GitHub release with the files, `SHA256SUMS`, `SHA256SUMS.sig` (see below),
-     generated release notes and (on a public repository) a build provenance attestation;
-   - publishes the APT repository with the new `.deb` on GitHub Pages
-     (`https://citcomai-hub.github.io/atesta-id-wallet/apt/`).
-6. Edit the release notes if needed. Within a day, AppImage and Windows installations download
-   the new version by themselves (installed when the wallet restarts), `.deb` installations get it
-   with the system updates, and the rest show a notice.
+   - installs the Windows setup silently, checks the link handler registry keys, runs an automatic
+     update the way the wallet does it (installer waiting in `updates\`, the wallet starts it and
+     exits, the installer reopens it) and uninstalls;
+   - publishes a GitHub **pre-release** with the files, `SHA256SUMS`, `SHA256SUMS.sig` (see below),
+     generated release notes and (on a public repository) a build provenance attestation.
+6. **Test the pre-release.** Nobody gets it yet: installed wallets only look at the latest
+   release, which leaves pre-releases out, and APT is not updated. Install it by hand (Windows,
+   AppImage, `.deb`) and edit the release notes if needed.
+7. **Deliver it**: edit the release on GitHub, untick *Set as a pre-release* and tick *Set as the
+   latest release*. That starts `.github/workflows/apt.yml` (APT repository on GitHub Pages,
+   `https://citcomai-hub.github.io/atesta-id-wallet/apt/`). Within a day, AppImage and Windows
+   installations download it by themselves (installed when the wallet restarts), `.deb`
+   installations get it with the system updates, and the rest show a notice.
+
+If a delivered version turns out broken, there is no way back for installations that already
+updated: release a fixed version as soon as possible. Until then, marking the previous release as
+the latest again stops the remaining installations from taking the broken one.
 
 ## Automatic updates: keys and one-time setup
 
@@ -73,9 +82,9 @@ Also once: *Settings → Pages → Source: GitHub Actions*, and in *Settings →
 github-pages*, add a rule of type **Tag** `v*` to the allowed deployment branches and tags (by
 default only `main` may deploy; keep it too).
 
-The APT repository is built by `.github/workflows/apt.yml` from the `.deb` of the published release.
-If that step fails, the release is still published: fix it and use *Actions → APT repository →
-Run workflow* (empty tag: the latest release) instead of re-running the release.
+The APT repository is built by `.github/workflows/apt.yml` from the `.deb` of the release that has
+just become the latest one. If that fails, fix it and use *Actions → APT repository → Run
+workflow* (empty tag: the latest release).
 
 **Changing a key** (lost or leaked): the installed applications keep trusting the old public key,
 so they stop updating by themselves. Put the new public key in git and release; users of that

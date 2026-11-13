@@ -1,5 +1,6 @@
-# Release builds: AppImage and .deb (Linux), installer and zip (Windows), SHA256SUMS.
-#   git tag v0.6.0 && git push origin v0.6.0   -> builds, tests and publishes the release
+# Release builds: AppImage and .deb (Linux), installer and zip (Windows), SHA256SUMS(.sig).
+#   git tag v0.6.0 && git push origin v0.6.0   -> builds, tests and publishes it as a pre-release;
+#   marking it as the latest release on GitHub delivers it (automatic updates, APT: apt.yml)
 #   push to main, or Actions -> Release -> Run workflow -> builds and tests; files kept as artifacts
 # Tests and static analysis come from checks.yml. See docs/RELEASING.md.
 name: Release
@@ -111,7 +112,7 @@ jobs:
           & "$env:RUNNER_TEMP\sbom\Scripts\cyclonedx-py.exe" environment --pyproject pyproject.toml --of JSON `
             --output-reproducible -o "dist\release\Atesta_ID_Wallet-$version-windows-x64.cdx.json" $python
           if ($LASTEXITCODE -ne 0) { throw "cyclonedx-py failed" }
-      - name: Install, run and uninstall
+      - name: Install, run, update and uninstall
         env:
           QT_QPA_PLATFORM: offscreen
           ATESTA_ID_WALLET_HOME: ${{ runner.temp }}\wallet-installed
@@ -126,6 +127,34 @@ jobs:
           }
           $p = Start-Process "$app\atesta-id-wallet-gui.exe" -ArgumentList "--smoke-test" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Installed GUI smoke test failed ($($p.ExitCode))" }
+
+          # Automatic update, as updates.install_pending() does it: a verified installer waits in
+          # updates\ (pending.json); the wallet starts it and exits, and the installer reopens it.
+          $updates = "$env:ATESTA_ID_WALLET_HOME\updates"
+          New-Item -ItemType Directory -Force $updates | Out-Null
+          Copy-Item $setup $updates
+          $name = Split-Path $setup -Leaf
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          [IO.File]::WriteAllText("$updates\pending.json", "{`"version`": `"999.0.0`", `"file`": `"$name`", `"sha256`": `"$hash`"}")
+          $before = (Get-Item "$app\atesta-id-wallet-gui.exe").LastWriteTimeUtc
+          $started = Get-Date
+          # Not -Wait: it would also wait for the installer and the reopened wallet.
+          $p = Start-Process "$app\atesta-id-wallet-gui.exe" -PassThru
+          if (-not $p.WaitForExit(60000)) { throw "The wallet did not exit to let the installer run" }
+          if ($p.ExitCode -ne 0) { throw "The wallet exited with $($p.ExitCode) instead of starting the installer" }
+          if (Test-Path "$updates\pending.json") { throw "pending.json left: the installer was not started" }
+          $reopened = $null
+          for ($i = 0; $i -lt 180 -and -not $reopened; $i++) {
+            Start-Sleep 1
+            $reopened = Get-Process atesta-id-wallet-gui -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -gt $started }
+          }
+          if (-not $reopened) { throw "The installer did not reopen the wallet" }
+          if ((Get-Item "$app\atesta-id-wallet-gui.exe").LastWriteTimeUtc -lt $before) { throw "The program was not reinstalled" }
+          Start-Sleep 5
+          if ($reopened.HasExited) { throw "The reopened wallet exited ($($reopened.ExitCode))" }
+          $reopened | Stop-Process -Force
+          Start-Sleep 2
+
           Start-Process "$app\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
           # The uninstaller relaunches itself from %TEMP%: -Wait returns before it is done.
           for ($i = 0; $i -lt 60 -and (Test-Path "HKCU:\Software\Classes\openid4vp"); $i++) { Start-Sleep 1 }
@@ -174,18 +203,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # As a pre-release: installed wallets (they only look at /releases/latest) and APT ignore it
+          # until it is tested and marked as the latest release (docs/RELEASING.md).
           gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
-            --title "Atesta ID Wallet ${GITHUB_REF_NAME#v}" --generate-notes
+            --title "Atesta ID Wallet ${GITHUB_REF_NAME#v}" --generate-notes --prerelease
 
-  # APT repository on GitHub Pages with the new .deb (apt.yml).
-  apt:
-    if: github.ref_type == 'tag'
-    needs: publish
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/apt.yml
-    with:
-      tag: ${{ github.ref_name }}
-    secrets: inherit
