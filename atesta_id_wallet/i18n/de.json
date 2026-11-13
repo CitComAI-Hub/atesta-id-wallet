@@ -20,6 +20,7 @@
     "<b>{verifier}</b> asks for: {wanted}. Get it first from the organisation that gives it, and try again.": "<b>{verifier}</b> verlangt: {wanted}. Hol ihn dir zuerst bei der Organisation, die ihn ausstellt, und versuche es dann noch einmal.",
     "A credential is like a digital card that says something about you: a membership card, an employee pass, a certificate. Keep yours on this computer and use them to sign in to data space services. Nothing is shared without your approval, and you see exactly what.": "Ein Nachweis ist wie eine digitale Karte, die etwas über dich sagt: ein Mitgliedsausweis, ein Mitarbeiterausweis, ein Zertifikat. Bewahre deine auf diesem Computer auf und melde dich damit bei Diensten des Datenraums an. Nichts wird ohne deine Zustimmung geteilt, und du siehst genau, was.",
     "A disclosure overwrites the claim '{name}'.": "Eine Offenlegung überschreibt die Angabe ‚{name}‘.",
+    "A link opened the wallet with arguments of its own; nothing was done.": "Ein Link hat die Wallet mit eigenen Argumenten geöffnet; es wurde nichts ausgeführt.",
     "A profile is a separate identity, with its own key and credentials (for example, «work»).": "Ein Profil ist eine eigene Identität mit eigenem Schlüssel und eigenen Nachweisen (zum Beispiel «Arbeit»).",
     "About": "Über",
     "Accept": "Annehmen",

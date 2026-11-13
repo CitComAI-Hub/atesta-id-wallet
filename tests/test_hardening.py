@@ -821,3 +821,31 @@ class AuditNovember2026Tests(unittest.TestCase):
         with mock.patch.object(desktop.sys, "platform", "win32"), mock.patch.dict(os.environ, {"SystemRoot": r"C:\Win"}):
             program = desktop._clipboard_commands()[0][0]
         self.assertTrue(program.endswith("powershell.exe") and "Win" in program, program)
+
+
+class AuditAfter0131Tests(unittest.TestCase):
+    """Regressions from the security audit after 0.13.1."""
+
+    def setUp(self):
+        base.isolated_home(self)
+
+    def test_a_link_cannot_add_arguments_to_the_terminal_wallet(self):
+        # Windows pastes the link into '"atesta-id-wallet.exe" --pause "%1"'; a launcher that does not
+        # escape the quotes splits it into arguments of its own.
+        link = "openid4vp://?request_uri=https://verifier.example/r"
+        for argv in (["--pause", link, "--yes"], ["--pause", link, "--allow-unverified", "--yes"],
+                     ["--pause", link, "present"], ["--pause", "--yes", link], ["--pause", "--profile", "x", link],
+                     ["--pause", "--pause", link], ["--pause", "https://verifier.example/r"]):
+            with self.subTest(argv=argv), mock.patch.object(cli, "route_input") as route:
+                with self.assertRaises(common.WalletError):
+                    cli._run(list(argv))
+                route.assert_not_called()
+        with mock.patch.object(cli, "route_input", side_effect=common.Cancelled()) as route:
+            for argv in (["--pause", link], ["--pause"]):
+                with self.assertRaises(common.Cancelled), \
+                        mock.patch.object(cli, "detect_input", return_value=link):
+                    cli._run(list(argv))
+            self.assertEqual(route.call_count, 2)
+        with mock.patch.object(cli, "route_input", side_effect=common.Cancelled()):  # by hand, without --pause
+            with self.assertRaises(common.Cancelled):
+                cli._run([link, "--yes"])

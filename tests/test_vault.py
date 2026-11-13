@@ -166,8 +166,9 @@ class PasswordTests(VaultTestCase):
             return base.make_cert(ec.generate_private_key(ec.SECP256R1()), name, ca=True).public_bytes(
                 serialization.Encoding.PEM)
 
-        # A CA left in clear text by an older version is kept, encrypted.
+        # A CA left in clear text by an older version (its config.enc has no flag) is kept, encrypted.
         storage.ensure_data_dir(storage.TRUST_DIR)
+        storage.write_secret(storage.CONFIG_FILE, b'{"issuers": {}}')
         (storage.TRUST_DIR / "old.pem").write_bytes(pem("Old CA"))
         self.assertEqual([c.subject.rfc4514_string() for c in trust.load_trust_anchors()], ["CN=Old CA"])
         self.assertEqual([p.name for p in storage.TRUST_DIR.iterdir()], ["old.pem.enc"])
@@ -176,6 +177,25 @@ class PasswordTests(VaultTestCase):
         (storage.TRUST_DIR / "planted.pem").write_bytes(pem("Planted CA"))
         (storage.TRUST_DIR / "planted.pem.enc").write_bytes(pem("Planted CA"))
         self.assertEqual([c.subject.rfc4514_string() for c in trust.load_trust_anchors()], ["CN=Old CA"])
+        # Deleting config.enc (where the migration is recorded) does not make the wallet move it either.
+        storage.CONFIG_FILE.unlink()
+        self.assertEqual([c.subject.rfc4514_string() for c in trust.load_trust_anchors()], ["CN=Old CA"])
+        storage.save_config({"verifiers": {}})  # a fresh configuration says there is nothing to move
+        self.assertEqual([c.subject.rfc4514_string() for c in trust.load_trust_anchors()], ["CN=Old CA"])
+        self.assertTrue((storage.TRUST_DIR / "planted.pem").exists())
+
+    def test_new_profile_does_not_adopt_a_planted_ca(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        from atesta_id_wallet import trust
+
+        storage.ensure_data_dir(storage.TRUST_DIR)
+        (storage.TRUST_DIR / "planted.pem").write_bytes(base.make_cert(
+            ec.generate_private_key(ec.SECP256R1()), "Planted CA", ca=True).public_bytes(serialization.Encoding.PEM))
+        self.assertEqual(trust.load_trust_anchors(), [])
+        self.store_something()
+        self.assertEqual(trust.load_trust_anchors(), [])
 
     def test_short_password_is_refused(self):
         with self.assertRaisesRegex(common.WalletError, "al menos 12"):

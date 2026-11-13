@@ -20,6 +20,7 @@
     "<b>{verifier}</b> asks for: {wanted}. Get it first from the organisation that gives it, and try again.": "<b>{verifier}</b> pide: {wanted}. Consíguela primero de la organización que la da y vuelve a intentarlo.",
     "A credential is like a digital card that says something about you: a membership card, an employee pass, a certificate. Keep yours on this computer and use them to sign in to data space services. Nothing is shared without your approval, and you see exactly what.": "Una credencial es como una tarjeta digital que dice algo de ti: un carné de socio, una tarjeta de empleado, un certificado. Guarda las tuyas en este ordenador y úsalas para entrar en los servicios del espacio de datos. No se comparte nada sin tu aprobación, y ves exactamente qué.",
     "A disclosure overwrites the claim '{name}'.": "Una disclosure sobrescribe el claim '{name}'.",
+    "A link opened the wallet with arguments of its own; nothing was done.": "Un enlace abrió la cartera con argumentos propios; no se ha hecho nada.",
     "A profile is a separate identity, with its own key and credentials (for example, «work»).": "Un perfil es una identidad separada, con su propia clave y credenciales (por ejemplo, «trabajo»).",
     "About": "Acerca de",
     "Accept": "Aceptar",

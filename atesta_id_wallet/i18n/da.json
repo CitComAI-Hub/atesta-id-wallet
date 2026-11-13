@@ -20,6 +20,7 @@
     "<b>{verifier}</b> asks for: {wanted}. Get it first from the organisation that gives it, and try again.": "<b>{verifier}</b> beder om: {wanted}. Få den først fra den organisation, der udsteder den, og prøv igen.",
     "A credential is like a digital card that says something about you: a membership card, an employee pass, a certificate. Keep yours on this computer and use them to sign in to data space services. Nothing is shared without your approval, and you see exactly what.": "En legitimation er som et digitalt kort, der siger noget om dig: et medlemskort, et medarbejderkort, et certifikat. Gem dine på denne computer, og brug dem til at logge ind på dataområdets tjenester. Intet deles uden din godkendelse, og du ser præcis hvad.",
     "A disclosure overwrites the claim '{name}'.": "En disclosure overskriver claimet '{name}'.",
+    "A link opened the wallet with arguments of its own; nothing was done.": "Et link åbnede wallet'en med sine egne argumenter; intet blev gjort.",
     "A profile is a separate identity, with its own key and credentials (for example, «work»).": "En profil er en separat identitet med sin egen nøgle og sine egne legitimationer (for eksempel «arbejde»).",
     "About": "Om",
     "Accept": "Acceptér",

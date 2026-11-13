@@ -26,6 +26,7 @@ from .desktop import (
     decode_qr_image,
     detect_input,
     gui_available,
+    _is_wallet_link,
     route_input,
 )
 from .i18n import N_, tr, tr_n
@@ -543,8 +544,23 @@ def _select_profile(requested: str | None, command: str) -> None:
         log(tr("Profile: {name}", name=name))
 
 
+def _check_link_launch(argv: list[str]) -> None:
+    """
+    --pause is how the desktop starts the terminal wallet for a link (desktop.py): '--pause LINK', or
+    '--pause' alone from the menu. On Windows the link is pasted into a command line ("%1"), and a
+    program that opens it without escaping its quotes would let the link add arguments of its own:
+    --yes would share the data without asking. So nothing else is accepted with --pause.
+    """
+    if "--pause" not in argv:
+        return
+    rest = [a for a in argv if a != "--pause"]
+    if len(argv) - len(rest) > 1 or len(rest) > 1 or (rest and not _is_wallet_link(rest[0])):
+        raise WalletError(tr("A link opened the wallet with arguments of its own; nothing was done."))
+
+
 def _run(argv: list[str]) -> int:
     parser = build_parser()
+    _check_link_launch(argv)
     requested_profile = _pop_profile(argv)
     global_flags = [a for a in argv if a in ("--verbose", "--pause", "--version", "-h", "--help")]
     positionals = [a for a in argv if not a.startswith("-")]

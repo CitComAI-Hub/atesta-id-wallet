@@ -12,7 +12,7 @@ It describes version 0.13.1, which includes the security audit of November 2026.
 | Settings, pinned verifier certificates | `config.enc` | Encrypted, `0600`, written atomically (a crash cannot leave it empty and silently drop the pins). |
 | Activity history | `history.enc` | Encrypted, `0600`. Records who received what; it is personal data too. |
 | Profile data key | System keyring, or `vault.json` wrapped with the wallet password | See *Encryption at rest*. |
-| Trusted CA certificates | `trusted_cas/*.pem.enc` | Public, but they decide which verifiers are trusted: encrypted and authenticated like the rest, `0600`. A certificate dropped into the folder by another program is ignored; plain `.pem` files of older versions are encrypted once, at the first start. |
+| Trusted CA certificates | `trusted_cas/*.pem.enc` | Public, but they decide which verifiers are trusted: encrypted and authenticated like the rest, `0600`. A certificate dropped into the folder by another program is ignored; plain `.pem` files of older versions are encrypted once, at the first start, and only in a profile whose encrypted `config.enc` an older version wrote: deleting it does not make the wallet adopt a planted one. |
 | Keycloak password | Never stored | Typed into the window or the terminal, sent only over HTTPS to the authorization server's host. Kept in memory until that login ends; if the offer is tied to another wallet, it is sent once more to the same host for the retry without the offer (see *Issuance*). |
 | Log and technical details | Memory only (*Settings → Advanced*, "Show technical details", CLI errors) | Codes, tokens, `state`, passwords and every JWT (credentials, proofs, presentations) are replaced by `<redacted>` before they are shown, so they can be pasted into a support request. |
 | Backups | File chosen by the user | AES-256-GCM, key derived from a password with scrypt (N=2¹⁵, r=8, p=1). Restore rejects archive entries outside the profile (no path traversal, no links). |
@@ -235,6 +235,11 @@ Names published by issuers are reduced to one short line of text before they are
   global, so the pipe name carries a random suffix stored in the user's data folder: another user
   cannot guess it and create the pipe first. The same suffix names the socket when both folders'
   paths are too long for one and it goes to the shared temporary folder.
+- A link opened by the system in the terminal wallet (`install-handler --terminal`) starts it as
+  `atesta-id-wallet --pause LINK`. On Windows the link is pasted into a command line (`"%1"`), and a
+  program that opens it without escaping its quotes would let the link add arguments of its own,
+  such as `--yes`; with `--pause` the wallet accepts nothing but one wallet link and stops otherwise.
+  The window takes no option that changes what is shared.
 - Temporary files of the window (themed icons) go to a private, per-process temporary directory.
 - On Windows the clipboard is read with PowerShell by its full path in the system folder, never a
   `powershell.exe` found in the current folder.

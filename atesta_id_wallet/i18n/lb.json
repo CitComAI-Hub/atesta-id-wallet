@@ -20,6 +20,7 @@
     "<b>{verifier}</b> asks for: {wanted}. Get it first from the organisation that gives it, and try again.": "<b>{verifier}</b> freet: {wanted}. Hol en als éischt bei der Organisatioun, déi en ausstellt, a prouf et dann nach eng Kéier.",
     "A credential is like a digital card that says something about you: a membership card, an employee pass, a certificate. Keep yours on this computer and use them to sign in to data space services. Nothing is shared without your approval, and you see exactly what.": "En Nowäis ass wéi eng digital Kaart, déi eppes iwwer dech seet: eng Memberskaart, e Mataarbechterausweis, en Zertifikat. Hal deng op dësem Computer a mell dech domat bei Servicer vum Dateraum un. Näischt gëtt ouni deng Zoustëmmung gedeelt, an du gesäis genee wat.",
     "A disclosure overwrites the claim '{name}'.": "Eng Offenleeung iwwerschreift d'Donnée ‚{name}‘.",
+    "A link opened the wallet with arguments of its own; nothing was done.": "E Link huet d'Wallet mat eegenen Argumenter opgemaach; et gouf näischt gemaach.",
     "A profile is a separate identity, with its own key and credentials (for example, «work»).": "E Profil ass eng eegen Identitéit, mat sengem eegene Schlëssel a sengen eegene Nowäiser (zum Beispill «Aarbecht»).",
     "About": "Iwwer",
     "Accept": "Unhuelen",

@@ -262,6 +262,10 @@ def load_config() -> dict[str, Any]:
 
 
 def save_config(config: dict[str, Any]) -> None:
+    if not CONFIG_FILE.exists():
+        # A configuration this version starts has no plain CAs of an older one to move: a .pem found
+        # later was put there by someone else (see _migrate_plain_cas).
+        config = {CAS_ENCRYPTED: True, **config}
     write_secret(CONFIG_FILE, json.dumps(config, indent=2, ensure_ascii=False).encode("utf-8"))
 
 
@@ -582,7 +586,14 @@ CAS_ENCRYPTED = "trusted_cas_encrypted"  # config flag: the plain .pem files of 
 
 
 def _migrate_plain_cas() -> None:
-    """Older versions kept the CAs as plain .pem files: encrypted once, then plain files are ignored."""
+    """
+    Older versions kept the CAs as plain .pem files: encrypted once, then plain files are ignored.
+    Only in a profile whose encrypted configuration was written by an older version: without it
+    (a new profile, or config.enc deleted by another program) a plain .pem is not believed, or a
+    program that cannot read the wallet could delete config.enc and have its own CA trusted.
+    """
+    if not CONFIG_FILE.exists():
+        return
     config = load_config()
     if config.get(CAS_ENCRYPTED) is True:
         return
