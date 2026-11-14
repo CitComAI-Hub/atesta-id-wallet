@@ -33,7 +33,7 @@ from .i18n import tr
 from .jose import encrypt_response_jwe
 from .sdjwt import SdJwt, _claim_at, _sd_digest, select_disclosures
 from . import status
-from .storage import HolderKey, add_history, credential_name, is_usable
+from .storage import HolderKey, add_history, credential_name, holder_key, is_usable, mark_used
 from .trust import VerifierIdentity, check_request_object, check_response_uri, remember_verifier, split_client_id
 from .ui import consent_items
 
@@ -466,12 +466,15 @@ def prepare_presentation(
     return PreparedPresentation(request, identity, response_uri, response_mode, nonce, matches, pd)
 
 
-def build_response(prepared: PreparedPresentation, key: HolderKey, *, vp_token_style: str = "array") -> dict[str, str]:
-    """Signs the presentations (KB-JWT) and builds the POST body for response_uri."""
+def build_response(prepared: PreparedPresentation, *, vp_token_style: str = "array") -> dict[str, str]:
+    """
+    Signs the presentations (KB-JWT, with the key of each credential's current copy) and builds the
+    POST body for response_uri.
+    """
     request, matches = prepared.request, prepared.matches
     presentations = [
         build_sd_jwt_presentation(
-            m.record["_sd"], key, audience=prepared.identity.client_id, nonce=prepared.nonce,
+            m.record["_sd"], holder_key(m.record), audience=prepared.identity.client_id, nonce=prepared.nonce,
             requested_paths=m.paths,
         )
         for m in matches
@@ -516,6 +519,9 @@ def send_presentation(
     # Redirects are not followed: a 307/308 would post the presentation again to whatever address the
     # answer names, which nobody checked (check_response_uri) and the user never saw.
     response = session.post(prepared.response_uri, data=body, timeout=30, allow_redirects=False)
+    # Sent: whatever the verifier answers, these copies have been shown and the next ones are used.
+    for match in prepared.matches:
+        mark_used(match.record)
     if response.status_code >= 400:
         raise _http_error("POST", prepared.response_uri, response)
     if response.status_code in (307, 308):

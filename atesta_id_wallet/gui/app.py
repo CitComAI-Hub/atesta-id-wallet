@@ -57,7 +57,6 @@ from ..desktop import (
 from ..i18n import tr, tr_n
 from ..storage import (
     DEFAULT_PROFILE,
-    HolderKey,
     add_trusted_ca,
     create_profile,
     credential_issuer_name,
@@ -670,7 +669,7 @@ class MainWindow(QMainWindow):
         if not self.prompter.consent(prepared):
             record_declined(prepared)
             raise Cancelled()
-        body = build_response(prepared, HolderKey.load_or_create())
+        body = build_response(prepared)
         return prepared, send_presentation(session, prepared, body)
 
     def _issued(self, issued: list[Any]) -> None:
@@ -909,7 +908,7 @@ class MainWindow(QMainWindow):
                       "deleted. This cannot be undone."), delete, confirm_text=tr("Remove"), danger=True, icon="trash-2")
 
     def backup(self) -> None:
-        if not storage.KEY_FILE.exists():
+        if not storage.has_credentials():
             return self._result(False, tr("Nothing to back up"), tr("This profile has no credentials yet."),
                                 icon="info", tone="accent")
         path, _ = QFileDialog.getSaveFileName(self, tr("Save encrypted backup"),

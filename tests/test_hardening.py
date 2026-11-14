@@ -176,15 +176,15 @@ class StorageRobustnessTests(unittest.TestCase):
         self.assertEqual([p.name for p in self.home.iterdir()], ["config.json"])
 
     def test_credentials_in_the_same_second_do_not_overwrite(self):
-        paths = {storage.save_credential(f"c{i}", fmt="x", issuer="https://i", configuration_id="same")
+        paths = {storage.save_credential([(f"c{i}", None)], fmt="x", issuer="https://i", configuration_id="same")
                  for i in range(3)}
         self.assertEqual(len(paths), 3)
-        self.assertEqual(sorted(r["credential"] for r in storage.load_credentials()), ["c0", "c1", "c2"])
+        self.assertEqual(sorted(r["instances"][0]["credential"] for r in storage.load_credentials()), ["c0", "c1", "c2"])
 
     def test_every_profile_lives_in_profiles(self):
-        storage.HolderKey.load_or_create()
+        storage.save_credential([("x", None)], fmt="x", issuer="https://i", configuration_id="c")
         storage.create_profile("work")
-        self.assertEqual(storage.KEY_FILE, self.home / "profiles" / "default" / "holder_key.enc")
+        self.assertEqual(storage.CRED_DIR, self.home / "profiles" / "default" / "credentials")
         self.assertEqual(storage.list_profiles(), ["default", "work"])
         if os.name == "posix":
             for folder in (self.home, self.home / "profiles", self.home / "profiles" / "default"):
@@ -362,8 +362,8 @@ class GuiSafetyTests(unittest.TestCase):
 
         self.assertEqual(widgets.label("<b>x</b>").textFormat(), Qt.PlainText)
         self.assertEqual(widgets.esc("<b>a & b</b>\nc"), "&lt;b&gt;a &amp; b&lt;/b&gt;<br>c")
-        holder = storage.HolderKey.load_or_create()
-        storage.save_credential(base.make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
+        holder = storage.HolderKey.generate()
+        storage.save_credential([(base.make_sd_jwt(holder), holder)], fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
         record = storage.load_credentials()[0]
         name = '<span style="color:green">✔ Banco</span>'
         identity = vp.VerifierIdentity(name, "", name, name, trust="unverified")

@@ -150,8 +150,8 @@ class PresentFlowTests(unittest.TestCase):
 
     def setUp(self):
         isolated_home(self)
-        holder = storage.HolderKey.load_or_create()
-        storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
+        holder = storage.HolderKey.generate()
+        storage.save_credential([(make_sd_jwt(holder), holder)], fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
         FakeVerifier.received = []
         self.key = ec.generate_private_key(ec.SECP256R1())
         self.cert = make_cert(self.key, "localhost")

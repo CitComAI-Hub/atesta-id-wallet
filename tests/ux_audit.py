@@ -218,9 +218,13 @@ def _sd_jwt(holder: storage.HolderKey, claims: dict[str, Any], vct: str, exp: in
 
 def fill_wallet() -> None:
     """Three credentials (one expired) and three events in the active profile."""
-    holder = storage.HolderKey.load_or_create()
+    holder = storage.HolderKey.generate()
     now = int(time.time())
-    storage.save_credential(_sd_jwt(holder, {"given_name": "Marta", "family_name": "Ribes Soler",
+
+    def save(raw: str, **kwargs: Any) -> None:
+        storage.save_credential([(raw, holder)], **kwargs)
+
+    save(_sd_jwt(holder, {"given_name": "Marta", "family_name": "Ribes Soler",
                                              "email": "marta.ribes@example.org", "organisation": "Ajuntament de València",
                                              "roles": ["data-provider", "member"]}, "MembershipCredential",
                                     exp=now + 86400 * 300),
@@ -228,7 +232,7 @@ def fill_wallet() -> None:
                             configuration_id="MembershipCredential",
                             display={"name": "CITCOM membership", "issuer_name": "CITCOM TEF"})
     # Like the real ones of the CITCOM-VRAIN data space: identifiers and FIWARE-style roles; expires soon.
-    storage.save_credential(_sd_jwt(holder, {"legalName": "PGTEC Consortium", "vatID": "ESB12345678",
+    save(_sd_jwt(holder, {"legalName": "PGTEC Consortium", "vatID": "ESB12345678",
                                              "email": "marta.ribes@example.org",
                                              "jti": "urn:uuid:7f3c2a91-4b8e-4d2f-9c61-0e5a8b7d3f12",
                                              "sub": "c4a1e2f0-93b7-4e58-a6d2-1f8b9c0d7e34",
@@ -237,7 +241,7 @@ def fill_wallet() -> None:
                                     "LegalPersonCredential", exp=now + 86400 * 12),
                             fmt="dc+sd-jwt", issuer="https://auth.pgtec-vrain-dataspace.eu/realms/pgtec",
                             configuration_id="LegalPersonCredential")
-    storage.save_credential(_sd_jwt(holder, {"email": "marta@example.org", "username": "mribes"}, "UserCredential",
+    save(_sd_jwt(holder, {"email": "marta@example.org", "username": "mribes"}, "UserCredential",
                                     exp=now - 86400),
                             fmt="dc+sd-jwt", issuer="https://id.example.com", configuration_id="UserCredential")
     for event in (

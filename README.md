@@ -185,14 +185,14 @@ atesta-id-wallet list [-d] [--check]    # stored credentials (-d: all claims; --
                                         # whether they have been revoked)
 atesta-id-wallet history                # what was received, shared or declined, and with whom
 atesta-id-wallet remove 2               # delete by number or id from 'list'
-atesta-id-wallet backup ~/wallet.bak    # encrypted backup of the profile, holder key included
+atesta-id-wallet backup ~/wallet.bak    # encrypted backup of the profile, the credentials' keys included
 atesta-id-wallet restore ~/wallet.bak   # into an empty profile
-atesta-id-wallet reset                  # delete key, credentials and settings of the profile
+atesta-id-wallet reset                  # delete credentials, keys and settings of the profile
 atesta-id-wallet password [set|remove]  # wallet password: app lock (see Data)
 ```
 
 **Profiles** keep separate identities, for example personal, work or testing. Each profile has
-its own holder key, credentials, history and settings:
+its own credentials (and their keys), history and settings:
 
 ```bash
 atesta-id-wallet profiles add work
@@ -256,8 +256,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 
 | File in `profiles/<name>/` | Contents |
 |---|---|
-| `holder_key.enc` | Wallet private key (P-256). Your credentials are bound to it: **back it up** (`backup`) and never share it. |
-| `credentials/*.enc` | Received SD-JWT credentials, with the issuer's display name and colours. |
+| `credentials/*.enc` | Received SD-JWT credentials, with the issuer's display name and colours. Each holds up to 5 copies, each with the private key (P-256) it is bound to: **back them up** (`backup`) and never share them. |
 | `config.enc` | Per issuer: username, `client_id` and `redirect_uri` that worked. Pinned verifier certificates. |
 | `history.enc` | Activity: credentials received, data shared or declined, and with whom. |
 | `trusted_cas/*.pem` | CAs whose verifiers are trusted (public certificates, not encrypted). |
@@ -274,7 +273,11 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 - DCQL: `credentials`, `credential_sets`, `claims` (with `values`) and `claim_sets`;
   `trusted_authorities` and `multiple` are ignored.
 - Keys are software keys (no TPM or secure element). See [docs/SECURITY.md](docs/SECURITY.md).
-- One holder key per profile, so verifiers can correlate presentations made with the same profile.
+- Copies of a credential (batch issuance) only from issuers that advertise
+  `batch_credential_issuance` (in Keycloak, the realm attribute
+  `oid4vci.batch_credential_issuance.batch_size`). Otherwise a credential has one copy, and its
+  presentations can be linked by the issuer's signature and its key. With copies, they are used in
+  turn: after 5 presentations a copy is shown again.
 - Revocation: Token Status List in JWT form only (no CWT lists); see
   [docs/SECURITY.md](docs/SECURITY.md#revocation-token-status-list).
 

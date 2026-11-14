@@ -70,11 +70,11 @@ class IssuedCredentialTests(unittest.TestCase):
     def test_bad_signature_and_wrong_binding(self):
         vci.issuer_keys = lambda *a: ([ec.generate_private_key(ec.SECP256R1()).public_key()], True)
         with self.assertRaisesRegex(common.WalletError, "firma"):
-            vci.verify_issued_credential(None, make_sd_jwt(self.holder), self.holder, "did:web:issuer.example", {})
+            vci.verify_issued_credential(None, make_sd_jwt(self.holder), [self.holder], "did:web:issuer.example", {})
         vci.issuer_keys = lambda *a: ([], False)
         stranger = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
         with self.assertRaisesRegex(common.WalletError, "otra clave"):
-            vci.verify_issued_credential(None, make_sd_jwt(stranger), self.holder, "did:web:issuer.example", {})
+            vci.verify_issued_credential(None, make_sd_jwt(stranger), [self.holder], "did:web:issuer.example", {})
 
     def test_did_web_issuer_offered_by_keycloak(self):
         """Keycloak offers the credential but iss is a did:web: it is verified with the DID document."""
@@ -102,13 +102,13 @@ class IssuedCredentialTests(unittest.TestCase):
         raw = storage.HolderKey(issuer_key).sign_jwt({"typ": "dc+sd-jwt", "kid": did}, payload)
         raw += "~" + "".join(d.encoded + "~" for d in sd.disclosures)
         session = Session()
-        vci.verify_issued_credential(session, raw, self.holder, "https://kc.example/realms/provider", {})
+        vci.verify_issued_credential(session, raw, [self.holder], "https://kc.example/realms/provider", {})
         self.assertEqual(session.urls, ["https://issuer.example/.well-known/did.json"])
         other = ec.generate_private_key(ec.SECP256R1()).public_key().public_numbers()
         document["verificationMethod"][0]["publicKeyJwk"] = dict(
             jwk, x=common.b64u(other.x.to_bytes(32, "big")), y=common.b64u(other.y.to_bytes(32, "big")))
         with self.assertRaisesRegex(common.WalletError, "firma"):
-            vci.verify_issued_credential(Session(), raw, self.holder, "https://kc.example/realms/provider", {})
+            vci.verify_issued_credential(Session(), raw, [self.holder], "https://kc.example/realms/provider", {})
 
     def test_humanize(self):
         self.assertEqual(common.humanize("LegalPersonCredential"), "Legal Person Credential")
@@ -153,6 +153,30 @@ class IssueFlowTests(unittest.TestCase):
         prompter = ScriptedPrompter(texts=["1234"], confirms=False)
         vci.issue(requests.Session(), self.offer, vci.IssueOptions(), prompter)
         self.assertFalse(any("primera vez" in q for q in prompter.asked))
+
+    def test_batch_issuance_one_key_per_copy(self):
+        FakeIssuer.batch_size, FakeIssuer.proofs_seen = 3, []
+        self.addCleanup(setattr, FakeIssuer, "batch_size", None)
+        vci.issue(requests.Session(), self.offer, vci.IssueOptions(), ScriptedPrompter(texts=["1234"]))
+        self.assertEqual(FakeIssuer.proofs_seen, [3])  # min(batch_size, MAX_COPIES)
+        record = storage.load_credentials()[0]
+        self.assertEqual(len(record["instances"]), 3)
+        keys = set()
+        for instance in record["instances"]:  # each copy bound to its own key, whatever the order
+            cnf = instance["_sd"].payload["cnf"]["jwk"]
+            key = storage.HolderKey.from_pem(instance["key"]).public_jwk
+            self.assertEqual((cnf["x"], cnf["y"]), (key["x"], key["y"]))
+            keys.add(key["x"])
+        self.assertEqual(len(keys), 3)
+        # --copies 1: a single proof, even if the issuer allows more.
+        vci.issue(requests.Session(), self.offer, vci.IssueOptions(copies=1), ScriptedPrompter(texts=["1234"]))
+        self.assertEqual(FakeIssuer.proofs_seen, [3, 1])
+
+    def test_without_batch_support_one_copy(self):
+        FakeIssuer.proofs_seen = []
+        vci.issue(requests.Session(), self.offer, vci.IssueOptions(), ScriptedPrompter(texts=["1234"]))
+        self.assertEqual(FakeIssuer.proofs_seen, [1])
+        self.assertEqual(len(storage.load_credentials()[0]["instances"]), 1)
 
     def test_new_issuer_declined(self):
         with self.assertRaisesRegex(common.WalletError, "Cancelado"):

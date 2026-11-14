@@ -7,8 +7,7 @@ It describes version 0.13.1, which includes the security audit of November 2026.
 
 | Asset | Where | Protection |
 |---|---|---|
-| Holder private key | `holder_key.enc` | Encrypted with the profile data key (see below), file `0600`. |
-| Credentials (personal data) | `credentials/*.enc` | Encrypted with the profile data key, `0600`. |
+| Credentials (personal data) and their holder keys | `credentials/*.enc` | Encrypted with the profile data key (see below), `0600`. Each copy of a credential is stored with the P-256 private key it is bound to. |
 | Settings, pinned verifier certificates | `config.enc` | Encrypted, `0600`, written atomically (a crash cannot leave it empty and silently drop the pins). |
 | Activity history | `history.enc` | Encrypted, `0600`. Records who received what; it is personal data too. |
 | Profile data key | System keyring, or `vault.json` wrapped with the wallet password | See *Encryption at rest*. |
@@ -155,6 +154,14 @@ Names published by issuers are reduced to one short line of text before they are
   login is fetched over HTTPS. External IdPs need `--browser-login`.
 - The authorization code flow uses PKCE (S256) and a `state` that must come back unchanged. If
   the response names its issuer (`iss`, RFC 9207), it must be the expected one.
+- **One key per copy.** Each credential is asked for in up to 5 copies (`--copies N`), when the
+  issuer advertises `batch_credential_issuance`, with a proof made with a new key for each copy
+  (OpenID4VCI 1.0 §8.2). Every copy is checked like a single credential and matched to its key by
+  its `cnf`, whatever the order of the answer; a copy bound to a key the wallet did not make is
+  refused. A presentation uses the least used copy that is not revoked or suspended and signs the
+  KB-JWT with that copy's key, so two presentations of different copies share neither the issuer
+  signature nor the key. Revocation is checked per copy; the credential counts as revoked only
+  when every copy is.
 - **DPoP** (RFC 9449): when the authorization server advertises ES256 in
   `dpop_signing_alg_values_supported`, the access token is bound to a key made for that issuance
   only (not the holder key, so the issuer cannot link it to the credentials). Every request
@@ -305,7 +312,7 @@ Names published by issuers are reduced to one short line of text before they are
 | Addresses are checked by name, not by where they resolve | A public host name that resolves to a private address (DNS rebinding) passes the "not this computer or the local network" checks for logos and status lists. Addresses written as numbers are recognised in every spelling (`127.1`, `2130706433`, `0x7f000001`, `localhost.`, IPv4-mapped IPv6), and every range that is not public counts as local (also `100.64.0.0/10`, reserved and multicast). Only HTTPS requests are made, and their answers are not shown. | — |
 | Verifier certificates are not checked for expiry unless a CA vouches for them | A pinned (trust on first use) certificate keeps its level after it expires. | Part of the trust list work. |
 | A credential is stored with a warning if no issuer key is found | The wallet may hold a credential whose signature it could not check. The verifier will check it anyway. | Make it an error once the pilot issuers are known. |
-| One key per profile | Verifiers can link presentations from the same profile. | One key per credential (batch issuance). |
+| Copies are reused | A credential has at most 5 copies (fewer if the issuer allows fewer, one without batch issuance), used in turn. Verifiers that compare notes can link presentations of the same copy by its issuer signature and key. | Ask for new copies when they run out (needs re-issuance without a new login). |
 | Revocation is only as fresh as the last check | Offline, or if the issuer's list cannot be fetched or verified, a revoked credential may still be offered (the verifier is expected to check status). Only Token Status List in JWT form; no CWT lists or other mechanisms. | — |
 | Clipboard and recent screenshots are read automatically by *Scan QR* | A QR the user did not intend could be picked. | Mitigated by the offer review and consent screens, which show what was picked and who asks. |
 | Windows builds not code-signed; builds not reproducible | SmartScreen warns, and users rely on the checksums and the CI attestation to know what they installed. | Authenticode certificate for the Windows builds. |

@@ -111,7 +111,7 @@ class GuiFlowTests(unittest.TestCase):
 
     def test_missing_credential_offers_known_issuer(self):
         storage.save_config({"issuers": {FakeIssuer.base: {}}})
-        holder = storage.HolderKey.load_or_create()
+        holder = storage.HolderKey.generate()
         self.addCleanup(setattr, gui, "issue_from_issuer", gui.issue_from_issuer)
         requested = []
         gui.issue_from_issuer = lambda session, issuer, ids, options, prompter: requested.append((issuer, ids)) or []
@@ -255,8 +255,8 @@ class GuiFlowTests(unittest.TestCase):
         self.window._close_sheet()
 
     def test_cards_work_with_the_keyboard(self):
-        holder = storage.HolderKey.load_or_create()
-        storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
+        holder = storage.HolderKey.generate()
+        storage.save_credential([(make_sd_jwt(holder), holder)], fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
         self.window.reload()
         self.window._go("wallet")
         card = self.window.wallet_page.grid_host.findChildren(gui.CredentialCard)[0]
@@ -271,10 +271,10 @@ class GuiFlowTests(unittest.TestCase):
         self.assertIn("Correo electrónico", labels)
 
     def test_revoked_credential_is_marked(self):
-        holder = storage.HolderKey.load_or_create()
-        storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
+        holder = storage.HolderKey.generate()
+        storage.save_credential([(make_sd_jwt(holder), holder)], fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
         record = storage.load_credentials()[0]
-        record["revocation"] = {"state": "revoked", "checked_at": int(time.time()), "next_check": 0}
+        record["instances"][0]["revocation"] = {"state": "revoked", "checked_at": int(time.time()), "next_check": 0}
         storage.save_record(record)
         self.window.reload()
         self.window._go("wallet")
@@ -336,8 +336,8 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual((started, quit_calls), ([["/apps/Atesta.AppImage"]], [True]))
 
     def test_consent_declined_sends_nothing(self):
-        holder = storage.HolderKey.load_or_create()
-        storage.save_credential(make_sd_jwt(holder), fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
+        holder = storage.HolderKey.generate()
+        storage.save_credential([(make_sd_jwt(holder), holder)], fmt="dc+sd-jwt", issuer="https://i", configuration_id="c")
         self.consent = False
         self.window.process(self.present_link())
         self.wait()

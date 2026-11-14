@@ -85,20 +85,20 @@ class FuzzTests(unittest.TestCase):
             self.fail(f"{type(exc).__name__}: {exc}\ninput: {value!r}\nseed: ATESTA_FUZZ_SEED={SEED}")
 
     def test_sd_jwt(self):
-        valid = make_sd_jwt(storage.HolderKey.load_or_create())
+        valid = make_sd_jwt(storage.HolderKey.generate())
         sdjwt.parse_sd_jwt(valid)  # the starting point is valid
         for _ in range(ROUNDS):
             self.only_wallet_errors(sdjwt.parse_sd_jwt, mutate(self.rng, valid))
 
     def test_sd_jwt_random_disclosures(self):
-        valid = make_sd_jwt(storage.HolderKey.load_or_create())
+        valid = make_sd_jwt(storage.HolderKey.generate())
         issuer_jwt = valid.split("~")[0]
         for _ in range(ROUNDS):
             disclosure = common.b64u(json.dumps(random_json(self.rng)).encode())
             self.only_wallet_errors(sdjwt.parse_sd_jwt, f"{issuer_jwt}~{disclosure}~")
 
     def test_jwt_decode(self):
-        valid = make_sd_jwt(storage.HolderKey.load_or_create()).split("~")[0]
+        valid = make_sd_jwt(storage.HolderKey.generate()).split("~")[0]
         for _ in range(ROUNDS):
             self.only_wallet_errors(common.jwt_decode_unverified, mutate(self.rng, valid))
             payload = common.b64u(json.dumps(random_json(self.rng)).encode())
@@ -137,8 +137,8 @@ class FuzzTests(unittest.TestCase):
                                     mutate(self.rng, self.rng.choice(starts)))
 
     def test_dcql_queries(self):
-        key = storage.HolderKey.load_or_create()
-        storage.save_credential(make_sd_jwt(key), fmt="dc+sd-jwt", issuer="https://kc.example",
+        key = storage.HolderKey.generate()
+        storage.save_credential([(make_sd_jwt(key), key)], fmt="dc+sd-jwt", issuer="https://kc.example",
                                 configuration_id="Legal", display={"name": "Legal"})
         records = storage.load_credentials()
         for _ in range(ROUNDS):

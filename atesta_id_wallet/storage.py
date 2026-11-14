@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Profiles, holder key, credentials and configuration on disk."""
+"""Profiles, credentials (each copy with its own holder key) and configuration on disk."""
 
 from __future__ import annotations
 
@@ -41,28 +41,33 @@ DEFAULT_PROFILE = "default"
 # Paths of the active profile; set_profile() changes them.
 PROFILE = DEFAULT_PROFILE
 DATA_DIR = PROFILES_DIR / DEFAULT_PROFILE
-KEY_FILE = DATA_DIR / "holder_key.enc"
 CRED_DIR = DATA_DIR / "credentials"
 CONFIG_FILE = DATA_DIR / "config.enc"
 TRUST_DIR = DATA_DIR / "trusted_cas"
 PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
+# Copies of a credential asked from an issuer that supports batch issuance (OpenID4VCI 1.0 §8.2).
+# Each copy is bound to a key of its own, so two verifiers cannot link two presentations by the
+# issuer's signature or the key; once every copy has been used, they are used again in turn.
+MAX_COPIES = 5
+
+
 class HolderKey:
+    """A P-256 key bound to one copy of a credential (cnf), or used for one DPoP run."""
+
     def __init__(self, private_key: ec.EllipticCurvePrivateKey):
         self.private_key = private_key
 
     @classmethod
-    def load_or_create(cls, path: Path | None = None) -> "HolderKey":
-        path = path or KEY_FILE
-        if path.exists():
-            key = serialization.load_pem_private_key(read_secret(path), password=None)
-            if not isinstance(key, ec.EllipticCurvePrivateKey):
-                raise WalletError(tr("{path} does not contain an EC key.", path=path))
-            return cls(key)
-        key = ec.generate_private_key(ec.SECP256R1())
-        write_secret(path, cls(key).pem())
-        log(tr("New holder key generated in {path}", path=path))
+    def generate(cls) -> "HolderKey":
+        return cls(ec.generate_private_key(ec.SECP256R1()))
+
+    @classmethod
+    def from_pem(cls, pem: str | bytes) -> "HolderKey":
+        key = serialization.load_pem_private_key(pem.encode("ascii") if isinstance(pem, str) else pem, password=None)
+        if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(key.curve, ec.SECP256R1):
+            raise WalletError(tr("The credential's key is not a P-256 key."))
         return cls(key)
 
     def pem(self) -> bytes:
@@ -96,10 +101,9 @@ def profile_dir(name: str) -> Path:
 
 
 def set_profile(name: str) -> None:
-    global PROFILE, DATA_DIR, KEY_FILE, CRED_DIR, CONFIG_FILE, TRUST_DIR
+    global PROFILE, DATA_DIR, CRED_DIR, CONFIG_FILE, TRUST_DIR
     PROFILE = name
     DATA_DIR = profile_dir(name)
-    KEY_FILE = DATA_DIR / "holder_key.enc"
     CRED_DIR = DATA_DIR / "credentials"
     CONFIG_FILE = DATA_DIR / "config.enc"
     TRUST_DIR = DATA_DIR / "trusted_cas"
@@ -269,13 +273,16 @@ def save_config(config: dict[str, Any]) -> None:
     write_secret(CONFIG_FILE, json.dumps(config, indent=2, ensure_ascii=False).encode("utf-8"))
 
 
-def save_credential(raw: str, *, fmt: str, issuer: str, configuration_id: str,
+def save_credential(copies: list[tuple[str, HolderKey | None]], *, fmt: str, issuer: str, configuration_id: str,
                     display: dict[str, Any] | None = None) -> Path:
+    """Stores one credential: its copies, each with the key it is bound to (None: not bound to any)."""
+    if not copies:
+        raise WalletError(tr("Credential response without credentials: {data}", data="[]"))
     safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", configuration_id)[:80]
     stamp = time.strftime("%Y%m%dT%H%M%S")
     path = CRED_DIR / f"{stamp}_{safe_id}.enc"
     suffix = 1
-    while path.exists():  # several credentials in the same second (batches, several configurations)
+    while path.exists():  # several credentials in the same second (several configurations)
         suffix += 1
         path = CRED_DIR / f"{stamp}_{safe_id}_{suffix}.enc"
     record = {
@@ -283,7 +290,8 @@ def save_credential(raw: str, *, fmt: str, issuer: str, configuration_id: str,
         "issuer": issuer,
         "credential_configuration_id": configuration_id,
         "stored_at": int(time.time()),
-        "credential": raw,
+        "instances": [{"credential": raw, "key": key.pem().decode("ascii") if key else None, "uses": 0}
+                      for raw, key in copies],
     }
     if display:
         record["display"] = display  # name and colours published by the issuer
@@ -291,7 +299,16 @@ def save_credential(raw: str, *, fmt: str, issuer: str, configuration_id: str,
     return path
 
 
+def has_credentials() -> bool:
+    return CRED_DIR.is_dir() and any(CRED_DIR.glob("*.enc"))
+
+
 def load_credentials() -> list[dict[str, Any]]:
+    """
+    The stored credentials, newest first. Each one shows the copy to use next: record["_sd"] and
+    record["_instance"] (see refresh_state). Credentials stored by versions before 0.14, bound to
+    one key for the whole profile, have no 'instances' and are ignored.
+    """
     if not CRED_DIR.exists():
         return []
     records = []
@@ -303,15 +320,71 @@ def load_credentials() -> list[dict[str, Any]]:
         except (OSError, ValueError, WalletError) as exc:  # damaged file: ignored
             debug(f"Could not read {path}: {exc}")
             continue
+        instances = record.get("instances") if isinstance(record, dict) else None
+        if not isinstance(instances, list) or not instances or not all(isinstance(i, dict) for i in instances):
+            debug(f"Ignored {path}: not a credential of this version")
+            continue
         record["_path"] = str(path)
         if record.get("format") in SD_JWT_FORMATS:
             try:
-                record["_sd"] = parse_sd_jwt(record["credential"])
+                for instance in instances:
+                    instance["_sd"] = parse_sd_jwt(instance["credential"])
             except Exception as exc:  # damaged credential: ignored
                 debug(f"Could not parse {path}: {exc}")
                 continue
+        refresh_state(record)
         records.append(record)
     return records
+
+
+def _instance_state(instance: dict[str, Any]) -> str | None:
+    state = (instance.get("revocation") or {}).get("state")
+    return state if state in ("revoked", "suspended") else None
+
+
+def refresh_state(record: dict[str, Any]) -> None:
+    """
+    Sets what the rest of the wallet reads from a credential with several copies:
+    - record["revocation"]: revoked or suspended only when every copy is (a suspension wins over a
+      revocation: it may be lifted); otherwise 'valid', with the oldest check and the nearest
+      next check of the copies still in use. Absent if no copy has been checked.
+    - record["_instance"], record["_sd"]: the copy to present next, the least used of those not
+      revoked or suspended (the first on a tie).
+    """
+    instances = record["instances"]
+    live = [i for i in instances if _instance_state(i) is None]
+    record.pop("revocation", None)
+    if not live:
+        states = [_instance_state(i) for i in instances]
+        worst = "suspended" if "suspended" in states else "revoked"
+        record["revocation"] = dict(next(i["revocation"] for i in instances if _instance_state(i) == worst))
+    elif any(isinstance(i.get("revocation"), dict) for i in live):
+        checks = [i.get("revocation") or {} for i in live]
+        record["revocation"] = {
+            "state": "valid",
+            "checked_at": min(int(c.get("checked_at") or 0) for c in checks),
+            "next_check": min(int(c.get("next_check") or 0) for c in checks),
+        }
+    pool = live or instances
+    chosen = min(pool, key=lambda i: i.get("uses") if isinstance(i.get("uses"), int) else 0)
+    record["_instance"] = next(n for n, i in enumerate(instances) if i is chosen)
+    record["_sd"] = chosen.get("_sd")
+
+
+def holder_key(record: dict[str, Any]) -> HolderKey:
+    """The key of the copy to present next (the one record["_sd"] shows)."""
+    pem = record["instances"][record["_instance"]].get("key")
+    if not isinstance(pem, str):
+        raise WalletError(tr("The credential is not bound to any key of this wallet, so it cannot be presented."))
+    return HolderKey.from_pem(pem)
+
+
+def mark_used(record: dict[str, Any]) -> None:
+    """Counts a presentation of the current copy and moves on to the next one."""
+    instance = record["instances"][record["_instance"]]
+    instance["uses"] = (instance.get("uses") if isinstance(instance.get("uses"), int) else 0) + 1
+    save_record(record)
+    refresh_state(record)
 
 
 def credential_name(record: dict[str, Any]) -> str:
@@ -368,14 +441,15 @@ def delete_credential(record: dict[str, Any]) -> None:
 
 def save_record(record: dict[str, Any]) -> bool:
     """
-    Writes a loaded credential back (e.g. with its revocation state). Only into the active profile:
-    a background check that finishes after a profile switch must not write with another profile's
-    key. Returns whether it was written.
+    Writes a loaded credential back (e.g. with its revocation state or its uses). Only into the
+    active profile: a background check that finishes after a profile switch must not write with
+    another profile's key. Returns whether it was written. What refresh_state derives is not stored.
     """
     path = Path(record["_path"])
     if path.parent != CRED_DIR or not path.exists():
         return False
-    data = {k: v for k, v in record.items() if not k.startswith("_")}
+    data = {k: v for k, v in record.items() if not k.startswith("_") and k != "revocation"}
+    data["instances"] = [{k: v for k, v in i.items() if not k.startswith("_")} for i in record["instances"]]
     write_secret(path, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
     return True
 
@@ -426,7 +500,7 @@ def validity(record: dict[str, Any], now: float | None = None) -> tuple[str, flo
     return "valid", None
 
 
-# What makes up a profile.
+# What makes up a profile (holder_key.enc: the single key of versions before 0.14, still wiped).
 PROFILE_ITEMS = ("holder_key.enc", "credentials", "config.enc", "trusted_cas", "history.enc", vault.VAULT_FILE)
 
 
@@ -479,12 +553,12 @@ def _backup_key(password: str, salt: bytes) -> bytes:
 
 
 def profile_is_empty() -> bool:
-    return not KEY_FILE.exists() and not load_credentials()
+    return not has_credentials()
 
 
 def write_backup(out: Path, password: str) -> None:
-    """Encrypted backup (scrypt + AES-256-GCM) of the active profile, key included."""
-    if not KEY_FILE.exists():
+    """Encrypted backup (scrypt + AES-256-GCM) of the active profile, the credentials' keys included."""
+    if not has_credentials():
         raise WalletError(tr("The profile '{profile}' is empty; there is nothing to back up.", profile=PROFILE))
     vault.check_new_password(password)
     buffer = io.BytesIO()
@@ -502,10 +576,10 @@ def write_backup(out: Path, password: str) -> None:
 
 def _backup_entries() -> list[tuple[str, bytes]]:
     """
-    The profile decrypted, with plain names (holder_key.pem, credentials/X.json...): the backup has
-    its own password, and the profile key (in the keyring) does not travel to another computer.
+    The profile decrypted, with plain names (credentials/X.json, each with its keys...): the backup
+    has its own password, and the profile key (in the keyring) does not travel to another computer.
     """
-    entries = [("holder_key.pem", read_secret(KEY_FILE))]
+    entries: list[tuple[str, bytes]] = []
     for path, name in ((CONFIG_FILE, "config.json"), (history_file(), "history.jsonl")):
         if path.exists():
             entries.append((name, read_secret(path)))
@@ -517,7 +591,7 @@ def _backup_entries() -> list[tuple[str, bytes]]:
 
 def _restore_target(name: str) -> tuple[Path, bool] | None:
     """Where a backup entry goes in the profile, and whether it is encrypted; None if unexpected."""
-    simple = {"holder_key.pem": KEY_FILE, "config.json": CONFIG_FILE, "history.jsonl": history_file()}
+    simple = {"config.json": CONFIG_FILE, "history.jsonl": history_file()}
     if name in simple:
         return simple[name], True
     folder, _, file = name.partition("/")
@@ -546,6 +620,9 @@ def restore_backup(path: Path, password: str) -> int:
 
     with tarfile.open(fileobj=io.BytesIO(plain), mode="r:gz") as tar:
         members = tar.getmembers()
+        if "holder_key.pem" in {m.name for m in members}:  # one key per profile: before 0.14
+            raise WalletError(tr("This backup was made by a version before 0.14 and cannot be restored. Ask "
+                                 "the issuers for your credentials again."))
         # Everything is checked before anything is written.
         entries = []
         for member in members:
@@ -553,8 +630,6 @@ def restore_backup(path: Path, password: str) -> int:
             if found is None:
                 raise WalletError(tr("Unexpected entry in the backup: {name}", name=member.name))
             entries.append((member, *found))
-        if "holder_key.pem" not in {m.name for m in members}:
-            raise WalletError(tr("Unexpected entry in the backup: {name}", name="holder_key.pem"))
         for member, target, encrypted in entries:
             stream = tar.extractfile(member)
             if stream is None:

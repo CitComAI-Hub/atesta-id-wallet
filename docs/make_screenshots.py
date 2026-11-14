@@ -83,10 +83,10 @@ def monogram(text: str, colour: str) -> str:
     return base64.b64encode(bytes(buffer.data())).decode("ascii")
 
 
-def credential(issuer_key: storage.HolderKey, issuer: str, claims: dict) -> str:
-    payload = {"iss": issuer, "iat": int(time.time()), **claims,
-               "cnf": {"jwk": storage.HolderKey.load_or_create().public_jwk}}
-    return issuer_key.sign_jwt({"typ": "dc+sd-jwt"}, payload) + "~"
+def credential(issuer_key: storage.HolderKey, issuer: str, claims: dict) -> tuple[str, storage.HolderKey]:
+    holder = storage.HolderKey.generate()
+    payload = {"iss": issuer, "iat": int(time.time()), **claims, "cnf": {"jwk": holder.public_jwk}}
+    return issuer_key.sign_jwt({"typ": "dc+sd-jwt"}, payload) + "~", holder
 
 
 def fill_profile() -> None:
@@ -98,7 +98,7 @@ def fill_profile() -> None:
         if logo:
             display.update(logo=monogram(logo, colour or "#4f46e5"), logo_type="image/png")
         claims = {"vct": f"{issuer}/{name.replace(' ', '')}", **claims}
-        storage.save_credential(credential(issuer_key, issuer, claims), fmt="dc+sd-jwt", issuer=issuer,
+        storage.save_credential([credential(issuer_key, issuer, claims)], fmt="dc+sd-jwt", issuer=issuer,
                                 configuration_id=name.replace(" ", ""), display=display)
         storage.add_history({"type": "issued", "party": issuer_name, "party_id": issuer, "credentials": [name]})
         time.sleep(1.01)  # distinct file names and dates

@@ -23,7 +23,6 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 import requests
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
 
 from .common import (
     Cancelled,
@@ -50,7 +49,7 @@ from . import i18n
 from .i18n import tr
 from .jose import _dns_names, _verify_jws, _x5c_chain, jwk_to_public_key
 from .sdjwt import parse_sd_jwt
-from .storage import HolderKey, add_history, load_config, save_config, save_credential
+from .storage import MAX_COPIES, HolderKey, add_history, load_config, save_config, save_credential
 from .ui import OfferSummary, Prompter, TerminalPrompter
 
 
@@ -67,7 +66,7 @@ class DPoP:
     """RFC 9449 proofs. The key lives only for one issuance: it binds the access token to this run."""
 
     def __init__(self) -> None:
-        self.key = HolderKey(ec.generate_private_key(ec.SECP256R1()))
+        self.key = HolderKey.generate()
         self.nonces: dict[str, str] = {}  # htu -> last DPoP-Nonce (the AS and the issuer may differ)
 
     @staticmethod
@@ -641,9 +640,18 @@ def _fetch_nonce(session: requests.Session, issuer_meta: dict[str, Any], token: 
     return token.get("c_nonce")
 
 
+def copies_for(issuer_meta: dict[str, Any], wanted: int) -> int:
+    """How many copies to ask for: up to 'wanted', if the issuer advertises batch issuance (§12.2.4)."""
+    batch = issuer_meta.get("batch_credential_issuance")
+    size = batch.get("batch_size") if isinstance(batch, dict) else None
+    if type(size) is not int or size < 2:
+        return 1
+    return max(1, min(size, wanted))
+
+
 def request_credential(
     session: requests.Session,
-    key: HolderKey,
+    keys: list[HolderKey],
     issuer_meta: dict[str, Any],
     token: dict[str, Any],
     configuration_id: str,
@@ -680,7 +688,9 @@ def request_credential(
             claims["nonce"] = nonce
         if proof_iss:
             claims["iss"] = proof_iss
-        proof = key.sign_jwt({"typ": "openid4vci-proof+jwt", "jwk": key.public_jwk}, claims)
+        # One proof per key: the issuer gives one copy bound to each (OpenID4VCI 1.0 §8.2).
+        proofs = [key.sign_jwt({"typ": "openid4vci-proof+jwt", "jwk": key.public_jwk}, claims)
+                  for key in (keys[:1] if legacy_proof else keys)]
 
         body: dict[str, Any] = (
             {"credential_identifier": identifier}
@@ -688,9 +698,9 @@ def request_credential(
             else {"credential_configuration_id": configuration_id}
         )
         if legacy_proof:
-            body["proof"] = {"proof_type": "jwt", "jwt": proof}
+            body["proof"] = {"proof_type": "jwt", "jwt": proofs[0]}
         else:
-            body["proofs"] = {"jwt": [proof]}
+            body["proofs"] = {"jwt": proofs}
 
         debug(f"POST {endpoint} {json.dumps(body)[:200]}")
         response = _post(session, dpop, endpoint, access_token=token["access_token"], headers=headers, json=body,
@@ -749,6 +759,7 @@ class IssueOptions:
     open_browser: bool = True
     in_app_login: bool = False  # never the browser login with the wallet's own client
     dpop: bool = True  # only if the authorization server advertises it
+    copies: int = MAX_COPIES  # at most, if the issuer supports batch issuance
 
 
 @dataclass
@@ -804,7 +815,6 @@ def authorization_server_metadata(session: requests.Session, issuer_meta: dict[s
 
 def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: Prompter) -> list[IssuedCredential]:
     """Accepts an OpenID4VCI offer and stores the received credentials in the active profile."""
-    key = HolderKey.load_or_create()
     offer = resolve_offer(session, raw_offer)
     if "credential_offer" in offer and isinstance(offer["credential_offer"], dict):
         offer = offer["credential_offer"]
@@ -963,16 +973,21 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     for config_id in config_ids:
         fmt = configs.get(config_id, {}).get("format", "unknown")
         log(tr("Requesting {credential} ({format})…", credential=config_id, format=fmt))
-        for raw_credential in request_credential(
-            session, key, issuer_meta, token, config_id, proof_iss=proof_iss, dpop=dpop
-        ):
+        keys = [HolderKey.generate() for _ in range(copies_for(issuer_meta, options.copies))]
+        raws = request_credential(session, keys, issuer_meta, token, config_id, proof_iss=proof_iss, dpop=dpop)
+        if not raws:
+            continue
+        copies: list[tuple[str, HolderKey | None]] = []
+        for index, raw_credential in enumerate(raws):
+            key = keys[min(index, len(keys) - 1)]
             if fmt in SD_JWT_FORMATS:
-                verify_issued_credential(session, raw_credential, key, issuer, as_meta)
-            path = save_credential(raw_credential, fmt=fmt, issuer=issuer, configuration_id=config_id,
-                                   display=_stored_display(displays[config_id], logos.get(config_id)))
-            debug(f"Credential stored in {path}")
-            claims = parse_sd_jwt(raw_credential).claims if fmt in SD_JWT_FORMATS else None
-            issued.append(IssuedCredential(config_id, path, claims, account))
+                key = verify_issued_credential(session, raw_credential, keys, issuer, as_meta) or key
+            copies.append((raw_credential, key))
+        path = save_credential(copies, fmt=fmt, issuer=issuer, configuration_id=config_id,
+                               display=_stored_display(displays[config_id], logos.get(config_id)))
+        debug(f"Credential stored in {path} ({len(copies)} copies)")
+        claims = parse_sd_jwt(raws[0]).claims if fmt in SD_JWT_FORMATS else None
+        issued.append(IssuedCredential(config_id, path, claims, account))
     config = load_config()
     # What this issuer offers, kept so that a later request for a missing credential is matched here,
     # without contacting the issuers the user has accounts with (known_issuer_for).
@@ -1260,9 +1275,13 @@ def issuer_keys(
 
 
 def verify_issued_credential(
-    session: requests.Session, raw: str, holder: HolderKey, issuer: str, as_meta: dict[str, Any]
-) -> None:
-    """Before storing: issuer signature and binding to the wallet key."""
+    session: requests.Session, raw: str, holders: list[HolderKey], issuer: str, as_meta: dict[str, Any]
+) -> HolderKey | None:
+    """
+    Before storing: issuer signature and binding to one of the keys of this issuance, which is
+    returned (None if the credential is not bound to any key). The issuer may answer the copies in
+    any order, so each one is matched by its cnf.
+    """
     sd = parse_sd_jwt(raw)
     iss = sd.payload.get("iss") or issuer
     keys, bound = issuer_keys(session, sd.header, str(sd.payload.get("iss", "")), issuer, as_meta)
@@ -1281,7 +1300,10 @@ def verify_issued_credential(
     cnf = cnf.get("jwk") if isinstance(cnf, dict) else None
     if cnf is None:
         log(tr("Warning: the credential is not bound to any key (no cnf); anyone who copies it can use it."))
-    elif not isinstance(cnf, dict) or (cnf.get("x"), cnf.get("y")) != (holder.public_jwk["x"], holder.public_jwk["y"]):
-        raise WalletError(tr("The credential is bound to another key, not this wallet's; it is not stored."),
-                          hint=tr("The credential received could not be checked, so it was not saved. Contact "
-                                  "the organisation that gives it and send them the technical details."))
+        return None
+    for holder in holders:
+        if isinstance(cnf, dict) and (cnf.get("x"), cnf.get("y")) == (holder.public_jwk["x"], holder.public_jwk["y"]):
+            return holder
+    raise WalletError(tr("The credential is bound to another key, not this wallet's; it is not stored."),
+                      hint=tr("The credential received could not be checked, so it was not saved. Contact "
+                              "the organisation that gives it and send them the technical details."))

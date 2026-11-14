@@ -155,7 +155,18 @@ class KeycloakIssuance(unittest.TestCase):
         self.assertIn(issued[0].account, (f"{USER} ({EMAIL})", None))
         self.assertEqual(issued[0].claims.get("email"), EMAIL)
         self.assertEqual(issued[0].claims.get("vct"), CONFIG)
-        self.assertEqual(len(storage.load_credentials()), 1)
+        records = storage.load_credentials()
+        self.assertEqual(len(records), 1)
+        # One copy per key: as many as the realm allows (oid4vci.batch_credential_issuance.batch_size), up to
+        # MAX_COPIES; one if batch issuance is off (the default).
+        meta = requests.get(f"{ISSUER}/.well-known/openid-credential-issuer", timeout=10).json()
+        size = (meta.get("batch_credential_issuance") or {}).get("batch_size") or 1
+        instances = records[0]["instances"]
+        self.assertEqual(len(instances), min(size, storage.MAX_COPIES))
+        bound = {i["_sd"].payload["cnf"]["jwk"]["x"] for i in instances}
+        own = {storage.HolderKey.from_pem(i["key"]).public_jwk["x"] for i in instances}
+        self.assertEqual(bound, own)
+        self.assertEqual(len(own), len(instances))
 
     def test_pre_authorized_offer(self):
         offer = create_offer("atesta-test", pre_authorized=True)

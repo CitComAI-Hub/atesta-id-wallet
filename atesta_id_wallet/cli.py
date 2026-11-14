@@ -32,7 +32,7 @@ from .desktop import (
 from .i18n import N_, tr, tr_n
 from .storage import (
     DEFAULT_PROFILE,
-    HolderKey,
+    MAX_COPIES,
     _wipe_profile,
     add_trusted_ca,
     create_profile,
@@ -81,6 +81,7 @@ def cmd_issue(args: argparse.Namespace) -> int:
         in_app_login=args.in_app_login,
         open_browser=not args.no_browser,
         dpop=not args.no_dpop,
+        copies=max(1, args.copies),
     )
     ui = TerminalPrompter(args.yes)
     if args.issuer:
@@ -116,7 +117,7 @@ def cmd_present(args: argparse.Namespace) -> int:
     if not args.dry_run and not ui.consent(prepared):
         record_declined(prepared)
         raise Cancelled(tr("Cancelled by the user: nothing was sent."))
-    body = build_response(prepared, HolderKey.load_or_create(), vp_token_style=args.vp_token_style)
+    body = build_response(prepared, vp_token_style=args.vp_token_style)
     if args.dry_run:
         print(json.dumps(body, indent=2, ensure_ascii=False))
         return 0
@@ -207,7 +208,7 @@ def cmd_reset(args: argparse.Namespace) -> int:
 
 
 def cmd_backup(args: argparse.Namespace) -> int:
-    if not storage.KEY_FILE.exists():
+    if not storage.has_credentials():
         raise WalletError(tr("The profile '{profile}' is empty; there is nothing to back up.", profile=storage.PROFILE))
     out = Path(args.file).expanduser()
     if out.exists() and not confirm(tr("{file} already exists. Overwrite?", file=out), assume_yes=args.yes):
@@ -414,6 +415,9 @@ def build_parser() -> argparse.ArgumentParser:
                        help=tr("Registered redirect_uri (default: <realm>/account/oid4vci-callback)."))
     issue.add_argument("--client-id-pre", help=tr("Optional client_id for pre-authorized_code."))
     issue.add_argument("--tx-code", help=tr("tx_code/PIN for pre-authorized_code."))
+    issue.add_argument("--copies", type=int, default=MAX_COPIES, metavar="N",
+                       help=tr("Copies to ask for, each with its own key, if the issuer supports it (default: "
+                               "{n}). More copies make presentations harder to link.", n=MAX_COPIES))
     issue.add_argument("--authorization-details", action="store_true",
                        help=tr("Send authorization_details in addition to the scope."))
     issue.add_argument("--force-auth-code", action="store_true",

@@ -247,10 +247,18 @@ the full manual Windows test and the CITCOM verifier trust list.
        `list --check`; "Revoked" / "Suspended" on the card and in the details; can be turned off in
        Settings → Security (on by default). Still to do: try it
        against a real issuer (does the Keycloak in use publish status lists?).
+13. [x] **One key per copy, batch issuance** (0.14, before the pilot so that no data has to be
+       migrated): each credential is asked for in up to 5 copies (`batch_credential_issuance`;
+       `--copies N`), each bound to a new key stored with it; presentations use the copies in turn
+       and sign with the copy's key; revocation checked per copy. No profile key (`holder_key.enc`)
+       any more; credentials and backups of earlier versions are not read (ask again). Checked
+       against Keycloak 26.6.2 (SEAMWARE) and 26.7 with and without
+       `oid4vci.batch_credential_issuance.batch_size`. Still to do: ask CITCOM and PGTEC to set it.
+
 ## Later (after the pilot)
 
-- [ ] **Hardware-backed holder keys** (WSCD-like), together with one key per credential and
-      batch issuance (less correlation between verifiers):
+- [ ] **Hardware-backed holder keys** (WSCD-like); one key per copy and batch issuance are done
+      (0.14), so a hardware key replaces the PEM stored with each copy:
       - Windows: TPM 2.0 through CNG (*Microsoft Platform Crypto Provider*), optional Windows
         Hello. Guaranteed on Windows 11, so the first target.
       - Linux: TPM 2.0 through `tpm2-pkcs11` as an option (often needs the `tss` group and extra

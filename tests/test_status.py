@@ -123,7 +123,7 @@ class StatusListTests(unittest.TestCase):
         FakeIssuer.base = self.base
         StatusIssuer.key = FakeIssuer.key = ec.generate_private_key(ec.SECP256R1())  # FakeIssuer's /jwks
         StatusIssuer.lists, StatusIssuer.seen = {}, []
-        self.holder = storage.HolderKey.load_or_create()
+        self.holder = storage.HolderKey.generate()
         self.uri = self.base + "/status/1"
 
     def publish(self, values, bits=1, *, path="/status/1", key=None, **claims):
@@ -134,13 +134,36 @@ class StatusListTests(unittest.TestCase):
         StatusIssuer.lists[path] = storage.HolderKey(key or StatusIssuer.key).sign_jwt(header, payload)
 
     def store(self, index, uri=None, name="Legal"):
+        """A credential with one copy at 'index' in the list, or one copy per index if a list is given."""
         email = common.b64u(json.dumps(["s1", "email", "user@example.org"]).encode())
-        payload = {"iss": self.base, "vct": name, "_sd_alg": "sha-256", "_sd": [sdjwt._sd_digest(email)],
-                   "cnf": {"jwk": self.holder.public_jwk},
-                   "status": {"status_list": {"idx": index, "uri": uri or self.uri}}}
-        jwt = storage.HolderKey(StatusIssuer.key).sign_jwt({"typ": "dc+sd-jwt", "kid": "k1"}, payload)
-        storage.save_credential(f"{jwt}~{email}~", fmt="dc+sd-jwt", issuer=self.base, configuration_id=name)
+        copies = []
+        for idx in index if isinstance(index, list) else [index]:
+            holder = self.holder if not isinstance(index, list) else storage.HolderKey.generate()
+            payload = {"iss": self.base, "vct": name, "_sd_alg": "sha-256", "_sd": [sdjwt._sd_digest(email)],
+                       "cnf": {"jwk": holder.public_jwk},
+                       "status": {"status_list": {"idx": idx, "uri": uri or self.uri}}}
+            jwt = storage.HolderKey(StatusIssuer.key).sign_jwt({"typ": "dc+sd-jwt", "kid": "k1"}, payload)
+            copies.append((f"{jwt}~{email}~", holder))
+        storage.save_credential(copies, fmt="dc+sd-jwt", issuer=self.base, configuration_id=name)
         return next(r for r in storage.load_credentials() if r["credential_configuration_id"] == name)
+
+    def test_each_copy_is_checked(self):
+        self.publish([0, 1, 0, 1, 1])
+        session = requests.Session()
+        record = self.store([0, 1, 2])
+        self.assertEqual(status.check(session, record), "valid")  # copy 1 revoked, the others are not
+        self.assertEqual(len(StatusIssuer.seen), 1)  # one download for the three copies
+        record = storage.load_credentials()[0]
+        self.assertTrue(storage.is_usable(record))
+        self.assertEqual([storage.revocation_state({"revocation": i.get("revocation")}) for i in record["instances"]],
+                         [None, "revoked", None])
+        for _ in range(3):  # the revoked copy is never shown
+            self.assertNotEqual(record["_instance"], 1)
+            storage.mark_used(record)
+        every = self.store([1, 3, 4], name="Every")
+        self.assertEqual(status.check(session, every), "revoked")
+        self.assertFalse(storage.is_usable(next(r for r in storage.load_credentials()
+                                                if r["credential_configuration_id"] == "Every")))
 
     def test_valid_revoked_suspended(self):
         self.publish([0, 1, 2], bits=2)
@@ -288,7 +311,8 @@ class StatusListTests(unittest.TestCase):
         self.assertIs(choose("q", [record]), record)
         self.assertEqual(StatusIssuer.seen, [])  # nobody was asked
         # What an earlier check found still counts.
-        record["revocation"] = {"state": "revoked", "checked_at": 1, "next_check": 0}
+        record["instances"][0]["revocation"] = {"state": "revoked", "checked_at": 1, "next_check": 0}
+        storage.refresh_state(record)
         with self.assertRaises(common.WalletError):
             choose("q", [record])
         status.set_automatic(True)
@@ -304,7 +328,7 @@ class StatusListTests(unittest.TestCase):
         email = common.b64u(json.dumps(["s1", "email", "user@example.org"]).encode())
         payload = {"iss": self.base, "vct": "Legal", "_sd": [sdjwt._sd_digest(email)]}
         jwt = storage.HolderKey(StatusIssuer.key).sign_jwt({"typ": "dc+sd-jwt"}, payload)
-        storage.save_credential(f"{jwt}~{email}~", fmt="dc+sd-jwt", issuer=self.base, configuration_id="Legal")
+        storage.save_credential([(f"{jwt}~{email}~", self.holder)], fmt="dc+sd-jwt", issuer=self.base, configuration_id="Legal")
         record = storage.load_credentials()[0]
         self.assertFalse(status.due(record))
         self.assertIsNone(status.check(requests.Session(), record))

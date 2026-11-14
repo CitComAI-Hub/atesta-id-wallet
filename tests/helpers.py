@@ -280,9 +280,11 @@ def _wide_png():
 
 
 class FakeIssuer(http.server.BaseHTTPRequestHandler):
-    """Minimal OpenID4VCI issuer with pre-authorized_code + tx_code."""
+    """Minimal OpenID4VCI issuer with pre-authorized_code + tx_code (batch issuance if batch_size is set)."""
     key = None
     base = ""
+    batch_size = None
+    proofs_seen: list = []
 
     def log_message(self, *args):
         pass
@@ -302,6 +304,7 @@ class FakeIssuer(http.server.BaseHTTPRequestHandler):
             "/.well-known/openid-credential-issuer": {
                 "credential_issuer": self.base, "credential_endpoint": self.base + "/credential",
                 "nonce_endpoint": self.base + "/nonce",
+                **({"batch_credential_issuance": {"batch_size": self.batch_size}} if self.batch_size else {}),
                 "display": [{"name": "Ayuntamiento", "locale": "es"}, {"name": "Town hall", "locale": "en"}],
                 "credential_configurations_supported": {"Legal": {"format": "dc+sd-jwt", "credential_metadata": {
                     "display": [{"name": "Persona jurídica", "locale": "es", "background_color": "#12355b",
@@ -333,14 +336,20 @@ class FakeIssuer(http.server.BaseHTTPRequestHandler):
         if self.path == "/nonce":
             return self._json({"c_nonce": "CN"})
         if self.path == "/credential":
-            proof = json.loads(body)["proofs"]["jwt"][0]
-            header, claims = common.jwt_decode_unverified(proof)
-            assert claims["nonce"] == "CN" and claims["aud"] == self.base
-            email = common.b64u(json.dumps(["s1", "email", "user@example.org"]).encode())
-            payload = {"iss": self.base, "vct": "Legal", "_sd_alg": "sha-256", "_sd": [sdjwt._sd_digest(email)],
-                       "cnf": {"jwk": header["jwk"]}}
-            jwt = storage.HolderKey(FakeIssuer.key).sign_jwt({"typ": "dc+sd-jwt", "kid": "k1"}, payload)
-            return self._json({"credentials": [{"credential": f"{jwt}~{email}~"}]})
+            proofs = json.loads(body)["proofs"]["jwt"]
+            FakeIssuer.proofs_seen.append(len(proofs))
+            assert len(proofs) <= (self.batch_size or 1)
+            credentials = []
+            for proof in proofs:
+                header, claims = common.jwt_decode_unverified(proof)
+                assert claims["nonce"] == "CN" and claims["aud"] == self.base
+                email = common.b64u(json.dumps(["s1", "email", "user@example.org"]).encode())
+                payload = {"iss": self.base, "vct": "Legal", "_sd_alg": "sha-256", "_sd": [sdjwt._sd_digest(email)],
+                           "cnf": {"jwk": header["jwk"]}}
+                jwt = storage.HolderKey(FakeIssuer.key).sign_jwt({"typ": "dc+sd-jwt", "kid": "k1"}, payload)
+                credentials.append({"credential": f"{jwt}~{email}~"})
+            # The order of the copies is not that of the proofs (OpenID4VCI does not promise it).
+            return self._json({"credentials": credentials[::-1]})
         self._json({"error": "not_found"}, 404)
 
 

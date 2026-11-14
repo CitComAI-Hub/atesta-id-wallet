@@ -66,11 +66,14 @@ def status_reference(sd: SdJwt) -> tuple[str, int] | None:
 
 
 def has_status(record: dict[str, Any]) -> bool:
-    sd = record.get("_sd")
-    try:
-        return sd is not None and status_reference(sd) is not None
-    except StatusError:
-        return True  # malformed: checking it reports the problem
+    for instance in record.get("instances") or []:
+        sd = instance.get("_sd")
+        try:
+            if sd is not None and status_reference(sd) is not None:
+                return True
+        except StatusError:
+            return True  # malformed: checking it reports the problem
+    return False
 
 
 def decode_list(status_list: Any, uri: str = "") -> tuple[int, bytes]:
@@ -184,25 +187,36 @@ def check(session: requests.Session, record: dict[str, Any], lists: dict[str, An
     be established. 'lists' keeps the lists already downloaded (several credentials share one).
     """
     now = time.time() if now is None else now
-    ref = status_reference(record["_sd"])
-    if ref is None:
-        return None
-    uri, index = ref
     lists = {} if lists is None else lists
-    if uri not in lists:
-        token = fetch_token(session, uri, str(record.get("issuer") or ""))
-        payload = verify_token(session, token, uri, record, now)
-        lists[uri] = (*decode_list(payload.get("status_list"), uri), _recheck_after(payload, now))
-    bits, data, next_check = lists[uri]
-    value = status_at(bits, data, index, uri)
-    state = STATES.get(value)
-    if state is None:  # 3 and above: application-specific or reserved; not known to mean "valid"
-        raise StatusError(tr("The status list {uri} is not valid: {problem}.", uri=uri,
-                             problem=f"unknown status value {value}"))
-    record["revocation"] = {"state": state, "checked_at": int(now), "next_check": int(next_check)}
+    found, answers = False, []
+    for instance in record["instances"]:  # each copy has its own place in the list
+        sd = instance.get("_sd")
+        ref = status_reference(sd) if sd is not None else None
+        if ref is None:
+            continue
+        found = True
+        if (instance.get("revocation") or {}).get("state") == "revoked":
+            continue  # final
+        uri, index = ref
+        if uri not in lists:
+            token = fetch_token(session, uri, str(record.get("issuer") or ""))
+            payload = verify_token(session, token, uri, record, now)
+            lists[uri] = (*decode_list(payload.get("status_list"), uri), _recheck_after(payload, now))
+        bits, data, next_check = lists[uri]
+        value = status_at(bits, data, index, uri)
+        state = STATES.get(value)
+        if state is None:  # 3 and above: application-specific or reserved; not known to mean "valid"
+            raise StatusError(tr("The status list {uri} is not valid: {problem}.", uri=uri,
+                                 problem=f"unknown status value {value}"))
+        answers.append((instance, {"state": state, "checked_at": int(now), "next_check": int(next_check)}))
+        debug(f"Status of {storage.credential_name(record)}: {state} ({uri} #{index})")
+    if not found:
+        return None
+    for instance, answer in answers:  # only once every copy could be checked: a failure changes nothing
+        instance["revocation"] = answer
+    storage.refresh_state(record)
     storage.save_record(record)
-    debug(f"Status of {storage.credential_name(record)}: {state} ({uri} #{index})")
-    return state
+    return (record.get("revocation") or {}).get("state")
 
 
 def due(record: dict[str, Any], now: float | None = None) -> bool:

@@ -35,8 +35,7 @@ class VaultTestCase(unittest.TestCase):
         vault.keyring_available = lambda: False
 
     def store_something(self):
-        storage.HolderKey.load_or_create()
-        storage.save_credential("header.payload.signature~", fmt="x", issuer="https://issuer.example",
+        storage.save_credential([("header.payload.signature~", storage.HolderKey.generate())], fmt="x", issuer="https://issuer.example",
                                 configuration_id="Secret")
         storage.save_config({"issuers": {"https://issuer.example": {"username": "alice"}}})
         storage.add_history({"type": "issued", "party": "Issuer"})
@@ -46,7 +45,7 @@ class EncryptionAtRestTests(VaultTestCase):
     def test_nothing_is_stored_in_clear_text(self):
         self.store_something()
         files = [p for p in storage.DATA_DIR.rglob("*") if p.is_file() and p.name != vault.VAULT_FILE]
-        self.assertEqual(len(files), 4)
+        self.assertEqual(len(files), 3)  # credential (with its key), config, history
         for path in files:
             data = path.read_bytes()
             self.assertTrue(data.startswith(vault.FILE_MAGIC), path)
@@ -56,11 +55,11 @@ class EncryptionAtRestTests(VaultTestCase):
         self.assertEqual(len(self.keyring_entries()), 1)
 
     def test_a_file_cannot_be_swapped_for_another(self):
-        storage.save_credential("first~", fmt="x", issuer="https://i", configuration_id="a")
-        second = storage.save_credential("second~", fmt="x", issuer="https://i", configuration_id="b")
+        storage.save_credential([("first~", None)], fmt="x", issuer="https://i", configuration_id="a")
+        second = storage.save_credential([("second~", None)], fmt="x", issuer="https://i", configuration_id="b")
         first = next(p for p in storage.CRED_DIR.glob("*.enc") if p != second)
         second.write_bytes(first.read_bytes())  # same key, different name: rejected
-        self.assertEqual([r["credential"] for r in storage.load_credentials()], ["first~"])
+        self.assertEqual([r["instances"][0]["credential"] for r in storage.load_credentials()], ["first~"])
 
     def test_folder_copied_without_its_keyring_entry(self):
         self.store_something()
@@ -136,7 +135,7 @@ class PasswordTests(VaultTestCase):
         vault.lock()
         vault.unlock(storage.DATA_DIR, PASSWORD)
         with self.assertRaises(common.WalletError):
-            storage.read_secret(storage.KEY_FILE)
+            storage.read_secret(next(storage.CRED_DIR.glob("*.enc")))
         (storage.DATA_DIR / vault.VAULT_FILE).write_bytes(current)
 
     def test_an_interrupted_key_change_is_finished_at_the_next_unlock(self):
@@ -202,7 +201,7 @@ class PasswordTests(VaultTestCase):
             vault.set_password(storage.DATA_DIR, "eleven chrs")
 
     def test_short_backup_password_is_refused(self):
-        storage.HolderKey.load_or_create()
+        self.store_something()
         with self.assertRaisesRegex(common.WalletError, "al menos 12"):
             storage.write_backup(Path(tempfile.mkdtemp()) / "short.atesta", "eleven chrs")
 
@@ -210,7 +209,7 @@ class PasswordTests(VaultTestCase):
         self.without_keyring()
         self.assertEqual(storage.vault_state(), "new")
         with self.assertRaises(vault.PasswordNeeded):
-            storage.HolderKey.load_or_create()
+            storage.save_credential([("x", None)], fmt="x", issuer="https://i", configuration_id="c")
         storage.unlock(PASSWORD)  # chooses it
         self.store_something()
         vault.lock()
@@ -240,7 +239,7 @@ class BackupTests(VaultTestCase):
         base.TEST_KEYRING.secrets.clear()
         self.assertEqual(storage.restore_backup(out, "backup password"), 1)
         self.assertEqual(storage.load_history()[0]["party"], "Issuer")
-        self.assertTrue(storage.KEY_FILE.read_bytes().startswith(vault.FILE_MAGIC))
+        self.assertTrue(next(storage.CRED_DIR.glob("*.enc")).read_bytes().startswith(vault.FILE_MAGIC))
         self.assertEqual(vault.mode(storage.DATA_DIR), "keyring")
         self.assertTrue(str(storage.DATA_DIR).startswith(str(other)))
 
