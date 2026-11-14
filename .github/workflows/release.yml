@@ -106,11 +106,24 @@ jobs:
           # The in-app update of the .deb: its updater refreshes the project's APT repository and
           # finds nothing newer than this build; polkit knows its action.
           sudo /usr/libexec/atesta-id-wallet/update
-          if command -v pkaction >/dev/null && action=$(pkaction --action-id io.github.citcomaihub.atestaidwallet.update --verbose); then
+          # polkit's service is not running on the runners until something starts it.
+          sudo systemctl start polkit.service 2>/dev/null || true
+          if ! command -v pkaction >/dev/null; then
+            echo "::warning::pkaction is not installed: the update action was not checked"
+          elif action=$(pkaction --action-id io.github.citcomaihub.atestaidwallet.update --verbose 2>&1); then
             grep -q "exec.path -> /usr/libexec/atesta-id-wallet/update" <<<"$action"
           else
-            echo "::warning::polkit not available on the runner: the update action was not checked"
+            echo "::warning::polkit did not answer, the update action was not checked: $(tail -1 <<<"$action")"
           fi
+          # The wallet links open it (as the registry keys on Windows): the menu entry declares them
+          # and is valid, and the desktop's cache lists it when the system keeps one.
+          entry=/usr/share/applications/atesta-id-wallet.desktop
+          grep -q "^MimeType=x-scheme-handler/openid4vp;x-scheme-handler/openid-credential-offer;$" "$entry"
+          sudo apt-get install -y -qq desktop-file-utils
+          desktop-file-validate "$entry"
+          sudo update-desktop-database /usr/share/applications
+          grep -q "^x-scheme-handler/openid4vp=.*atesta-id-wallet.desktop" /usr/share/applications/mimeinfo.cache
+          grep -q "^x-scheme-handler/openid-credential-offer=.*atesta-id-wallet.desktop" /usr/share/applications/mimeinfo.cache
           sudo apt-get remove -y atesta-id-wallet
           # The files, not 'command -v': bash remembers where it found a command it already ran.
           for f in /usr/bin/atesta-id-wallet /usr/bin/atesta-id-wallet-gui /opt/atesta-id-wallet /usr/libexec/atesta-id-wallet/update; do

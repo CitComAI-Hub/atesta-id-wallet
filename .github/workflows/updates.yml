@@ -1,0 +1,44 @@
+# Real updates on every supported Ubuntu LTS, after each delivery: the previous release updates
+# itself to the latest one the way installed wallets do (AppImage: GitHub, signature, replaced in
+# place; .deb: the project's APT repository), with .github/scripts/update_test.sh. Runs when the APT
+# repository has been deployed (a release became the latest one), when this test changes, and by
+# hand (Actions -> Updates -> Run workflow). See docs/RELEASING.md.
+name: Updates
+
+on:
+  workflow_run:
+    workflows: ["APT repository"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/updates.yml"
+      - ".github/scripts/update_test.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - name: The latest release and the one before it
+        id: releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          previous=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 30 \
+            --json tagName,isLatest -q '[.[] | select(.isLatest | not)][0].tagName')
+          echo "Previous $previous -> latest $latest"
+          echo "latest=${latest#v}" >> "$GITHUB_OUTPUT"
+          echo "previous=${previous#v}" >> "$GITHUB_OUTPUT"
+      - name: Update ${{ steps.releases.outputs.previous }} -> ${{ steps.releases.outputs.latest }}
+        run: .github/scripts/update_test.sh "${{ steps.releases.outputs.previous }}" "${{ steps.releases.outputs.latest }}"

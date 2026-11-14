@@ -84,6 +84,12 @@ leaves support, build on the next oldest.
    installations download it by themselves (installed when the wallet restarts), `.deb`
    installations get it with the system updates, and the rest show a notice.
 
+8. **Check the updates.** Once the APT repository is deployed, `.github/workflows/updates.yml`
+   runs on Ubuntu 22.04, 24.04 and 26.04: the previous release updates itself to the new one the
+   way installed wallets do (the AppImage asks GitHub, checks the signature and replaces itself;
+   the `.deb` is updated from the APT repository, with its own updater from 0.13.2 on). A failure
+   there means users will not get the new version: see the run before announcing it.
+
 If a delivered version turns out broken, there is no way back for installations that already
 updated: release a fixed version as soon as possible. Until then, marking the previous release as
 the latest again stops the remaining installations from taking the broken one.
