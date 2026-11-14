@@ -103,9 +103,6 @@ jobs:
           sudo apt-get install -y --install-recommends ./release/*.deb
           atesta-id-wallet-gui --smoke-test
           atesta-id-wallet --version
-          # The in-app update of the .deb: its updater refreshes the project's APT repository and
-          # finds nothing newer than this build; polkit knows its action.
-          sudo /usr/libexec/atesta-id-wallet/update
           # polkit reads the actions when it starts: restarted, since it may have been running before
           # the package added its policy. Once it answers, it must know the action.
           sudo systemctl restart polkit.service 2>/dev/null || true
@@ -127,6 +124,10 @@ jobs:
           sudo update-desktop-database /usr/share/applications
           grep -q "^x-scheme-handler/openid4vp=.*atesta-id-wallet.desktop" /usr/share/applications/mimeinfo.cache
           grep -q "^x-scheme-handler/openid-credential-offer=.*atesta-id-wallet.desktop" /usr/share/applications/mimeinfo.cache
+          # Last, the in-app update: its updater refreshes the project's APT repository and runs apt.
+          # It may replace this build with the published one of the same version (which may lack what
+          # this one adds), so everything about this build is checked above.
+          sudo /usr/libexec/atesta-id-wallet/update
           sudo apt-get remove -y atesta-id-wallet
           # The files, not 'command -v': bash remembers where it found a command it already ran.
           for f in /usr/bin/atesta-id-wallet /usr/bin/atesta-id-wallet-gui /opt/atesta-id-wallet /usr/libexec/atesta-id-wallet/update; do
