@@ -24,6 +24,7 @@ from .common import (
     _json,
     b64u,
     b64u_decode,
+    clean_text,
     debug,
     deep_link,
     host_of,
@@ -479,7 +480,7 @@ def prepare_presentation(
         ))
 
     response_mode = request.get("response_mode", "fragment")
-    response_uri = request.get("response_uri") or request.get("redirect_uri")
+    response_uri = request.get("response_uri")
     nonce = request.get("nonce")
     if response_mode not in ("direct_post", "direct_post.jwt"):
         raise WalletError(tr("response_mode '{mode}' is not supported (only direct_post[.jwt]).", mode=response_mode))
@@ -491,6 +492,18 @@ def prepare_presentation(
             raise WalletError(tr("'{name}' in the verifier's request is not a string.", name=name))
     check_response_uri(identity, response_uri)
     debug(f"response_uri: {response_uri} ({response_mode})")
+    # Refused, and the verifier told why (OpenID4VP 1.0 §8.5): its response_uri is now known to be its own.
+    if "redirect_uri" in request:  # §8.2: never with direct_post; the answer goes only to response_uri
+        _refuse(session, request, response_uri, "invalid_request", "redirect_uri is not allowed with direct_post")
+        raise WalletError(tr("The verifier's request is not valid: it has a redirect_uri as well as a response_uri."))
+    if "transaction_data" in request:
+        # §5.1: a wallet that cannot show a transaction to the user and bind it to the presentation must
+        # refuse it; presenting without it could pass for the user's approval of something never seen.
+        types = _transaction_types(request["transaction_data"])
+        _refuse(session, request, response_uri, "invalid_transaction_data",
+                f"transaction data types not supported: {', '.join(types) or '?'}")
+        raise WalletError(tr("The verifier asks you to approve a transaction ({types}), which this wallet cannot "
+                             "show you; nothing was sent.", types=", ".join(types) or "?"))
 
     pd = None
     choose = _checking_status(session, choose)
@@ -511,6 +524,31 @@ def prepare_presentation(
         debug(exc.detail)
         raise
     return PreparedPresentation(request, identity, response_uri, response_mode, nonce, matches, pd)
+
+
+def _transaction_types(entries: Any) -> list[str]:
+    """The 'type' of each transaction_data entry (base64url JSON), as far as it can be read."""
+    types = []
+    for entry in entries if isinstance(entries, list) else [entries]:
+        try:
+            value = json.loads(b64u_decode(entry)).get("type") if isinstance(entry, str) else None
+        except (ValueError, AttributeError):
+            value = None
+        types.append((clean_text(value, 60) or "?") if isinstance(value, str) else "?")
+    return types
+
+
+def _refuse(session: requests.Session, request: dict[str, Any], response_uri: str, error: str,
+            description: str) -> None:
+    """Error response to the verifier (OpenID4VP 1.0 §8.5): no data of the user, only why."""
+    body = {"error": error, "error_description": description}
+    if isinstance(request.get("state"), str) and request["state"]:
+        body["state"] = request["state"]
+    try:
+        response = session.post(response_uri, data=body, timeout=20, allow_redirects=False)
+        debug(f"Error '{error}' sent to the verifier (HTTP {response.status_code}).")
+    except requests.RequestException as exc:
+        debug(f"The error could not be sent to the verifier: {exc}")
 
 
 def build_response(prepared: PreparedPresentation, *, vp_token_style: str = "array") -> dict[str, str]:
@@ -551,10 +589,8 @@ def build_response(prepared: PreparedPresentation, *, vp_token_style: str = "arr
         form["state"] = request["state"]
 
     if prepared.response_mode == "direct_post.jwt":
-        body = {"response": encrypt_response_jwe(form, request, apv=prepared.nonce)}
-        if request.get("state"):
-            body["state"] = request["state"]
-        return body
+        # §8.3.1: only 'response'; state and everything else travel inside the JWE.
+        return {"response": encrypt_response_jwe(form, request, apv=prepared.nonce)}
     return {k: v if isinstance(v, str) else json.dumps(v, separators=(",", ":")) for k, v in form.items()}
 
 

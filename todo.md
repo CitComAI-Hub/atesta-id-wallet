@@ -259,7 +259,16 @@ the full manual Windows test and the CITCOM verifier trust list.
        with a DPoP proof; tested against Keycloak 26.6.2, 26.7 and latest with a client that only
        accepts PAR; `A256GCM` for encrypted responses when the verifier accepts both; DCQL
        `trusted_authorities` of type `aki`; SVG logos without external references; `haip-vci://` and
-       `haip-vp://` links. Still to do: the OpenID Foundation conformance suite.
+       `haip-vp://` links.
+       **Conformance suite** (OpenID Foundation, run locally in Docker, November 2026):
+       - OID4VP 1.0 Final/HAIP wallet plan (SD-JWT VC, `direct_post.jwt`, custom DCQL): 8 modules
+         pass and the 9 negative ones end in the right refusal (they wait for a screenshot, a manual
+         step of certification). Found and fixed: `state` outside the JWE, request objects without
+         `typ: oauth-authz-req+jwt`, `redirect_uri` with `direct_post`, `transaction_data` ignored
+         (now refused). `alternate-happy-flow` needs a real browser to run the verifier's page
+         (the wallet hands it the `redirect_uri`, as it should). PID modules need an EUDI PID.
+       - OID4VCI 1.0 Final/HAIP wallet plan: every module needs wallet attestation (phase 3).
+       Still to do: run the plan in CI (nightly, like Keycloak), the plain OID4VCI wallet plan.
        Not before the hardware keys (phase 3): key attestation and wallet attestation.
 
 ## Later (after the pilot)

@@ -661,7 +661,10 @@
     "✔ verified identity (certificate from a trusted CA)": "✔ verificeret identitet (certifikat fra en betroet CA)",
     "✔ {credential} added to the wallet.": "✔ {credential} er føjet til wallet'en.",
     "✔ {file} removed.": "✔ {file} er fjernet.",
-    "The authorization server did not return a request_uri for the pushed request.": "Autorisationsserveren returnerede ikke en request_uri for den sendte anmodning."
+    "The authorization server did not return a request_uri for the pushed request.": "Autorisationsserveren returnerede ikke en request_uri for den sendte anmodning.",
+    "The verifier's request is not valid: it has a redirect_uri as well as a response_uri.": "Verifikatorens anmodning er ikke gyldig: den har en redirect_uri ud over en response_uri.",
+    "The verifier asks you to approve a transaction ({types}), which this wallet cannot show you; nothing was sent.": "Verifikatoren beder dig godkende en transaktion ({types}), som denne wallet ikke kan vise dig; intet blev sendt.",
+    "The verifier's request is not a request object (typ {typ}, expected oauth-authz-req+jwt).": "Verifikatorens anmodning er ikke et request object (typ {typ}, forventet oauth-authz-req+jwt)."
   },
   "plurals": {
     "Delete {n} credential?": [

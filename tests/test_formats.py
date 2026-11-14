@@ -116,7 +116,7 @@ class RequestObjectTests(unittest.TestCase):
             .sign(key, hashes.SHA256())
         )
         x5c = [base64.b64encode(cert.public_bytes(serialization.Encoding.DER)).decode()]
-        self.token = storage.HolderKey(key).sign_jwt({"x5c": x5c}, {"client_id": "x509_san_dns:v.example"})
+        self.token = storage.HolderKey(key).sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": x5c}, {"client_id": "x509_san_dns:v.example"})
 
     def test_valid(self):
         trust.check_request_object(self.token, "x509_san_dns:v.example")

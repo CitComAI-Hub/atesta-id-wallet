@@ -74,7 +74,9 @@ is refused for risky verifiers. Shared and declined requests are recorded in the
 Signatures are checked strictly: the algorithm must match the key type and curve (`ES256` only with
 P-256, and so on), and `none` or HMAC algorithms are never accepted. A signed request must carry
 its `client_id`, equal to the one in the QR code (the identity is checked against the signed one),
-and an expired request (`exp`) is rejected.
+and an expired request (`exp`) is rejected. It must also say it is a request object (`typ`
+`oauth-authz-req+jwt`, RFC 9101 §10.8): otherwise any other JWT signed with the verifier's key (an
+ID token, a credential) could be passed off as a request. FIWARE VCVerifier, used by CITCOM, sets it.
 
 A signature only proves possession of a key. Anyone can create a self-signed certificate for any
 domain, so the wallet also decides how far it can **trust** that certificate:
@@ -98,6 +100,13 @@ URL the wallet fetches or posts to. `http://localhost` is only accepted with
 call services on this computer. The same holds for redirects: a request that started on HTTPS is
 never followed to `http://`, and the presentation itself is posted without following redirects at
 all (a `307`/`308` would send it again to an address nobody checked; the wallet stops instead).
+
+Requests the wallet must refuse are answered with an OpenID4VP error (§8.5) at `response_uri`, once
+it is known to be the verifier's, and never carry data: a `redirect_uri` besides `response_uri`
+(`invalid_request`, §8.2), and any `transaction_data` (`invalid_transaction_data`, §5.1). The
+wallet supports no transaction data type, so it cannot show the user what they would approve (a
+payment, a signature); presenting without it could pass for that approval. With `direct_post.jwt`,
+the body is only `response`: `state` and everything else are inside the JWE (§8.3.1).
 
 **4. Replay protection and minimal disclosure.** Every presentation carries a Key-Binding JWT
 with the verifier's `nonce`, `aud = client_id` and the `sd_hash` of what is sent. Only the

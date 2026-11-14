@@ -552,7 +552,7 @@ class SecondReviewTests(unittest.TestCase):
 
         key = storage.HolderKey(ec.generate_private_key(ec.SECP256R1()))
         for x5c in (["not base64 !!"], [common.b64u(b"not a certificate")], "abc", [1], {"a": 1}):
-            token = key.sign_jwt({"x5c": x5c}, {"client_id": "x509_san_dns:v.example"})
+            token = key.sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": x5c}, {"client_id": "x509_san_dns:v.example"})
             with self.assertRaisesRegex(common.WalletError, "x5c", msg=x5c):
                 trust.check_request_object(token, "x509_san_dns:v.example")
             with self.assertRaisesRegex(common.WalletError, "x5c", msg=x5c):

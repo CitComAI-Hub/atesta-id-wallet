@@ -661,7 +661,10 @@
     "✔ verified identity (certificate from a trusted CA)": "✔ identité vérifiée (certificat d’une AC de confiance)",
     "✔ {credential} added to the wallet.": "✔ {credential} ajoutée au portefeuille.",
     "✔ {file} removed.": "✔ {file} supprimé.",
-    "The authorization server did not return a request_uri for the pushed request.": "Le serveur d’autorisation n’a pas renvoyé de request_uri pour la demande envoyée."
+    "The authorization server did not return a request_uri for the pushed request.": "Le serveur d’autorisation n’a pas renvoyé de request_uri pour la demande envoyée.",
+    "The verifier's request is not valid: it has a redirect_uri as well as a response_uri.": "La demande du vérificateur n’est pas valide : elle contient une redirect_uri en plus d’une response_uri.",
+    "The verifier asks you to approve a transaction ({types}), which this wallet cannot show you; nothing was sent.": "Le vérificateur vous demande d’approuver une transaction ({types}) que ce portefeuille ne peut pas vous montrer ; rien n’a été envoyé.",
+    "The verifier's request is not a request object (typ {typ}, expected oauth-authz-req+jwt).": "La demande du vérificateur n’est pas un request object (typ {typ}, attendu oauth-authz-req+jwt)."
   },
   "plurals": {
     "Delete {n} credential?": [

@@ -176,14 +176,15 @@ class FakeVerifier(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"{}")
 
 
-def verifier_request(base, key, cert, response_uri=None, signed=True):
+def verifier_request(base, key, cert, response_uri=None, signed=True, **extra):
     """Publishes a DCQL request (email) on FakeVerifier and returns the openid4vp:// link."""
     payload = {
         "client_id": "x509_san_dns:localhost", "response_type": "vp_token", "response_mode": "direct_post",
         "response_uri": response_uri or f"{base}/response", "nonce": "n1",
         "dcql_query": {"credentials": [{"id": "q", "format": "dc+sd-jwt", "claims": [{"path": ["email"]}]}]},
+        **extra,
     }
-    FakeVerifier.token = (storage.HolderKey(key).sign_jwt({"x5c": [der_b64(cert)]}, payload) if signed
+    FakeVerifier.token = (storage.HolderKey(key).sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": [der_b64(cert)]}, payload) if signed
                           else json.dumps(payload))
     return f"openid4vp://?client_id=x509_san_dns:localhost&request_uri={base}/request"
 

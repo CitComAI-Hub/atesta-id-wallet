@@ -661,7 +661,10 @@
     "✔ verified identity (certificate from a trusted CA)": "✔ verifizéiert Identitéit (Zertifikat vun enger vertrauenswierdeger CA)",
     "✔ {credential} added to the wallet.": "✔ {credential} an d'Wallet derbäigesat.",
     "✔ {file} removed.": "✔ {file} ewechgeholl.",
-    "The authorization server did not return a request_uri for the pushed request.": "Den Autorisatiounsserver huet fir déi geschéckten Ufro keng request_uri zréckginn."
+    "The authorization server did not return a request_uri for the pushed request.": "Den Autorisatiounsserver huet fir déi geschéckten Ufro keng request_uri zréckginn.",
+    "The verifier's request is not valid: it has a redirect_uri as well as a response_uri.": "D’Ufro vum Verifizéierer ass net gëlteg: si huet eng redirect_uri nieft enger response_uri.",
+    "The verifier asks you to approve a transaction ({types}), which this wallet cannot show you; nothing was sent.": "De Verifizéierer freet dech, eng Transaktioun ({types}) ze bestätegen, déi dëse Portmonni dir net weise kann; näischt gouf geschéckt.",
+    "The verifier's request is not a request object (typ {typ}, expected oauth-authz-req+jwt).": "D’Ufro vum Verifizéierer ass keen Request Object (typ {typ}, erwaart oauth-authz-req+jwt)."
   },
   "plurals": {
     "Delete {n} credential?": [

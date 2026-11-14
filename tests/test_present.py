@@ -29,7 +29,8 @@ class VerifierTrustTests(unittest.TestCase):
         self.key = ec.generate_private_key(ec.SECP256R1())
         self.leaf = make_cert(self.key, "v.example", self.ca_key, self.ca.subject)
         self.token = storage.HolderKey(self.key).sign_jwt(
-            {"x5c": [der_b64(self.leaf), der_b64(self.ca)]}, {"client_id": "x509_san_dns:v.example"})
+            {"typ": "oauth-authz-req+jwt", "x5c": [der_b64(self.leaf), der_b64(self.ca)]},
+            {"client_id": "x509_san_dns:v.example"})
 
     def add_ca(self):
         storage.write_secret(storage.TRUST_DIR / "ca.pem.enc", self.ca.public_bytes(serialization.Encoding.PEM))
@@ -40,7 +41,7 @@ class VerifierTrustTests(unittest.TestCase):
         trust.remember_verifier(identity)
         self.assertEqual(trust.check_request_object(self.token, "x509_san_dns:v.example").trust, "pinned")
         other_key = ec.generate_private_key(ec.SECP256R1())
-        other = storage.HolderKey(other_key).sign_jwt({"x5c": [der_b64(make_cert(other_key, "v.example"))]},
+        other = storage.HolderKey(other_key).sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": [der_b64(make_cert(other_key, "v.example"))]},
                                                       {"client_id": "x509_san_dns:v.example"})
         self.assertEqual(trust.check_request_object(other, "x509_san_dns:v.example").trust, "changed")
 
@@ -65,12 +66,12 @@ class VerifierTrustTests(unittest.TestCase):
 
     def test_x509_hash(self):
         client_id = "x509_hash:" + jose.cert_fingerprint(self.leaf)
-        token = storage.HolderKey(self.key).sign_jwt({"x5c": [der_b64(self.leaf)]}, {"client_id": client_id})
+        token = storage.HolderKey(self.key).sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": [der_b64(self.leaf)]}, {"client_id": client_id})
         identity = trust.check_request_object(token, client_id)
         self.assertEqual(identity.trust, "new")
         trust.check_response_uri(identity, "https://v.example/response")
         self.assertEqual(identity.name, "v.example")
-        bad = storage.HolderKey(self.key).sign_jwt({"x5c": [der_b64(self.leaf)]}, {"client_id": "x509_hash:AAAA"})
+        bad = storage.HolderKey(self.key).sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": [der_b64(self.leaf)]}, {"client_id": "x509_hash:AAAA"})
         with self.assertRaises(common.WalletError):
             trust.check_request_object(bad, "x509_hash:AAAA")
 
@@ -79,7 +80,7 @@ class VerifierTrustTests(unittest.TestCase):
         key = ec.generate_private_key(ec.SECP256R1())
         cert = make_cert(key, "marketplace.example")
         client_id = "x509_hash:" + jose.cert_fingerprint(cert)
-        token = storage.HolderKey(key).sign_jwt({"x5c": [der_b64(cert)]}, {"client_id": client_id})
+        token = storage.HolderKey(key).sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": [der_b64(cert)]}, {"client_id": client_id})
         identity = trust.check_request_object(token, client_id)
         self.assertNotEqual(identity.name, "marketplace.example")  # not named before the destination is known
         with self.assertRaisesRegex(common.WalletError, "attacker.example"):
@@ -89,18 +90,29 @@ class VerifierTrustTests(unittest.TestCase):
         trust.check_response_uri(bare, "https://attacker.example/cb")
         self.assertEqual(bare.name, "attacker.example")
 
+    def test_request_object_typ(self):
+        """RFC 9101 §10.8 (conformance suite): only a JWT typed as a request object is one."""
+        for typ in (None, "JWT", "dc+sd-jwt"):
+            header = {"x5c": [der_b64(self.leaf)]} | ({"typ": typ} if typ else {})
+            token = storage.HolderKey(self.key).sign_jwt(header, {"client_id": "x509_san_dns:v.example"})
+            with self.assertRaisesRegex(common.WalletError, "oauth-authz-req"):
+                trust.check_request_object(token, "x509_san_dns:v.example")
+        token = storage.HolderKey(self.key).sign_jwt(
+            {"typ": "application/oauth-authz-req+jwt", "x5c": [der_b64(self.leaf)]}, {"client_id": "x509_san_dns:v.example"})
+        self.assertEqual(trust.check_request_object(token, "x509_san_dns:v.example").trust, "new")
+
     def test_signed_client_id_required(self):
         """The client_id checked against the certificate must be inside the signature, not only in the QR code."""
-        unsigned_id = storage.HolderKey(self.key).sign_jwt({"x5c": [der_b64(self.leaf)]}, {"nonce": "n"})
+        unsigned_id = storage.HolderKey(self.key).sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": [der_b64(self.leaf)]}, {"nonce": "n"})
         with self.assertRaisesRegex(common.WalletError, "client_id"):
             trust.check_request_object(unsigned_id, "x509_san_dns:v.example")
         with self.assertRaisesRegex(common.WalletError, "client_id"):
             trust.check_request_object(self.token, "x509_hash:" + jose.cert_fingerprint(self.leaf))
 
     def test_unsigned_and_expired(self):
-        unsigned = common.b64u_json({"alg": "none"}) + "." + common.b64u_json({}) + ".sig"
+        unsigned = common.b64u_json({"alg": "none", "typ": "oauth-authz-req+jwt"}) + "." + common.b64u_json({}) + ".sig"
         self.assertEqual(trust.check_request_object(unsigned, "x509_san_dns:v.example").trust, "unverified")
-        expired = storage.HolderKey(self.key).sign_jwt({"x5c": [der_b64(self.leaf)]}, {"exp": 1})
+        expired = storage.HolderKey(self.key).sign_jwt({"typ": "oauth-authz-req+jwt", "x5c": [der_b64(self.leaf)]}, {"exp": 1})
         with self.assertRaisesRegex(common.WalletError, "caducado"):
             trust.check_request_object(expired, "x509_san_dns:v.example")
 
@@ -156,8 +168,48 @@ class PresentFlowTests(unittest.TestCase):
         self.key = ec.generate_private_key(ec.SECP256R1())
         self.cert = make_cert(self.key, "localhost")
 
-    def request(self, response_uri=None, signed=True):
-        return verifier_request(self.base, self.key, self.cert, response_uri, signed)
+    def request(self, response_uri=None, signed=True, **extra):
+        return verifier_request(self.base, self.key, self.cert, response_uri, signed, **extra)
+
+    def test_encrypted_response_has_only_response(self):
+        """OpenID4VP 1.0 §8.3.1 (conformance suite): with direct_post.jwt, state travels inside the JWE."""
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        enc_key = ec.generate_private_key(ec.SECP256R1())
+        n = enc_key.public_key().public_numbers()
+        jwk = {"kty": "EC", "crv": "P-256", "use": "enc", "kid": "e1",
+               "x": common.b64u(n.x.to_bytes(32, "big")), "y": common.b64u(n.y.to_bytes(32, "big"))}
+        link = self.request(response_mode="direct_post.jwt", state="s1",
+                            client_metadata={"jwks": {"keys": [jwk]}, "encrypted_response_enc_values_supported": ["A128GCM"]})
+        self.assertEqual(self.present(link, "--yes"), 0)
+        received = FakeVerifier.received[0]
+        self.assertEqual(list(received), ["response"])
+        protected, _, iv, ciphertext, tag = received["response"][0].split(".")
+        epk = json.loads(common.b64u_decode(protected))["epk"]
+        ephemeral = ec.EllipticCurvePublicNumbers(int.from_bytes(common.b64u_decode(epk["x"]), "big"),
+                                                  int.from_bytes(common.b64u_decode(epk["y"]), "big"),
+                                                  ec.SECP256R1()).public_key()
+        cek = jose._concat_kdf(enc_key.exchange(ec.ECDH(), ephemeral), "A128GCM", b"", b"n1", 128)
+        inside = json.loads(AESGCM(cek).decrypt(common.b64u_decode(iv), common.b64u_decode(ciphertext)
+                                                + common.b64u_decode(tag), protected.encode()))
+        self.assertEqual((inside["state"], list(inside["vp_token"])), ("s1", ["q"]))
+
+    def test_redirect_uri_with_direct_post_refused(self):
+        """§8.2: redirect_uri is not allowed with direct_post; the verifier gets invalid_request, no data."""
+        with self.assertRaisesRegex(common.WalletError, "redirect_uri"):
+            self.present(self.request(redirect_uri=f"{self.base}/back", state="s1"), "--yes")
+        self.assertEqual(len(FakeVerifier.received), 1)
+        error = FakeVerifier.received[0]
+        self.assertEqual((error["error"], error["state"]), (["invalid_request"], ["s1"]))
+        self.assertNotIn("vp_token", error)
+
+    def test_transaction_data_refused(self):
+        """§5.1: transaction data the wallet cannot show is refused, never presented without it."""
+        entry = common.b64u_json({"type": "payment", "credential_ids": ["q"], "amount": "100 EUR"})
+        with self.assertRaisesRegex(common.WalletError, "payment"):
+            self.present(self.request(transaction_data=[entry]), "--yes")
+        self.assertEqual([r.get("error") for r in FakeVerifier.received], [["invalid_transaction_data"]])
+        self.assertIn("payment", FakeVerifier.received[0]["error_description"][0])
+        self.assertNotIn("presented", [e["type"] for e in storage.load_history()])
 
     def present(self, link, *extra):
         return cli._run(["present", "--request", link, "--no-browser", *extra])

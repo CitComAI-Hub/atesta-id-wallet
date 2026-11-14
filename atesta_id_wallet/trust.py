@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from cryptography import x509
 
 from . import storage
-from .common import WalletError, debug, host_of, jwt_decode_unverified, log, require_https
+from .common import WalletError, clean_text, debug, host_of, jwt_decode_unverified, log, require_https
 from .i18n import tr
 from .jose import _dns_names, _verify_jws_with_cert, _x5c_chain, cert_fingerprint
 from .storage import load_config, save_config
@@ -76,6 +76,12 @@ def split_client_id(client_id: str) -> tuple[str, str]:
 def check_request_object(token: str, client_id: str) -> VerifierIdentity:
     """Authenticates the verifier from the signed request object (x509_san_dns / x509_hash)."""
     header, payload = jwt_decode_unverified(token)
+    # RFC 9101 §10.8, OpenID4VP 1.0 §5: a request object says it is one, so that no other JWT signed
+    # by the same key (an ID token, a credential) can be passed off as a request.
+    typ = header.get("typ")
+    if not isinstance(typ, str) or typ.lower().removeprefix("application/") != "oauth-authz-req+jwt":
+        raise WalletError(tr("The verifier's request is not a request object (typ {typ}, expected "
+                             "oauth-authz-req+jwt).", typ=clean_text(str(typ), 60) if typ is not None else "-"))
     prefix, value = split_client_id(client_id)
     identity = VerifierIdentity(client_id, prefix, value, value)
     if isinstance(payload.get("exp"), (int, float)) and payload["exp"] < time.time():
