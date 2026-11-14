@@ -234,6 +234,80 @@ class DPoPTests(unittest.TestCase):
             vci.issue(requests.Session(), self.offer, vci.IssueOptions(dpop=False), ScriptedPrompter(texts=["1234"]))
 
 
+class PushedAuthorizationTests(unittest.TestCase):
+    """RFC 9126 (HAIP 1.0 §4.3): the authorization request is pushed when the server offers it."""
+
+    class Session:
+        def __init__(self, par_status=201, par_body=None):
+            self.posts, self.par_status = [], par_status
+            self.par_body = {"request_uri": "urn:ietf:params:oauth:request_uri:R1", "expires_in": 60} \
+                if par_body is None else par_body
+
+        def post(self, url, data=None, headers=None, **kwargs):
+            self.posts.append((url, dict(data or {}), dict(headers or {})))
+            response = requests.Response()
+            if url.endswith("/par"):
+                response.status_code, body = self.par_status, self.par_body
+            else:
+                response.status_code, body = 200, {"access_token": "AT", "token_type": "DPoP"}
+            response._content = json.dumps(body).encode()
+            return response
+
+    def flow(self, session, as_meta, dpop=None):
+        state = common.b64u(b"\x01" * 16)
+        original = vci.secrets.token_bytes
+        self.addCleanup(setattr, vci.secrets, "token_bytes", original)
+        vci.secrets.token_bytes = lambda n: b"\x01" * n  # predictable state to build the callback
+        prompter = ScriptedPrompter(texts=[f"https://as.example/cb?state={state}&code=C"])
+        vci.authorization_code_flow(
+            session, {"issuer": "https://as.example", "authorization_endpoint": "https://as.example/auth",
+                      "token_endpoint": "https://as.example/token", **as_meta},
+            client_id="c", redirect_uri="https://as.example/cb", scopes=["Legal"], issuer_state="ST",
+            authorization_details=None, open_browser=False, browser_login=True, username=None, ui=prompter,
+            dpop=dpop,
+        )
+        return next(q for q in prompter.asked if "https://as.example/auth?" in q)
+
+    def test_pushed_when_offered(self):
+        session = self.Session()
+        dpop = vci.DPoP()
+        shown = self.flow(session, {"pushed_authorization_request_endpoint": "https://as.example/par"}, dpop)
+        url, pushed, headers = session.posts[0]
+        self.assertEqual(url, "https://as.example/par")
+        self.assertEqual((pushed["client_id"], pushed["issuer_state"], pushed["code_challenge_method"]),
+                         ("c", "ST", "S256"))
+        self.assertIn("DPoP", headers)  # the code is bound to the token's key
+        # The browser only carries the reference: no scope, state, challenge or issuer_state.
+        self.assertIn("client_id=c&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3AR1", shown)
+        self.assertNotIn("issuer_state", shown)
+        self.assertNotIn("code_challenge", shown)
+        self.assertEqual(session.posts[1][0], "https://as.example/token")
+        self.assertEqual(session.posts[1][1]["code"], "C")
+        self.assertTrue(session.posts[1][1]["code_verifier"])
+
+    def test_query_without_par(self):
+        session = self.Session()
+        shown = self.flow(session, {})
+        self.assertIn("issuer_state=ST", shown)
+        self.assertEqual([p[0] for p in session.posts], ["https://as.example/token"])
+
+    def test_refused_or_empty_push(self):
+        for session, error in ((self.Session(par_status=400, par_body={"error": "invalid_request"}), "400"),
+                               (self.Session(par_body={}), "request_uri")):
+            with self.assertRaisesRegex(common.WalletError, error):
+                self.flow(session, {"pushed_authorization_request_endpoint": "https://as.example/par"})
+
+    def test_endpoint_must_be_https(self):
+        metadata = {"issuer": "https://as.example", "token_endpoint": "https://as.example/token",
+                    "pushed_authorization_request_endpoint": "http://as.example/par"}
+        original = vci._get_first_json
+        self.addCleanup(setattr, vci, "_get_first_json", original)
+        vci._get_first_json = lambda session, urls: metadata
+        with self.assertRaisesRegex(common.WalletError, "pushed_authorization_request_endpoint"):
+            vci.authorization_server_metadata(requests.Session(), {"authorization_servers": ["https://as.example"]},
+                                              "https://as.example")
+
+
 class LogoTests(unittest.TestCase):
     def data_uri(self, data, mime="image/png"):
         return f"data:{mime};base64," + base64.b64encode(data).decode()

@@ -148,6 +148,11 @@ class KeycloakIssuance(unittest.TestCase):
         common.LOG_HANDLER = lambda message, is_debug: self.log.append(message)
         self.addCleanup(setattr, common, "LOG_HANDLER", saved_handler)
         self.answers = Answers()
+        # Keycloak offers PAR (RFC 9126): every authorization request goes through it (HAIP 1.0 §4.3).
+        self.pushed = []
+        push = vci._push_authorization_request
+        self.addCleanup(setattr, vci, "_push_authorization_request", push)
+        vci._push_authorization_request = lambda *a, **k: self.pushed.append(a[1]) or push(*a, **k)
 
     def assert_issued(self, issued):
         self.assertEqual([c.configuration_id for c in issued], [CONFIG])
@@ -184,13 +189,16 @@ class KeycloakIssuance(unittest.TestCase):
         issued = vci.issue(requests.Session(), offer, vci.IssueOptions(client_id="atesta-test", redirect_uri=REDIRECT), self.answers)
         self.assert_issued(issued)
         self.assertEqual(self.answers.logins, 1)
+        self.assertEqual(len(self.pushed), 1)
         remembered = storage.load_config()["issuers"][ISSUER]
         self.assertEqual((remembered["client_id"], remembered["username"]), ("atesta-test", USER))
 
     def test_wallet_initiated_with_dpop_client(self):
-        """A client that requires DPoP-bound tokens: the credential request only works with the proof."""
+        """A client that requires DPoP-bound tokens and PAR (as HAIP 1.0 asks): the credential request
+        only works with the proof, and the authorization request only through PAR."""
         options = vci.IssueOptions(client_id="dpop-wallet", redirect_uri=REDIRECT)
         self.assert_issued(vci.issue_from_issuer(requests.Session(), ISSUER, [CONFIG], options, self.answers))
+        self.assertEqual(len(self.pushed), 1)
 
     def test_dpop_client_refuses_plain_bearer(self):
         options = vci.IssueOptions(client_id="dpop-wallet", redirect_uri=REDIRECT, dpop=False)

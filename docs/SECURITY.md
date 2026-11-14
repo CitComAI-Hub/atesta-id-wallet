@@ -154,6 +154,12 @@ Names published by issuers are reduced to one short line of text before they are
   login is fetched over HTTPS. External IdPs need `--browser-login`.
 - The authorization code flow uses PKCE (S256) and a `state` that must come back unchanged. If
   the response names its issuer (`iss`, RFC 9207), it must be the expected one.
+- **Pushed authorization requests** (RFC 9126, HAIP 1.0 §4.3): when the authorization server
+  advertises a `pushed_authorization_request_endpoint` (HTTPS only), the authorization request
+  (scope, `issuer_state`, PKCE challenge, `state`) is posted to it directly, with a DPoP proof when
+  DPoP is on, so the code is bound to the same key as the token. The browser only carries
+  `client_id` and the returned `request_uri`: nothing in the request can be read or changed on
+  the way, and servers that only accept pushed requests work.
 - **One key per copy.** Each credential is asked for in up to 5 copies (`--copies N`), when the
   issuer advertises `batch_credential_issuance`, with a proof made with a new key for each copy
   (OpenID4VCI 1.0 §8.2). Every copy is checked like a single credential and matched to its key by

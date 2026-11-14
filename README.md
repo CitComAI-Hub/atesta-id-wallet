@@ -234,6 +234,7 @@ changes. See [docs/SECURITY.md](docs/SECURITY.md).
   offer, with the same login (kept in memory only for that retry).
 - `issue --no-dpop`: do not bind the access token with DPoP (RFC 9449). By default the wallet uses
   DPoP whenever the authorization server advertises it, with a fresh key for every issuance.
+  Authorization requests are pushed to the server first (PAR, RFC 9126) whenever it offers it.
 - `present --disclose-all`: disclose every claim, not only the requested ones.
 - `present --yes`: skip the confirmation. Refused for verifiers whose identity cannot be verified.
 - `present --allow-unverified`: accept unsigned requests. Confirmation is still required.

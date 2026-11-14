@@ -660,7 +660,8 @@
     "✔ same certificate as last time (not issued by a trusted CA)": "✔ même certificat que la dernière fois (non émis par une AC de confiance)",
     "✔ verified identity (certificate from a trusted CA)": "✔ identité vérifiée (certificat d’une AC de confiance)",
     "✔ {credential} added to the wallet.": "✔ {credential} ajoutée au portefeuille.",
-    "✔ {file} removed.": "✔ {file} supprimé."
+    "✔ {file} removed.": "✔ {file} supprimé.",
+    "The authorization server did not return a request_uri for the pushed request.": "Le serveur d’autorisation n’a pas renvoyé de request_uri pour la demande envoyée."
   },
   "plurals": {
     "Delete {n} credential?": [

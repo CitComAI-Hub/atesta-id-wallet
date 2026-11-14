@@ -183,7 +183,8 @@
       "attributes": {
         "oid4vci.enabled": "true",
         "pkce.code.challenge.method": "S256",
-        "dpop.bound.access.tokens": "true"
+        "dpop.bound.access.tokens": "true",
+        "require.pushed.authorization.requests": "true"
       },
       "optionalClientScopes": [
         "TestCredential"

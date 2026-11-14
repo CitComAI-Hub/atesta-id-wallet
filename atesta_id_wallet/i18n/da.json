@@ -660,7 +660,8 @@
     "✔ same certificate as last time (not issued by a trusted CA)": "✔ samme certifikat som sidst (ikke udstedt af en betroet CA)",
     "✔ verified identity (certificate from a trusted CA)": "✔ verificeret identitet (certifikat fra en betroet CA)",
     "✔ {credential} added to the wallet.": "✔ {credential} er føjet til wallet'en.",
-    "✔ {file} removed.": "✔ {file} er fjernet."
+    "✔ {file} removed.": "✔ {file} er fjernet.",
+    "The authorization server did not return a request_uri for the pushed request.": "Autorisationsserveren returnerede ikke en request_uri for den sendte anmodning."
   },
   "plurals": {
     "Delete {n} credential?": [

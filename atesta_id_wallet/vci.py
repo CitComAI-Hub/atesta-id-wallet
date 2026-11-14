@@ -452,7 +452,7 @@ def authorization_code_flow(
             session, as_meta, client_id=client_id, redirect_uri=redirect_uri, scopes=scopes,
             issuer_state=issuer_state, authorization_details=authorization_details, open_browser=open_browser,
             browser_login=browser_login, username=username, ui=ui, suggested_username=suggested_username,
-            loopback=loopback,
+            loopback=loopback, dpop=dpop,
         )
     finally:
         if loopback:
@@ -476,6 +476,7 @@ def _authorize(
     ui: Prompter,
     suggested_username: str | None,
     loopback: _Loopback | None,
+    dpop: DPoP | None = None,
 ) -> tuple[str, str | None, str, str]:
     """Authorization request; returns (callback URL or code, username, PKCE verifier, state)."""
     verifier, challenge = _pkce_pair()
@@ -495,6 +496,12 @@ def _authorize(
     if authorization_details:
         params["authorization_details"] = json.dumps(authorization_details, separators=(",", ":"))
 
+    par_endpoint = as_meta.get("pushed_authorization_request_endpoint")
+    if isinstance(par_endpoint, str) and par_endpoint:
+        # RFC 9126 (HAIP 1.0 §4.3): the request goes to the server directly; the browser only carries
+        # its reference, so nothing in it can be read or changed on the way.
+        request_uri = _push_authorization_request(session, par_endpoint, params, dpop)
+        params = {"client_id": client_id, "request_uri": request_uri}
     auth_url = as_meta["authorization_endpoint"] + "?" + urlencode(params, quote_via=quote)
     debug(f"Authorization URL: {auth_url}")
 
@@ -521,6 +528,17 @@ def _authorize(
         while not callback_url:
             callback_url = ui.text(tr("Paste the redirect URL (or just the code)")).strip()
     return callback_url, username, verifier, state
+
+
+def _push_authorization_request(session: requests.Session, endpoint: str, params: dict[str, str],
+                                dpop: DPoP | None) -> str:
+    """Pushed Authorization Request (RFC 9126); returns its request_uri. With DPoP, the code is bound
+    to the same key as the token (RFC 9449 §10.1)."""
+    response = _post(session, dpop, endpoint, data=params, timeout=20)
+    request_uri = _json(response, "POST", endpoint).get("request_uri")
+    if not isinstance(request_uri, str) or not request_uri:
+        raise WalletError(tr("The authorization server did not return a request_uri for the pushed request."))
+    return request_uri
 
 
 def _redeem_code(session: requests.Session, as_meta: dict[str, Any], callback_url: str, *, state: str,
@@ -807,7 +825,7 @@ def authorization_server_metadata(session: requests.Session, issuer_meta: dict[s
                              other=as_meta["issuer"], server=as_base))
     if "token_endpoint" not in as_meta:
         raise WalletError(tr("The authorization server metadata has no token_endpoint."))
-    for name in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
+    for name in ("authorization_endpoint", "token_endpoint", "pushed_authorization_request_endpoint", "jwks_uri"):
         if name in as_meta:
             require_https(str(as_meta[name]), name)
     return as_meta

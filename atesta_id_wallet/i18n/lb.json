@@ -660,7 +660,8 @@
     "✔ same certificate as last time (not issued by a trusted CA)": "✔ dee selwechten Zertifikat wéi déi lescht Kéier (net vun enger vertrauenswierdeger CA ausgestallt)",
     "✔ verified identity (certificate from a trusted CA)": "✔ verifizéiert Identitéit (Zertifikat vun enger vertrauenswierdeger CA)",
     "✔ {credential} added to the wallet.": "✔ {credential} an d'Wallet derbäigesat.",
-    "✔ {file} removed.": "✔ {file} ewechgeholl."
+    "✔ {file} removed.": "✔ {file} ewechgeholl.",
+    "The authorization server did not return a request_uri for the pushed request.": "Den Autorisatiounsserver huet fir déi geschéckten Ufro keng request_uri zréckginn."
   },
   "plurals": {
     "Delete {n} credential?": [

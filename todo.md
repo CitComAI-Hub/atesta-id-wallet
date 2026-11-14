@@ -254,6 +254,12 @@ the full manual Windows test and the CITCOM verifier trust list.
        any more; credentials and backups of earlier versions are not read (ask again). Checked
        against Keycloak 26.6.2 (SEAMWARE) and 26.7 with and without
        `oid4vci.batch_credential_issuance.batch_size`. Still to do: ask CITCOM and PGTEC to set it.
+14. [ ] **HAIP 1.0** (phase 2 of the roadmap): requirements checked against the wallet (November
+       2026). Done: pushed authorization requests (PAR, RFC 9126) whenever the server offers them,
+       with a DPoP proof; tested against Keycloak 26.6.2, 26.7 and latest with a client that only
+       accepts PAR. Still to do: `A256GCM` preferred for responses, `trusted_authorities` (`aki`),
+       SVG logos, `haip-vci://` / `haip-vp://` links, then the OpenID Foundation conformance suite.
+       Not before the hardware keys (phase 3): key attestation and wallet attestation.
 
 ## Later (after the pilot)
 
