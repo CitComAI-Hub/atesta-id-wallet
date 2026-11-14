@@ -337,6 +337,19 @@ ATESTA_KEYCLOAK_URL=https://localhost:8443 REQUESTS_CA_BUNDLE=/tmp/kc-certs/cert
 docker rm -f atesta-keycloak-it
 ```
 
+`tests/conformance` runs the OpenID Foundation conformance suite's OID4VP 1.0 Final/HAIP wallet plan
+(the suite plays the verifier) against the wallet, with a credential from that Keycloak, every
+night in CI. The suite runs in Docker from images pinned by digest (`tests/conformance/compose.yml`):
+
+```bash
+tests/conformance/run_suite.sh /tmp/suite-certs
+KEYCLOAK_PORT=9443 tests/integration/run_keycloak.sh quay.io/keycloak/keycloak:26.7 /tmp/kc-certs
+cat /tmp/kc-certs/cert.pem /tmp/suite-certs/tls.crt > /tmp/bundle.pem
+ATESTA_CONFORMANCE_URL=https://localhost.emobix.co.uk:8443 ATESTA_KEYCLOAK_URL=https://localhost:9443 \
+  ATESTA_KEYCLOAK_CA=/tmp/kc-certs/ca.pem REQUESTS_CA_BUNDLE=/tmp/bundle.pem \
+  .venv/bin/python -m unittest discover -s tests/conformance -v
+```
+
 The README screenshots are generated with made-up data by `python docs/make_screenshots.py`
 (run it again when the interface changes).
 

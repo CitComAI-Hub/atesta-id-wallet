@@ -1,0 +1,50 @@
+# The OpenID Foundation conformance suite's OID4VP 1.0 Final/HAIP wallet plan against the wallet
+# (tests/conformance), with a credential from the test Keycloak. Nightly, by hand, and when the
+# presentation code or these tests change.
+name: Conformance
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "atesta_id_wallet/vp.py"
+      - "atesta_id_wallet/trust.py"
+      - "atesta_id_wallet/jose.py"
+      - "atesta_id_wallet/sdjwt.py"
+      - "atesta_id_wallet/common.py"
+      - "tests/conformance/**"
+      - ".github/workflows/conformance.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  oid4vp-wallet:
+    name: OID4VP 1.0 Final/HAIP wallet plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install .
+      - name: Start the conformance suite
+        run: tests/conformance/run_suite.sh "$RUNNER_TEMP/suite"
+      - name: Start Keycloak
+        run: KEYCLOAK_PORT=9443 tests/integration/run_keycloak.sh quay.io/keycloak/keycloak:26.7 "$RUNNER_TEMP/kc"
+      - name: Conformance tests
+        env:
+          ATESTA_CONFORMANCE_URL: https://localhost.emobix.co.uk:8443
+          ATESTA_KEYCLOAK_URL: https://localhost:9443
+        run: |
+          cat "$RUNNER_TEMP/kc/cert.pem" "$RUNNER_TEMP/suite/tls.crt" > "$RUNNER_TEMP/bundle.pem"
+          export REQUESTS_CA_BUNDLE="$RUNNER_TEMP/bundle.pem" ATESTA_KEYCLOAK_CA="$RUNNER_TEMP/kc/ca.pem"
+          python -m unittest discover -s tests/conformance -v
+      - name: Suite log
+        if: failure()
+        run: SUITE_CERTS="$RUNNER_TEMP/suite" docker compose -f tests/conformance/compose.yml -p atesta-conformance logs --tail 200 server

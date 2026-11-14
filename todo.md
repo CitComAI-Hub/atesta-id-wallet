@@ -268,7 +268,9 @@ the full manual Windows test and the CITCOM verifier trust list.
          (now refused). `alternate-happy-flow` needs a real browser to run the verifier's page
          (the wallet hands it the `redirect_uri`, as it should). PID modules need an EUDI PID.
        - OID4VCI 1.0 Final/HAIP wallet plan: every module needs wallet attestation (phase 3).
-       Still to do: run the plan in CI (nightly, like Keycloak), the plain OID4VCI wallet plan.
+       The VP plan runs every night in CI (`tests/conformance`, `conformance.yml`). The plain
+       OID4VCI wallet plan only offers `private_key_jwt`, mTLS or wallet attestation as client
+       authentication (the wallet is a public client), so issuance waits for phase 3 too.
        Not before the hardware keys (phase 3): key attestation and wallet attestation.
 
 ## Later (after the pilot)

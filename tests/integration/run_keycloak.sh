@@ -5,11 +5,13 @@
 # Then:
 #   export ATESTA_KEYCLOAK_URL=https://localhost:8443 REQUESTS_CA_BUNDLE=CERT_DIR/cert.pem
 #   python -m unittest discover -s tests/integration -v
+# KEYCLOAK_PORT=9443 puts it on another port (the conformance suite takes 8443).
 set -euo pipefail
 image="${1:-quay.io/keycloak/keycloak:26.7}"
 certs="${2:-${TMPDIR:-/tmp}/atesta-keycloak-certs}"
 here="$(cd "$(dirname "$0")" && pwd)"
 name=atesta-keycloak-it
+port="${KEYCLOAK_PORT:-8443}"
 
 mkdir -p "$certs"
 if [[ ! -s "$certs/signing.p12" ]]; then
@@ -32,16 +34,16 @@ fi
 chmod 644 "$certs/key.pem" "$certs/signing.p12"  # read by the container's user
 
 docker rm -f "$name" >/dev/null 2>&1 || true
-docker run -d --name "$name" -p 8443:8443 \
+docker run -d --name "$name" -p "$port:8443" \
   -v "$here:/opt/keycloak/data/import:ro" -v "$certs:/certs:ro" \
   -v "$certs/signing.p12:/opt/keycloak/data/atesta/signing.p12:ro" \
-  "$image" start-dev --import-realm --http-enabled=false --hostname=https://localhost:8443 \
+  "$image" start-dev --import-realm --http-enabled=false --hostname="https://localhost:$port" \
   --https-certificate-file=/certs/cert.pem --https-certificate-key-file=/certs/key.pem \
   --features=oid4vc-vci,oid4vc-vci-preauth-code,oid4vc-vci-rest-credential-offer >/dev/null
 
 for _ in $(seq 120); do
-  if curl -sf --cacert "$certs/cert.pem" https://localhost:8443/realms/atesta >/dev/null; then
-    echo "Keycloak ($image) ready at https://localhost:8443; CA: $certs/cert.pem"
+  if curl -sf --cacert "$certs/cert.pem" "https://localhost:$port/realms/atesta" >/dev/null; then
+    echo "Keycloak ($image) ready at https://localhost:$port; CA: $certs/cert.pem"
     exit 0
   fi
   sleep 2
