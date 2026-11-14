@@ -99,6 +99,9 @@ Desktop. Opening `openid4vp://` links directly needs a packaged `.app`, which is
 | run `atesta-id-wallet-gui` | the window |
 | run `atesta-id-wallet` | the terminal version |
 
+HAIP 1.0's own links, `haip-vp://` and `haip-vci://`, work the same and are registered with the
+others; who opens the wallet links is judged by the two OpenID ones.
+
 Only one window runs at a time: a link clicked while the wallet is open goes to that window.
 
 ## Usage

@@ -38,7 +38,7 @@ Exec=$1 %u
 Icon=atesta-id-wallet
 Terminal=false
 Categories=Utility;Security;
-MimeType=x-scheme-handler/openid4vp;x-scheme-handler/openid-credential-offer;
+MimeType=x-scheme-handler/openid4vp;x-scheme-handler/openid-credential-offer;x-scheme-handler/haip-vp;x-scheme-handler/haip-vci;
 DESKTOP
 }
 

@@ -15,15 +15,17 @@ from urllib.parse import parse_qs
 import requests
 from cryptography import x509
 
+from . import status
 from .common import (
+    REQUEST_SCHEMES,
     SD_JWT_FORMATS,
     WalletError,
     _http_error,
     _json,
-    _last_deep_link,
     b64u,
     b64u_decode,
     debug,
+    deep_link,
     host_of,
     jwt_decode_unverified,
     log,
@@ -34,7 +36,6 @@ from .common import (
 from .i18n import tr
 from .jose import _x5c_chain, encrypt_response_jwe
 from .sdjwt import SdJwt, _claim_at, _sd_digest, select_disclosures
-from . import status
 from .storage import HolderKey, add_history, credential_name, holder_key, is_usable, mark_used
 from .trust import VerifierIdentity, check_request_object, check_response_uri, remember_verifier, split_client_id
 from .ui import consent_items
@@ -66,11 +67,11 @@ def build_sd_jwt_presentation(
 
 
 def fetch_request(session: requests.Session, raw: str) -> tuple[dict[str, Any], VerifierIdentity]:
-    raw = _last_deep_link(raw, "openid4vp://")
+    raw, scheme = deep_link(raw, REQUEST_SCHEMES)
     if raw.startswith(("http://", "https://")):
         params = {"request_uri": [raw]}
     else:
-        params = parse_qs(split_url(raw, "openid4vp").query, keep_blank_values=True)
+        params = parse_qs(split_url(raw, scheme).query, keep_blank_values=True)
     qp = {k: v[0] for k, v in params.items()}
     client_id = qp.get("client_id", "")
 

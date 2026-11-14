@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .common import URI_SCHEMES, WalletError, debug, log
+from .common import OPENID_SCHEMES, URI_SCHEMES, WalletError, debug, link_kind, log
 from .i18n import tr
 
 DESKTOP_FILE = (
@@ -28,7 +28,7 @@ APP_ICON = Path(__file__).resolve().parent / "gui" / "icons" / "app-icon.png"
 # PyInstaller executable (AppImage, .deb or Windows installer) instead of a Python package.
 FROZEN = bool(getattr(sys, "frozen", False))
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
-QR_PREFIXES = ("openid4vp:", "openid-credential-offer:", "https://")
+QR_PREFIXES = (*(f"{s}:" for s in URI_SCHEMES), "https://")
 
 
 # ---------------------------------------------------------------------------
@@ -198,8 +198,7 @@ def _screenshot_dirs() -> list[Path]:
 
 
 def _is_wallet_link(text: str) -> bool:
-    text = text.strip().lower()
-    return any(text.startswith(f"{s}:") or text.startswith(f"{s}%3a") for s in URI_SCHEMES)
+    return link_kind(text) is not None
 
 
 def auto_detect_input(max_age: int = 300) -> str | None:
@@ -248,10 +247,10 @@ def route_input(entry: str) -> tuple[str, list[str]]:
         path = Path(entry).expanduser()
         if path.exists():
             entry = decode_qr_image(str(path))
-    lowered = entry.lower()
-    if lowered.startswith(("openid-credential-offer:", "openid-credential-offer%3a")):
+    kind = link_kind(entry)
+    if kind == "issue":
         return "issue", ["--offer", entry]
-    if lowered.startswith(("openid4vp:", "openid4vp%3a")):
+    if kind == "present":
         return "present", ["--request", entry]
     raise WalletError(tr("Unrecognised input. Expected an openid-credential-offer:// or openid4vp:// link, "
                          "or an image with its QR code."))
@@ -390,12 +389,13 @@ def links_owner() -> str | None:
     """
     Who opens the wallet links: 'us' (this wallet: our .desktop file, or a command with our
     executable), 'other' (another application has at least one), 'none' (some scheme has no
-    handler), or None if it cannot be known here (macOS without a .app, no xdg-mime).
+    handler), or None if it cannot be known here (macOS without a .app, no xdg-mime). Only the
+    OpenID schemes count (OPENID_SCHEMES); registering sets the HAIP ones too.
     """
     if sys.platform == "darwin":
         return None
     try:
-        handlers = [(_windows_handler if sys.platform == "win32" else _linux_handler)(s) for s in URI_SCHEMES]
+        handlers = [(_windows_handler if sys.platform == "win32" else _linux_handler)(s) for s in OPENID_SCHEMES]
     except (OSError, subprocess.SubprocessError) as exc:
         debug(f"Could not check the link handler: {exc}")
         return None

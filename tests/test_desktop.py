@@ -22,6 +22,21 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(desktop.route_input(" 'openid4vp://?request_uri=x' ")[0], "present")
         self.assertEqual(desktop.route_input("openid4vp%3A%2F%2F%3Frequest_uri%3Dx")[0], "present")
 
+    def test_haip_schemes(self):
+        """HAIP 1.0 §4.2 and §5.1: haip-vci:// offers and haip-vp:// requests, as the OpenID ones."""
+        self.assertEqual(desktop.route_input("haip-vci://?credential_offer_uri=x")[0], "issue")
+        self.assertEqual(desktop.route_input("HAIP-VP://?request_uri=x")[0], "present")
+        self.assertEqual(desktop.route_input("haip-vp%3A%2F%2F%3Frequest_uri%3Dx")[0], "present")
+        self.assertTrue(desktop._is_wallet_link("haip-vci://?x"))
+        self.assertEqual(desktop.QR_PREFIXES[:4], ("openid4vp:", "openid-credential-offer:", "haip-vp:", "haip-vci:"))
+        # A paste with both kinds of link: the last one counts, whatever its scheme.
+        raw = "openid4vp://?request_uri=https://a/1 haip-vp://?request_uri=https://a/2"
+        self.assertEqual(common.deep_link(raw, common.REQUEST_SCHEMES),
+                         ("haip-vp://?request_uri=https://a/2", "haip-vp"))
+        self.assertEqual(common.deep_link("haip-vp%3A%2F%2F%3Frequest_uri%3Dx", common.REQUEST_SCHEMES),
+                         ("haip-vp://?request_uri=x", "haip-vp"))
+        self.assertEqual(common.deep_link("https://v/r", common.REQUEST_SCHEMES), ("https://v/r", "openid4vp"))
+
     def test_unknown(self):
         with self.assertRaises(common.WalletError):
             desktop.route_input("hola")

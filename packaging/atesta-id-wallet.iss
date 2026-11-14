@@ -1,6 +1,6 @@
 ; Windows installer (Inno Setup 6) for the PyInstaller folder.
 ; Per user and without administrator rights: the program goes to %LOCALAPPDATA%\Programs and the
-; openid4vp:// and openid-credential-offer:// links to HKCU, like 'atesta-id-wallet install-handler'.
+; openid4vp://, openid-credential-offer://, haip-vp:// and haip-vci:// links to HKCU, like 'atesta-id-wallet install-handler'.
 ; The wallet data (%APPDATA%\atesta-id-wallet) is not touched when uninstalling.
 ; Usage:  iscc /DAppVersion=0.6.0 /DSourceDir=dist\atesta-id-wallet /DOutputDir=dist packaging\atesta-id-wallet.iss
 
@@ -63,6 +63,12 @@ Root: HKCU; Subkey: "Software\Classes\openid4vp\shell\open\command"; ValueType: 
 Root: HKCU; Subkey: "Software\Classes\openid-credential-offer"; ValueType: string; ValueName: ""; ValueData: "URL:openid-credential-offer"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\openid-credential-offer"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\openid-credential-offer\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\atesta-id-wallet-gui.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\haip-vp"; ValueType: string; ValueName: ""; ValueData: "URL:haip-vp"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\haip-vp"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\haip-vp\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\atesta-id-wallet-gui.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\haip-vci"; ValueType: string; ValueName: ""; ValueData: "URL:haip-vci"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\haip-vci"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\haip-vci\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\atesta-id-wallet-gui.exe"" ""%1"""
 
 [Run]
 Filename: "{app}\atesta-id-wallet-gui.exe"; Description: "{cm:LaunchProgram,Atesta ID Wallet}"; Flags: nowait postinstall skipifsilent

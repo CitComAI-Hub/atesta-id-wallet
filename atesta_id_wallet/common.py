@@ -19,7 +19,13 @@ from .i18n import N_, tr
 
 
 __version__ = "0.13.1"
-URI_SCHEMES = ("openid4vp", "openid-credential-offer")
+# Wallet links: credential offers and presentation requests, with HAIP 1.0's own schemes (§4.2, §5.1).
+OFFER_SCHEMES = ("openid-credential-offer", "haip-vci")
+REQUEST_SCHEMES = ("openid4vp", "haip-vp")
+# Who opens the wallet links is judged by the OpenID ones: few applications know HAIP's, and a missing
+# haip-vp handler must not make the wallet offer to take the links from another wallet.
+OPENID_SCHEMES = ("openid4vp", "openid-credential-offer")
+URI_SCHEMES = (*OPENID_SCHEMES, "haip-vp", "haip-vci")
 SD_JWT_FORMATS = ("dc+sd-jwt", "vc+sd-jwt")
 VERBOSE = False
 # Where log()/debug() go: None = console; the GUI sets a function (message, is_debug).
@@ -286,6 +292,23 @@ def _last_deep_link(raw: str, scheme: str) -> str:
         log(tr("Warning: the input contains '{scheme}' more than once; using the last one.", scheme=scheme))
         raw = raw[idx:]
     return raw
+
+
+def deep_link(raw: str, schemes: tuple[str, ...]) -> tuple[str, str]:
+    """The link of the last of these schemes in raw (as _last_deep_link) and that scheme; the first
+    scheme if none is there."""
+    cleaned = re.sub(r"\s+", "", raw).lower()
+    scheme = max(schemes, key=lambda s: max(cleaned.rfind(f"{s}://"), cleaned.rfind(quote(f"{s}://", safe="").lower())))
+    return _last_deep_link(raw, f"{scheme}://"), scheme
+
+
+def link_kind(text: str) -> str | None:
+    """'issue' for a credential offer link, 'present' for a presentation request, else None."""
+    text = text.strip().lower()
+    for kind, schemes in (("issue", OFFER_SCHEMES), ("present", REQUEST_SCHEMES)):
+        if any(text.startswith((f"{s}:", f"{s}%3a")) for s in schemes):
+            return kind
+    return None
 
 
 def humanize(identifier: str) -> str:

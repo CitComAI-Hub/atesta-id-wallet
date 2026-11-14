@@ -107,7 +107,7 @@ def cmd_present(args: argparse.Namespace) -> int:
     else:
         raw = args.request or input(tr("Paste the OpenID4VP request (openid4vp://...) or the path of a QR screenshot: "))
         candidate = raw.strip().strip("'\"")
-        if candidate and not candidate.startswith(("openid4vp", "http")) and Path(candidate).expanduser().exists():
+        if candidate and not candidate.startswith(("openid4vp", "haip-vp", "http")) and Path(candidate).expanduser().exists():
             raw = decode_qr_image(candidate)
     ui = TerminalPrompter(args.yes)
     prepared = prepare_presentation(

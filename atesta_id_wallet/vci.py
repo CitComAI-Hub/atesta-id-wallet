@@ -24,34 +24,34 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 import requests
 from cryptography.hazmat.primitives import serialization
 
+from . import i18n
 from .common import (
-    Cancelled,
+    OFFER_SCHEMES,
     SD_JWT_FORMATS,
+    Cancelled,
     WalletError,
     _http_error,
     _json,
-    _last_deep_link,
-    clean_text,
-    humanize,
     b64u,
     b64u_decode,
+    clean_text,
     debug,
+    deep_link,
     host_of,
+    humanize,
     is_local_host,
     log,
     new_session,
-    site_of,
     parse_json,
     require_https,
+    site_of,
     split_url,
 )
-from . import i18n
 from .i18n import tr
 from .jose import _dns_names, _verify_jws, _x5c_chain, jwk_to_public_key
 from .sdjwt import parse_sd_jwt
 from .storage import MAX_COPIES, HolderKey, add_history, load_config, save_config, save_credential
 from .ui import OfferSummary, Prompter, TerminalPrompter
-
 
 PRE_AUTH_GRANT = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
 # The wallet's own OAuth client. An issuer that registers it (public, PKCE, redirect URI below; Keycloak
@@ -194,11 +194,11 @@ def resolve_offer(session: requests.Session, raw: str) -> dict[str, Any]:
     raw = raw.strip()
     if raw.startswith("{"):
         return _offer_object(parse_json(raw, "credential_offer"))
-    raw = _last_deep_link(raw, "openid-credential-offer://")
+    raw, scheme = deep_link(raw, OFFER_SCHEMES)
     if raw.startswith(("http://", "https://")):
         offer_uri = raw
     else:
-        params = parse_qs(split_url(raw, "openid-credential-offer").query, keep_blank_values=True)
+        params = parse_qs(split_url(raw, scheme).query, keep_blank_values=True)
         if "credential_offer" in params:
             return _offer_object(parse_json(params["credential_offer"][0], "credential_offer"))
         if "credential_offer_uri" not in params:
