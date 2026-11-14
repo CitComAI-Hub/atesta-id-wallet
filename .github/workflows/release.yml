@@ -108,8 +108,10 @@ jobs:
           sudo systemctl restart polkit.service 2>/dev/null || true
           if ! command -v pkaction >/dev/null; then
             echo "::warning::pkaction is not installed: the update action was not checked"
-          elif action=$(pkaction --action-id io.github.citcomaihub.atestaidwallet.update --verbose 2>&1); then
-            grep -q "exec.path -> /usr/libexec/atesta-id-wallet/update" <<<"$action"
+          # By what it answers, not its exit code: the polkit of 22.04 can answer and still exit with 1.
+          elif action=$(pkaction --action-id io.github.citcomaihub.atestaidwallet.update --verbose 2>&1 || true)
+               grep -q "exec.path -> /usr/libexec/atesta-id-wallet/update" <<<"$action"; then
+            echo "polkit knows the update action"
           elif grep -q "No action with action id" <<<"$action"; then
             echo "polkit does not know the update action: $action"; exit 1
           else
