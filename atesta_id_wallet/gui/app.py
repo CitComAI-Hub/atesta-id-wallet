@@ -105,6 +105,7 @@ from .widgets import (
     esc,
     keyboard_focus_ring,
     label,
+    qapp,
 )
 
 
@@ -208,6 +209,7 @@ class MainWindow(QMainWindow):
         self._status_running = False
         self.prompter = GuiPrompter(self.bridge)
         self.busy = False
+        self._instance_server: QLocalServer | None = None  # set by main(): links from later launches
         self.records: list[dict[str, Any]] = []
         self.log_text = ""
         self.last_result: tuple[bool, str] | None = None  # (success, title) of the last flow; for the tests
@@ -234,15 +236,19 @@ class MainWindow(QMainWindow):
         self._watch_timer.timeout.connect(self._watch_tick)
         hints = QGuiApplication.styleHints()
         if hasattr(hints, "colorSchemeChanged"):
-            hints.colorSchemeChanged.connect(lambda *_: theme.preference == "auto" and self.apply_theme())
+            hints.colorSchemeChanged.connect(self._system_scheme_changed)
         theme.preference = load_settings().get("theme", "auto")
         self.apply_theme()
 
     # -- building -------------------------------------------------------------
 
+    def _system_scheme_changed(self, *_: Any) -> None:
+        if theme.preference == "auto":
+            self.apply_theme()
+
     def apply_theme(self) -> None:
         t = theme.current()
-        app = QApplication.instance()
+        app = qapp()
         app.setPalette(theme.palette(t))
         app.setStyleSheet(theme.stylesheet(t))
         self._build()
@@ -265,7 +271,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         # The window starts with the focus on itself, not on the first button: the focus ring is for
         # people who press Tab (and a click on an empty area takes it away again).
-        central.setFocusPolicy(Qt.ClickFocus)
+        central.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         central.setFocus()
         self.overlay = Overlay(central)
         self.toast = Toast(central)
@@ -277,7 +283,7 @@ class MainWindow(QMainWindow):
         t = theme.current()
         bar = QWidget()
         bar.setObjectName("sidebar")
-        bar.setAttribute(Qt.WA_StyledBackground)
+        bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         bar.setFixedWidth(232)
         column = QVBoxLayout(bar)
         column.setContentsMargins(18, 24, 18, 20)
@@ -285,8 +291,8 @@ class MainWindow(QMainWindow):
 
         brand = QHBoxLayout()
         brand.setSpacing(10)
-        brand.addWidget(app_logo(34), alignment=Qt.AlignVCenter)
-        brand.addWidget(label("Atesta ID Wallet", "appName"), 1, alignment=Qt.AlignVCenter)
+        brand.addWidget(app_logo(34), alignment=Qt.AlignmentFlag.AlignVCenter)
+        brand.addWidget(label("Atesta ID Wallet", "appName"), 1, alignment=Qt.AlignmentFlag.AlignVCenter)
         column.addLayout(brand)
         column.addSpacing(28)
 
@@ -297,8 +303,8 @@ class MainWindow(QMainWindow):
             nav = QPushButton(f"  {text}")
             nav.setObjectName("navButton")
             nav.setCheckable(True)
-            nav.setCursor(Qt.PointingHandCursor)
-            nav.setFocusPolicy(Qt.TabFocus)
+            nav.setCursor(Qt.CursorShape.PointingHandCursor)
+            nav.setFocusPolicy(Qt.FocusPolicy.TabFocus)
             keyboard_focus_ring(nav)
             nav.setIcon(theme.icon(icon, t.text_muted, 18))
             nav.toggled.connect(lambda on, b=nav, i=icon: b.setIcon(theme.icon(i, t.accent if on else t.text_muted, 18)))
@@ -594,9 +600,9 @@ class MainWindow(QMainWindow):
             image = QGuiApplication.clipboard().image()
             if not image.isNull():
                 buffer = QBuffer()
-                buffer.open(QIODevice.WriteOnly)
-                image.save(buffer, "PNG")
-                return _qr_from_bytes(bytes(buffer.data()))
+                buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+                image.save(buffer, "PNG")  # type: ignore[call-overload]  # the stubs say bytes; PySide6 only takes str
+                return _qr_from_bytes(bytes(buffer.data().data()))
         return None
 
     def _fresh(self, link: str | None) -> str | None:
@@ -1125,10 +1131,10 @@ class MainWindow(QMainWindow):
         # The event filter (a Python call for every Qt event) is only installed while it is needed.
         if vault.mode(storage.DATA_DIR) == "password" and storage.vault_state() == "open":
             self._idle_timer.start()
-            QApplication.instance().installEventFilter(self)
+            qapp().installEventFilter(self)
         else:
             self._idle_timer.stop()
-            QApplication.instance().removeEventFilter(self)
+            qapp().removeEventFilter(self)
 
     def _idle_timeout(self) -> None:
         if self.busy:  # never in the middle of a flow: try again later
@@ -1401,7 +1407,7 @@ def forward_to_running_instance(entry: str | None, name: str | None = None) -> b
 def listen_for_instances(window: MainWindow, name: str | None = None) -> QLocalServer:
     name = name or _instance_name()
     server = QLocalServer(window)
-    server.setSocketOptions(QLocalServer.UserAccessOption)
+    server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
     if not server.listen(name):
         QLocalServer.removeServer(name)  # orphan socket of a window that did not close cleanly
         if not server.listen(name):  # without a single window nothing serious happens: every link opens another one
@@ -1414,7 +1420,7 @@ def listen_for_instances(window: MainWindow, name: str | None = None) -> QLocalS
         buffer = bytearray()
 
         def on_data() -> None:
-            buffer.extend(bytes(socket.readAll()))
+            buffer.extend(socket.readAll().data())
             if b"\n" not in buffer:
                 return
             entry = bytes(buffer).split(b"\n", 1)[0].decode("utf-8", errors="replace").strip()
@@ -1448,7 +1454,7 @@ def main(argv: list[str] | None = None) -> int:
 
     QGuiApplication.setApplicationDisplayName("Atesta ID Wallet")
     QGuiApplication.setDesktopFileName("atesta-id-wallet")
-    app = QApplication.instance() or QApplication(sys.argv[:1])
+    app = qapp() if QApplication.instance() else QApplication(sys.argv[:1])
     if args.smoke_test:
         return smoke_test()
     if forward_to_running_instance(args.entry):
@@ -1490,7 +1496,7 @@ def release_widgets() -> None:
     Qt has already deleted and crash (segfault on exit, which turns a clean exit into an error).
     """
     app = QApplication.instance()
-    if app is None:
+    if not isinstance(app, QApplication):
         return
     clear_logo_cache()
     for widget in app.topLevelWidgets():

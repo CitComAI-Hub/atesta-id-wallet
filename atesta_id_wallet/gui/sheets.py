@@ -6,6 +6,7 @@ offer, login, consent, progress, result, waiting for a QR code...
 
 from __future__ import annotations
 
+import functools
 import sys
 from typing import Any, Callable
 
@@ -41,6 +42,7 @@ from .widgets import (
     fade_in,
     keyboard_focus_ring,
     label,
+    on_click,
     password_field,
 )
 
@@ -66,26 +68,29 @@ class Overlay(QWidget):
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
+        self._host = parent
         self.setObjectName("overlay")
-        self.setAttribute(Qt.WA_StyledBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         self.hide()
         self.sheet: Sheet | None = None
         self._layout = QVBoxLayout(self)
-        self._layout.setAlignment(Qt.AlignCenter)
+        self._layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         parent.installEventFilter(self)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if watched is self.parentWidget() and event.type() == QEvent.Resize:
-            self.setGeometry(self.parentWidget().rect())
+        if watched is self._host and event.type() == QEvent.Type.Resize:
+            self.setGeometry(self._host.rect())
         return False
 
     def _discard(self) -> None:
         # deleteLater only acts back in the event loop: hide it now so it is not seen underneath.
         old = self.sheet
+        if old is None:
+            return
         focused = QApplication.focusWidget()
         if focused is not None and old.isAncestorOf(focused):
             # Otherwise Qt hands the focus to the next widget in the chain (the first sidebar button).
-            self.parentWidget().setFocus()
+            self._host.setFocus()
         self._layout.removeWidget(old)
         old.hide()
         old.setParent(None)
@@ -96,8 +101,8 @@ class Overlay(QWidget):
         if self.sheet is not None:
             self._discard()
         self.sheet = sheet
-        self._layout.addWidget(sheet, alignment=Qt.AlignCenter)
-        self.setGeometry(self.parentWidget().rect())
+        self._layout.addWidget(sheet, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.setGeometry(self._host.rect())
         if not self.isVisible():
             self.show()
             fade_in(self)
@@ -118,7 +123,7 @@ class Overlay(QWidget):
             self.hide()
 
     def keyPressEvent(self, event: Any) -> None:  # noqa: N802
-        if event.key() == Qt.Key_Escape and self.sheet is not None and self.sheet.on_escape:
+        if event.key() == Qt.Key.Key_Escape and self.sheet is not None and self.sheet.on_escape:
             self.sheet.on_escape()
         else:
             super().keyPressEvent(event)
@@ -132,7 +137,7 @@ class Sheet(QFrame):
         super().__init__()
         self.setObjectName("sheet")
         self.setFixedWidth(width)
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Maximum)
         self.on_escape: Callable[[], None] | None = None
         self._focus: QWidget | None = None
         self.layout_ = QVBoxLayout(self)
@@ -197,11 +202,11 @@ class Sheet(QFrame):
     def focus(self) -> None:
         """The focus goes inside the panel, or Tab would go on through the page behind it (no ring: not the keyboard)."""
         target = self._focus or next(iter(self._focus_chain()), None)
-        (target or self).setFocus(Qt.OtherFocusReason)  # nothing to press (progress): the panel holds it
+        (target or self).setFocus(Qt.FocusReason.OtherFocusReason)  # nothing to press (progress): the panel holds it
 
     def _focus_chain(self) -> list[QWidget]:
         chain = [w for w in self.findChildren(QWidget)
-                 if w.isVisibleTo(self) and w.isEnabled() and w.focusPolicy() & Qt.TabFocus
+                 if w.isVisibleTo(self) and w.isEnabled() and w.focusPolicy() & Qt.FocusPolicy.TabFocus
                  and not (isinstance(w, QRadioButton) and not w.isChecked())]  # one stop per group of options
         return sorted(chain, key=lambda w: (w.mapTo(self, w.rect().topLeft()).y() // 8,
                                             w.mapTo(self, w.rect().topLeft()).x()))
@@ -214,7 +219,7 @@ class Sheet(QFrame):
         current = QApplication.focusWidget()
         index = chain.index(current) if current in chain else -1
         target = chain[(index + (1 if forward else -1)) % len(chain)]
-        target.setFocus(Qt.TabFocusReason if forward else Qt.BacktabFocusReason)
+        target.setFocus(Qt.FocusReason.TabFocusReason if forward else Qt.FocusReason.BacktabFocusReason)
         return True
 
 
@@ -227,12 +232,12 @@ class ProgressSheet(Sheet):
     def __init__(self, title: str, detail: str = ""):
         super().__init__(width=420)
         spinner = Spinner(44)
-        self.layout_.addWidget(spinner, alignment=Qt.AlignHCenter)
+        self.layout_.addWidget(spinner, alignment=Qt.AlignmentFlag.AlignHCenter)
         heading = label(title, "sheetTitle", wrap=True)
-        heading.setAlignment(Qt.AlignCenter)
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.layout_.addWidget(heading)
         self.detail = label(detail, "sheetBody", wrap=True)
-        self.detail.setAlignment(Qt.AlignCenter)
+        self.detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.detail.setVisible(bool(detail))
         self.layout_.addWidget(self.detail)
 
@@ -250,12 +255,15 @@ class ResultSheet(Sheet):
                          tone=tone or ("ok" if ok else "danger"), title=title, body=body)
         if extra is not None:
             self.layout_.addSpacing(6)
-            self.layout_.addWidget(extra, alignment=Qt.AlignHCenter)
+            self.layout_.addWidget(extra, alignment=Qt.AlignmentFlag.AlignHCenter)
         if details:
             text = label(details, "caption", wrap=True, selectable=True)
             text.hide()
             toggle = button(tr("Show technical details"), "ghost")
-            toggle.clicked.connect(lambda: (text.setVisible(not text.isVisible()), toggle.hide()))
+            def show_details() -> None:
+                text.setVisible(not text.isVisible())
+                toggle.hide()
+            toggle.clicked.connect(show_details)
             self.add(toggle)
             self.add(text)
         close = button(tr("Done") if ok else tr("Close"), None if action else "primary")
@@ -303,7 +311,7 @@ class BrowserSheet(Sheet):
     """While the user signs in in the browser (already opened by the wallet): only cancel, plus a way
     to open the page again if the browser did not come up."""
 
-    def __init__(self, host: str, on_open_again: Callable[[], None], on_cancel: Callable[[], None]):
+    def __init__(self, host: str, on_open_again: Callable[[], object], on_cancel: Callable[[], None]):
         super().__init__(icon="lock", title=tr("Continue in your browser"),
                          body=tr("Sign in to <b>{host}</b> in the browser window that has just opened. The wallet "
                                  "carries on by itself when you finish; your password stays in the browser.",
@@ -428,7 +436,7 @@ class ChooseSheet(Sheet):
                                              tr("Expired") if is_expired(record) else "") if p)
             text.addWidget(label(details, "caption"))
             layout.addLayout(text, 1)
-            box.mousePressEvent = lambda _e, r=radio: r.setChecked(True)  # the whole row is clickable
+            on_click(box, functools.partial(radio.setChecked, True))  # the whole row is clickable
             self.add(box)
         cancel = button(tr("Cancel"))
         cancel.clicked.connect(lambda: on_answer(None))
@@ -463,7 +471,7 @@ class RequestSheet(Sheet):
                 choices.append((issuer.issuer, config_id))
                 layout.addWidget(radio)
                 layout.addWidget(label(name, wrap=True), 1)
-                box.mousePressEvent = lambda _e, r=radio: r.setChecked(True)  # the whole row is clickable
+                on_click(box, functools.partial(radio.setChecked, True))  # the whole row is clickable
                 self.add(box)
         cancel = button(tr("Cancel"))
         cancel.clicked.connect(lambda: on_answer(None))
@@ -501,7 +509,7 @@ class ConsentSheet(Sheet):
             grid.addWidget(label(source, "caption", wrap=True), 0, 0, 1, 2)
             for row, (path, value) in enumerate(item.claims, start=1):
                 name = " › ".join(claim_label(part) for part in path.split("."))
-                grid.addWidget(label(name, "claimName"), row, 0, Qt.AlignTop)
+                grid.addWidget(label(name, "claimName"), row, 0, Qt.AlignmentFlag.AlignTop)
                 grid.addWidget(label(value, "rowValue", wrap=True, selectable=True), row, 1)
             grid.setColumnStretch(1, 1)
             column.addWidget(box)
@@ -509,8 +517,8 @@ class ConsentSheet(Sheet):
         scroll = QScrollArea()
         scroll.setWidget(content)
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         surface = theme.current().surface
         scroll.setStyleSheet(f"QScrollArea {{ background: {surface}; }}")
         content.setStyleSheet(f"QWidget#scrollContent {{ background: {surface}; }}")
@@ -534,14 +542,14 @@ class ConsentSheet(Sheet):
             self.risk.setAccessibleName(text)
             self.risk.toggled.connect(self.share.setEnabled)
             words = label(text, wrap=True)
-            words.setCursor(Qt.PointingHandCursor)
-            words.mousePressEvent = lambda _e: self.risk.toggle()
+            words.setCursor(Qt.CursorShape.PointingHandCursor)
+            on_click(words, self.risk.toggle)
             risk_row = QWidget()
-            row = QHBoxLayout(risk_row)
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(8)
-            row.addWidget(self.risk, alignment=Qt.AlignTop)
-            row.addWidget(words, 1)
+            risk_layout = QHBoxLayout(risk_row)
+            risk_layout.setContentsMargins(0, 0, 0, 0)
+            risk_layout.setSpacing(8)
+            risk_layout.addWidget(self.risk, alignment=Qt.AlignmentFlag.AlignTop)
+            risk_layout.addWidget(words, 1)
             self.share.setEnabled(False)
             self.add(risk_row)
         self.add_buttons(decline, self.share)
@@ -623,13 +631,13 @@ def _notice(tone: str, icon: str, title: str, text: str) -> QWidget:
     color = {"ok": t.success, "warn": t.warning, "danger": t.danger, "accent": t.accent}[tone]
     box = QFrame()
     box.setObjectName({"ok": "trust_ok", "warn": "trust_warn", "danger": "trust_danger"}.get(tone, "trust_ok"))
-    box.setAttribute(Qt.WA_StyledBackground)
+    box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
     layout = QHBoxLayout(box)
     layout.setContentsMargins(12, 10, 12, 10)
     layout.setSpacing(10)
     glyph = label()
     glyph.setPixmap(theme.icon_pixmap(icon, color, 20))
-    layout.addWidget(glyph, alignment=Qt.AlignTop)
+    layout.addWidget(glyph, alignment=Qt.AlignmentFlag.AlignTop)
     text_box = QVBoxLayout()
     text_box.setSpacing(2)
     heading = label(title, wrap=True)

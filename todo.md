@@ -212,8 +212,8 @@ the full manual Windows test and the CITCOM verifier trust list.
        (browser links, clipboard, screenshots, `%APPDATA%` permissions, update/uninstall) and
        decide on macOS for the pilot.
 3. [x] **CI**: tests on Linux and Windows for every push and pull request, `ruff` (bug-class rules),
-       `bandit`, `pip-audit`, `mypy` (protocol code; the GUI still excluded: move it to Qt's scoped
-       enums, e.g. `Qt.AlignmentFlag.AlignCenter`, then drop the override), Dependabot (`checks.yml`).
+       `bandit`, `pip-audit`, `mypy` (the whole package, GUI included since November 2026: Qt's scoped
+       enums, e.g. `Qt.AlignmentFlag.AlignCenter`), Dependabot (`checks.yml`).
 4. [x] **Holder key protection** (0.8.0): encrypted profile, key in the OS keyring or behind a
        wallet password with app lock. Still to check by hand on Windows (Credential Manager).
 5. [ ] **Trust list**: ship the CITCOM verifier CA (or trust list) with the app, so pilot verifiers
@@ -299,7 +299,8 @@ the full manual Windows test and the CITCOM verifier trust list.
       nightly with a new seed, `fuzz.yml`). Found: links with a bad host ('[') and malformed DCQL
       queries raised ValueError/AttributeError instead of a clear error.
 - [x] SBOM (CycloneDX) of each build in the releases
-- [ ] mypy on the GUI (scoped Qt enums); branch protection on `main` (GitHub settings, needs an admin)
+- [x] mypy on the GUI (scoped Qt enums)
+- [ ] Branch protection on `main` (GitHub settings, needs an admin)
 
 ## Pending decision: avoid the second login when receiving a credential
 

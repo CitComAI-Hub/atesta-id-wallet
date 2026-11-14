@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import sys
 import time
 from typing import TYPE_CHECKING, Any
@@ -46,6 +47,7 @@ from .widgets import (
     hline,
     key_value_row,
     keyboard_focus_ring,
+    on_activate,
     label,
     pill,
     relative_time,
@@ -62,22 +64,28 @@ def _scroll_page(content: QWidget) -> QScrollArea:
     scroll.setObjectName("page")
     scroll.setWidget(content)
     scroll.setWidgetResizable(True)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     return scroll
 
 
-def _header(title: str, subtitle: str = "") -> tuple[QWidget, QHBoxLayout]:
-    header = QWidget()
-    row = QHBoxLayout(header)
-    row.setContentsMargins(0, 0, 0, 0)
-    text = QVBoxLayout()
-    text.setSpacing(2)
-    text.addWidget(label(title, "pageTitle"))
-    sub = label(subtitle, "pageSubtitle", wrap=True)  # long translations in a small window
-    text.addWidget(sub)
-    header.subtitle = sub  # type: ignore[attr-defined]
-    row.addLayout(text, 1)
-    return header, row
+class _PageHeader(QWidget):
+    """Title and subtitle of a page; actions go in 'row', to their right."""
+
+    def __init__(self, title: str, subtitle: str = ""):
+        super().__init__()
+        self.row = QHBoxLayout(self)
+        self.row.setContentsMargins(0, 0, 0, 0)
+        text = QVBoxLayout()
+        text.setSpacing(2)
+        text.addWidget(label(title, "pageTitle"))
+        self.subtitle = label(subtitle, "pageSubtitle", wrap=True)  # long translations in a small window
+        text.addWidget(self.subtitle)
+        self.row.addLayout(text, 1)
+
+
+def _header(title: str, subtitle: str = "") -> tuple[_PageHeader, QHBoxLayout]:
+    header = _PageHeader(title, subtitle)
+    return header, header.row
 
 
 class Page(QWidget):
@@ -109,23 +117,23 @@ class WalletPage(Page):
         self.search.setAccessibleName(tr("Search credentials"))
         self.search.setClearButtonEnabled(True)
         self.search.setFixedWidth(220)
-        glass = self.search.addAction(theme.icon("search", theme.current().text_muted, 16), QLineEdit.LeadingPosition)
+        glass = self.search.addAction(theme.icon("search", theme.current().text_muted, 16), QLineEdit.ActionPosition.LeadingPosition)
         glass.setText(tr("Search credentials"))
         self.search.textChanged.connect(self.refresh)
-        row.addWidget(self.search, alignment=Qt.AlignVCenter)
+        row.addWidget(self.search, alignment=Qt.AlignmentFlag.AlignVCenter)
         self.scan_button = button(tr("Scan QR"), "primary", "scan-line")
         self.scan_button.setToolTip(tr("Read a QR code or a link to receive a credential or to sign in"))
         self.scan_button.clicked.connect(window.scan)
         row.addSpacing(8)
-        row.addWidget(self.scan_button, alignment=Qt.AlignVCenter)
+        row.addWidget(self.scan_button, alignment=Qt.AlignmentFlag.AlignVCenter)
         self.root.addWidget(self.header)
         self.root.setSpacing(6)
 
         self.grid_host = QWidget()
         self.grid = FlowLayout(self.grid_host, spacing=24)
         self.grid.setContentsMargins(18, 14, 18, 36)  # room for the cards' shadow
-        self.scroll = _scroll_page(self.grid_host)
-        self.root.addWidget(self.scroll, 1)
+        self.scroll_area = _scroll_page(self.grid_host)
+        self.root.addWidget(self.scroll_area, 1)
 
         self.empty = EmptyState(
             "plus", tr("Your wallet is empty"),
@@ -161,7 +169,7 @@ class WalletPage(Page):
                         profile=storage.PROFILE)
         self.header.subtitle.setText(text)
         self.search.setVisible(count > 0)
-        self.scroll.setVisible(bool(shown))
+        self.scroll_area.setVisible(bool(shown))
         self.empty.setVisible(not records)
         self.no_results.setVisible(bool(records) and not shown)
 
@@ -238,6 +246,8 @@ def validity_text(record: dict[str, Any]) -> tuple[str, str]:
         return "danger", tr("Revoked by {issuer}", issuer=credential_issuer_name(record))
     if state == "suspended":
         return "warn", tr("Suspended by {issuer}", issuer=credential_issuer_name(record))
+    if when is None:
+        return "ok", tr("Valid · does not expire")
     if state == "expired":
         return "danger", tr("Expired on {date}", date=short_date(when))
     if state == "not-yet":
@@ -245,8 +255,6 @@ def validity_text(record: dict[str, Any]) -> tuple[str, str]:
     if state == "expiring":
         days = max(1, round((when - time.time()) / 86400))
         return "warn", tr_n("Expires in {n} day ({date})", "Expires in {n} days ({date})", days, date=short_date(when))
-    if when is None:
-        return "ok", tr("Valid · does not expire")
     return "ok", tr("Valid until {date}", date=short_date(when))
 
 
@@ -288,7 +296,7 @@ class CredentialPage(Page):
         self.record = record
         back = button(tr("Wallet"), "ghost", "chevron-left")
         back.clicked.connect(window.show_wallet)
-        self.root.addWidget(back, alignment=Qt.AlignLeft)
+        self.root.addWidget(back, alignment=Qt.AlignmentFlag.AlignLeft)
 
         content = QWidget()
         columns = QHBoxLayout(content)
@@ -306,12 +314,12 @@ class CredentialPage(Page):
                         "danger": (t.danger, t.danger_soft)}[tone]
         state_pill = pill(text, colour, soft)
         state_pill.setAccessibleName(text)
-        left.addWidget(state_pill, alignment=Qt.AlignLeft)
+        left.addWidget(state_pill, alignment=Qt.AlignmentFlag.AlignLeft)
         left.addWidget(label(tr("Issued by {issuer}", issuer=credential_issuer_name(record)), "pageSubtitle", wrap=True))
         left.addSpacing(8)
         delete = button(tr("Delete credential"), "danger", "trash-2")
         delete.clicked.connect(lambda: window.confirm_delete(record))
-        left.addWidget(delete, alignment=Qt.AlignLeft)
+        left.addWidget(delete, alignment=Qt.AlignmentFlag.AlignLeft)
         left.addStretch()
         columns.addLayout(left)
 
@@ -359,10 +367,11 @@ class CredentialPage(Page):
         self.technical.hide()
         toggle = button(tr("Show technical details"), "ghost", "chevron-down")
         toggle.setStyleSheet("padding-left: 0px;")
-        toggle.clicked.connect(lambda: (self.technical.setVisible(not self.technical.isVisible()),
-                                        toggle.setText(tr("Hide technical details") if self.technical.isVisible()
-                                                       else tr("Show technical details"))))
-        right.addWidget(toggle, alignment=Qt.AlignLeft)
+        def show_technical() -> None:
+            self.technical.setVisible(not self.technical.isVisible())
+            toggle.setText(tr("Hide technical details") if self.technical.isVisible() else tr("Show technical details"))
+        toggle.clicked.connect(show_technical)
+        right.addWidget(toggle, alignment=Qt.AlignmentFlag.AlignLeft)
         right.addWidget(self.technical)
         right.addStretch()
         columns.addLayout(right, 1)
@@ -395,12 +404,12 @@ class ActivityPage(Page):
         back = button(tr("All activity"), "ghost", "chevron-left")
         back.setStyleSheet("padding-left: 0px;")  # flush with the card and the list below
         back.clicked.connect(lambda: self.show_contact(None))
-        bar.addWidget(back, alignment=Qt.AlignLeft)
+        bar.addWidget(back, alignment=Qt.AlignmentFlag.AlignLeft)
         card = Panel((20, 14, 20, 14))
         row = QHBoxLayout()
         row.setSpacing(14)
         t = theme.current()
-        row.addWidget(IconBubble("users", t.accent, t.accent_soft, 40), alignment=Qt.AlignTop)
+        row.addWidget(IconBubble("users", t.accent, t.accent_soft, 40), alignment=Qt.AlignmentFlag.AlignTop)
         text = QVBoxLayout()
         text.setSpacing(2)
         self.contact_title = label("", "sectionTitle", wrap=True)
@@ -415,8 +424,8 @@ class ActivityPage(Page):
         self.list_layout = QVBoxLayout(self.list_host)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_layout.setSpacing(0)
-        self.scroll = _scroll_page(self.list_host)
-        self.root.addWidget(self.scroll, 1)
+        self.scroll_area = _scroll_page(self.list_host)
+        self.root.addWidget(self.scroll_area, 1)
         self.empty = EmptyState("history", tr("No activity yet"),
                                 tr("Here you will see every credential you receive and every time you share (or "
                                    "decline to share) your data."))
@@ -442,7 +451,7 @@ class ActivityPage(Page):
                 (kinds.count("declined"), tr_n("declined once", "declined {n} times", kinds.count("declined"))),
             ) if n]
             self.contact_summary.setText("\n".join(p for p in (place if place != name else "", " · ".join(parts)) if p))
-        self.scroll.setVisible(bool(events))
+        self.scroll_area.setVisible(bool(events))
         self.empty.setVisible(not events)
         if not events:
             return
@@ -456,7 +465,7 @@ class ActivityPage(Page):
 
     def _row(self, event: dict[str, Any]) -> QWidget:
         t = theme.current()
-        icon, tone, template = EVENT_STYLE.get(event.get("type"), ("info", "accent", "{party}"))
+        icon, tone, template = EVENT_STYLE.get(str(event.get("type")), ("info", "accent", "{party}"))
         party = _party_name(event)
         color, soft = {"accent": (t.accent, t.accent_soft), "ok": (t.success, t.success_soft),
                        "danger": (t.danger, t.danger_soft)}[tone]
@@ -464,7 +473,7 @@ class ActivityPage(Page):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 14, 0, 14)
         layout.setSpacing(14)
-        layout.addWidget(IconBubble(icon, color, soft, 40), alignment=Qt.AlignTop)
+        layout.addWidget(IconBubble(icon, color, soft, 40), alignment=Qt.AlignmentFlag.AlignTop)
         text = QVBoxLayout()
         text.setSpacing(3)
         credentials = ", ".join(event.get("credentials") or []) or tr("a credential")
@@ -477,20 +486,17 @@ class ActivityPage(Page):
         elif event.get("type") == "issued":
             text.addWidget(label(host_of(event.get("party_id", "")), "caption"))
         layout.addLayout(text, 1)
-        layout.addWidget(label(relative_time(event.get("time", 0)), "caption"), alignment=Qt.AlignTop)
+        layout.addWidget(label(relative_time(event.get("time", 0)), "caption"), alignment=Qt.AlignmentFlag.AlignTop)
         if self.contact is None and event.get("party_id"):
-            row.setCursor(Qt.PointingHandCursor)
+            row.setCursor(Qt.CursorShape.PointingHandCursor)
             row.setToolTip(tr("Show everything with {party}", party=party))
-            row.setFocusPolicy(Qt.StrongFocus)
+            row.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             keyboard_focus_ring(row)
             row.setObjectName("activityRow")
-            row.setAttribute(Qt.WA_StyledBackground)
+            row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
             row.setAccessibleName(tr(template, party=party, credentials=credentials))
             row.setAccessibleDescription(tr("Show everything with {party}", party=party))
-            row.mousePressEvent = lambda _e, pid=event["party_id"]: self.show_contact(pid)
-            row.keyPressEvent = lambda e, pid=event["party_id"], r=row: (
-                self.show_contact(pid) if e.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space)
-                else QWidget.keyPressEvent(r, e))
+            on_activate(row, functools.partial(self.show_contact, event["party_id"]))
         return row
 
 
@@ -521,7 +527,7 @@ def _setting(title: str, description: str, *controls: QWidget, leading: QWidget 
     layout.setContentsMargins(0, 14, 0, 14)
     layout.setSpacing(16)
     if leading is not None:
-        layout.addWidget(leading, alignment=Qt.AlignVCenter)
+        layout.addWidget(leading, alignment=Qt.AlignmentFlag.AlignVCenter)
     text = QVBoxLayout()
     text.setSpacing(2)
     text.addWidget(label(title, "sectionTitle"))
@@ -534,7 +540,7 @@ def _setting(title: str, description: str, *controls: QWidget, leading: QWidget 
         if description and not control.accessibleDescription():
             control.setAccessibleDescription(description)
         keyboard_focus_ring(control)
-        layout.addWidget(control, alignment=Qt.AlignVCenter)
+        layout.addWidget(control, alignment=Qt.AlignmentFlag.AlignVCenter)
     return row
 
 

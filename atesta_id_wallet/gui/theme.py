@@ -126,9 +126,9 @@ def app_icon_pixmap(height: int) -> QPixmap:
     width = round(height * APP_ICON_BOUNDS.width() / APP_ICON_BOUNDS.height())
     ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
     pixmap = QPixmap(int(width * ratio), int(height * ratio))
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     renderer.render(painter, QRectF(0, 0, width * ratio, height * ratio))
     painter.end()
     pixmap.setDevicePixelRatio(ratio)
@@ -147,7 +147,7 @@ def icon_pixmap(name: str, color: str, size: int = 20, stroke: float | None = No
         data = data.replace(b'stroke-width="2"', f'stroke-width="{stroke}"'.encode())
     ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
     pixmap = QPixmap(int((size + gap) * ratio), int(size * ratio))
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     QSvgRenderer(QByteArray(data)).render(painter, QRectF(0, 0, size * ratio, size * ratio))
     painter.end()
@@ -168,16 +168,16 @@ def palette(t: Theme) -> QPalette:
     """Palette for the native widgets the style sheet does not cover (menus, pickers...)."""
     p = QPalette()
     roles = {
-        QPalette.Window: t.window, QPalette.WindowText: t.text, QPalette.Base: t.surface,
-        QPalette.AlternateBase: t.surface_alt, QPalette.Text: t.text, QPalette.Button: t.surface,
-        QPalette.ButtonText: t.text, QPalette.Highlight: t.accent, QPalette.HighlightedText: t.on_accent,
-        QPalette.ToolTipBase: t.surface, QPalette.ToolTipText: t.text, QPalette.PlaceholderText: t.text_muted,
-        QPalette.Link: t.accent,
+        QPalette.ColorRole.Window: t.window, QPalette.ColorRole.WindowText: t.text, QPalette.ColorRole.Base: t.surface,
+        QPalette.ColorRole.AlternateBase: t.surface_alt, QPalette.ColorRole.Text: t.text, QPalette.ColorRole.Button: t.surface,
+        QPalette.ColorRole.ButtonText: t.text, QPalette.ColorRole.Highlight: t.accent, QPalette.ColorRole.HighlightedText: t.on_accent,
+        QPalette.ColorRole.ToolTipBase: t.surface, QPalette.ColorRole.ToolTipText: t.text, QPalette.ColorRole.PlaceholderText: t.text_muted,
+        QPalette.ColorRole.Link: t.accent,
     }
     for role, color in roles.items():
         p.setColor(role, QColor(color))
-    p.setColor(QPalette.Disabled, QPalette.Text, QColor(t.text_muted))
-    p.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(t.text_muted))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(t.text_muted))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(t.text_muted))
     return p
 
 

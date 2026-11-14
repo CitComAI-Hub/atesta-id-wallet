@@ -8,7 +8,7 @@ import binascii
 import html
 import os
 import time
-from typing import Any, TypeVar
+from typing import Any, Callable, TypeVar, cast
 
 from PySide6.QtCore import (
     QBuffer,
@@ -31,6 +31,8 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QAction,
     QColor,
+    QFocusEvent,
+    QKeyEvent,
     QFont,
     QFontMetrics,
     QImage,
@@ -43,6 +45,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QGraphicsDropShadowEffect,
     QGraphicsOpacityEffect,
@@ -77,13 +80,13 @@ def label(text: str = "", name: str | None = None, *, wrap: bool = False, select
     With rich=True, external values go through esc().
     """
     widget = QLabel()
-    widget.setTextFormat(Qt.RichText if rich else Qt.PlainText)
+    widget.setTextFormat(Qt.TextFormat.RichText if rich else Qt.TextFormat.PlainText)
     widget.setText(text)
     if name:
         widget.setObjectName(name)
     widget.setWordWrap(wrap)
     if selectable:
-        widget.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     return widget
 
 
@@ -94,12 +97,12 @@ class _KeyboardFocus(QObject):
     click: the style sheet looks at the 'keyboardFocus' property this filter keeps up to date.
     """
 
-    KEYBOARD = (Qt.TabFocusReason, Qt.BacktabFocusReason, Qt.ShortcutFocusReason)
+    KEYBOARD = (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason, Qt.FocusReason.ShortcutFocusReason)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if event.type() == QEvent.FocusIn:
-            _set_keyboard_focus(watched, event.reason() in self.KEYBOARD)
-        elif event.type() == QEvent.FocusOut:
+        if event.type() == QEvent.Type.FocusIn:
+            _set_keyboard_focus(watched, cast(QFocusEvent, event).reason() in self.KEYBOARD)
+        elif event.type() == QEvent.Type.FocusOut:
             _set_keyboard_focus(watched, False)
         return False
 
@@ -113,14 +116,34 @@ def _set_keyboard_focus(widget: Any, on: bool) -> None:
     widget.update()
 
 
+def qapp() -> QApplication:
+    """The running QApplication (QApplication.instance() is typed as an optional QCoreApplication)."""
+    return cast(QApplication, QApplication.instance())
+
+
+def on_click(widget: QWidget, action: Callable[[], Any]) -> None:
+    """Runs 'action' when the widget is pressed (rows whose whole area ticks their box, a label that opens)."""
+    widget.mousePressEvent = lambda _event: action()  # type: ignore[method-assign]
+
+
+def on_activate(widget: QWidget, action: Callable[[], Any]) -> None:
+    """Runs 'action' when the widget is pressed, or with Return, Enter or Space while it has the focus."""
+    on_click(widget, action)
+
+    def key(event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            action()
+        else:
+            QWidget.keyPressEvent(widget, event)
+    widget.keyPressEvent = key  # type: ignore[method-assign]
+
+
 FocusableT = TypeVar("FocusableT", bound=QWidget)
 
 
 def keyboard_focus_ring(widget: FocusableT) -> FocusableT:
     """Shows the focus ring of this widget only when it is reached with the keyboard."""
-    from PySide6.QtWidgets import QApplication
-
-    app = QApplication.instance()
+    app = qapp()
     watcher = app.findChild(_KeyboardFocus, "keyboardFocus")  # one per application, destroyed with it
     if watcher is None:
         watcher = _KeyboardFocus(app)
@@ -133,8 +156,8 @@ def button(text: str, kind: str | None = None, icon: str | None = None) -> QPush
     widget = QPushButton(text)
     if kind:
         widget.setObjectName(kind)
-    widget.setCursor(Qt.PointingHandCursor)
-    widget.setFocusPolicy(Qt.TabFocus)  # a click does not take the focus away from where the keyboard left it
+    widget.setCursor(Qt.CursorShape.PointingHandCursor)
+    widget.setFocusPolicy(Qt.FocusPolicy.TabFocus)  # a click does not take the focus away from where the keyboard left it
     keyboard_focus_ring(widget)
     if icon:
         t = theme.current()
@@ -186,8 +209,8 @@ class FlowLayout(QLayout):
     def takeAt(self, index: int) -> Any:  # noqa: N802
         return self._items.pop(index) if 0 <= index < len(self._items) else None
 
-    def expandingDirections(self) -> Qt.Orientations:  # noqa: N802
-        return Qt.Orientations(0)
+    def expandingDirections(self) -> Qt.Orientation:  # noqa: N802
+        return Qt.Orientation(0)
 
     def hasHeightForWidth(self) -> bool:  # noqa: N802
         return True
@@ -228,20 +251,20 @@ def password_field(placeholder: str = "") -> QLineEdit:
     """Password input with a show/hide button at the end (hidden by default)."""
     field = QLineEdit()
     field.setPlaceholderText(placeholder)
-    field.setEchoMode(QLineEdit.Password)
+    field.setEchoMode(QLineEdit.EchoMode.Password)
     color = theme.current().text_muted
     toggle = QAction(theme.icon("eye", color, 18), tr("Show password"), field)
 
     def flip() -> None:
-        hidden = field.echoMode() == QLineEdit.Password
-        field.setEchoMode(QLineEdit.Normal if hidden else QLineEdit.Password)
+        hidden = field.echoMode() == QLineEdit.EchoMode.Password
+        field.setEchoMode(QLineEdit.EchoMode.Normal if hidden else QLineEdit.EchoMode.Password)
         toggle.setIcon(theme.icon("eye-off" if hidden else "eye", color, 18))
         toggle.setText(tr("Hide password") if hidden else tr("Show password"))
         toggle.setToolTip(toggle.text())
 
     toggle.setToolTip(toggle.text())
     toggle.triggered.connect(flip)
-    field.addAction(toggle, QLineEdit.TrailingPosition)
+    field.addAction(toggle, QLineEdit.ActionPosition.TrailingPosition)
     field.toggle_visibility = toggle  # type: ignore[attr-defined]  # for tests
     return field
 
@@ -279,7 +302,7 @@ def _decode_logo(data: str, size: int) -> QPixmap | None:
         return None
     buffer = QBuffer()
     buffer.setData(QByteArray(raw))
-    buffer.open(QIODevice.ReadOnly)
+    buffer.open(QIODevice.OpenModeFlag.ReadOnly)
     reader = QImageReader(buffer)
     dimensions = reader.size()  # from the header, before decoding: no huge allocations
     if not dimensions.isValid() or max(dimensions.width(), dimensions.height()) > _LOGO_MAX_SIDE:
@@ -287,7 +310,7 @@ def _decode_logo(data: str, size: int) -> QPixmap | None:
     image = reader.read()
     if image.isNull():
         return None
-    return QPixmap.fromImage(image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+    return QPixmap.fromImage(image.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
 
 def _render_svg(raw: bytes, size: int) -> QPixmap | None:
@@ -298,8 +321,8 @@ def _render_svg(raw: bytes, size: int) -> QPixmap | None:
         return None
     scale = size / max(view.width(), view.height())
     width, height = max(1, round(view.width() * scale)), max(1, round(view.height() * scale))
-    image = QImage(width, height, QImage.Format_ARGB32_Premultiplied)
-    image.fill(Qt.transparent)
+    image = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
     renderer.render(painter, QRectF(0, 0, width, height))
     painter.end()
@@ -318,9 +341,9 @@ class CredentialCard(QWidget):
         self.setFixedSize(width, round(width / 1.586))
         self.interactive = interactive
         if interactive:
-            self.setCursor(Qt.PointingHandCursor)
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
             self.setToolTip(tr("Show the credential's data"))
-            self.setFocusPolicy(Qt.StrongFocus)  # Tab reaches the cards; Enter or Space opens them
+            self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # Tab reaches the cards; Enter or Space opens them
             keyboard_focus_ring(self)
         # Painted by hand: screen readers need the words.
         state = validity(record)[0]
@@ -349,13 +372,13 @@ class CredentialCard(QWidget):
         super().leaveEvent(event)
 
     def keyPressEvent(self, event: Any) -> None:  # noqa: N802
-        if self.interactive and event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+        if self.interactive and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             self.clicked.emit()
         else:
             super().keyPressEvent(event)
 
     def mouseReleaseEvent(self, event: Any) -> None:  # noqa: N802
-        if self.interactive and event.button() == Qt.LeftButton and self.rect().contains(event.position().toPoint()):
+        if self.interactive and event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
             self.clicked.emit()
 
     def paintEvent(self, _: Any) -> None:  # noqa: N802
@@ -363,7 +386,7 @@ class CredentialCard(QWidget):
         w, h = self.width(), self.height()
         scale = w / self.WIDTH
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         state = validity(self.record)[0]
         expired = state in ("expired", "revoked", "suspended")  # it does not work (now)
         if expired:
@@ -390,19 +413,19 @@ class CredentialCard(QWidget):
         muted.setAlpha(200)
         font = QFont(self.font())
         font.setPixelSize(round(12 * scale))
-        font.setWeight(QFont.DemiBold)
-        font.setLetterSpacing(QFont.PercentageSpacing, 104)
+        font.setWeight(QFont.Weight.DemiBold)
+        font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 104)
         painter.setFont(font)
         painter.setPen(muted)
         issuer = credential_issuer_name(self.record).upper()
-        painter.drawText(QRectF(pad, pad, w - 2 * pad - 30 * scale, 20 * scale), Qt.AlignLeft | Qt.AlignVCenter,
-                         painter.fontMetrics().elidedText(issuer, Qt.ElideRight, int(w - 2 * pad - 30 * scale)))
+        painter.drawText(QRectF(pad, pad, w - 2 * pad - 30 * scale, 20 * scale), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         painter.fontMetrics().elidedText(issuer, Qt.TextElideMode.ElideRight, int(w - 2 * pad - 30 * scale)))
         badge = 30 * scale
         logo = issuer_logo(self.record, round(badge - 6 * scale))
         if logo is not None:
             # On a light tile: logos are made for white backgrounds, the card may be dark.
             tile = QRectF(w - pad - badge, pad - 5 * scale, badge, badge)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(255, 255, 255, 235))
             painter.drawRoundedRect(tile, 7 * scale, 7 * scale)
             ratio = logo.devicePixelRatio() or 1
@@ -413,28 +436,28 @@ class CredentialCard(QWidget):
                                theme.icon_pixmap("id-card", muted.name(), round(22 * scale), stroke=1.6))
 
         font.setPixelSize(round(19 * scale))
-        font.setWeight(QFont.Bold)
-        font.setLetterSpacing(QFont.PercentageSpacing, 100)
+        font.setWeight(QFont.Weight.Bold)
+        font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 100)
         painter.setFont(font)
         painter.setPen(text)
         name_rect = QRectF(pad, h * 0.38, w - 2 * pad, h * 0.32)
-        painter.drawText(name_rect, Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, credential_name(self.record))
+        painter.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap, credential_name(self.record))
 
         font.setPixelSize(round(13 * scale))
-        font.setWeight(QFont.Medium)
+        font.setWeight(QFont.Weight.Medium)
         painter.setFont(font)
         painter.setPen(muted)
         tag_text = {"revoked": tr("REVOKED"), "suspended": tr("SUSPENDED"), "expired": tr("EXPIRED"),
                     "expiring": tr("EXPIRES SOON")}.get(state, "")
         tag_font = QFont(font)
         tag_font.setPixelSize(round(11 * scale))
-        tag_font.setWeight(QFont.Bold)
+        tag_font.setWeight(QFont.Weight.Bold)
         tag_width = (max(70 * scale, QFontMetrics(tag_font).horizontalAdvance(tag_text) + 18 * scale)
                      if tag_text else 0)
         holder = credential_holder(self.record)
         bottom = QRectF(pad, h - pad - 18 * scale, w - 2 * pad, 18 * scale)
-        painter.drawText(bottom, Qt.AlignLeft | Qt.AlignVCenter,
-                         painter.fontMetrics().elidedText(holder, Qt.ElideRight,
+        painter.drawText(bottom, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         painter.fontMetrics().elidedText(holder, Qt.TextElideMode.ElideRight,
                                                           int(w - 2 * pad - tag_width - 10 * scale)))
         if tag_text:
             # Not working (expired, revoked, suspended) in white on dark; EXPIRES SOON in dark on amber
@@ -442,14 +465,14 @@ class CredentialCard(QWidget):
             painter.setOpacity(1.0)
             painter.setFont(tag_font)
             tag = QRectF(w - pad - tag_width, h - pad - 20 * scale, tag_width, 20 * scale)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(0, 0, 0, 150) if expired else QColor("#f0c062"))
             painter.drawRoundedRect(tag, 10 * scale, 10 * scale)
             painter.setPen(QColor("#ffffff") if expired else QColor("#141824"))
-            painter.drawText(tag, Qt.AlignCenter, tag_text)
+            painter.drawText(tag, Qt.AlignmentFlag.AlignCenter, tag_text)
         if self.property("keyboardFocus"):  # focus ring, only when reached with the keyboard
             painter.setOpacity(1.0)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(QColor(theme.current().accent), 3))
             painter.drawRoundedRect(QRectF(1.5, 1.5, w - 3, h - 3), 16 * scale, 16 * scale)
         painter.end()
@@ -479,8 +502,8 @@ class IconBubble(QWidget):
 
     def paintEvent(self, _: Any) -> None:  # noqa: N802
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(Qt.NoPen)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(self._background)
         painter.drawEllipse(self.rect())
         size = self._pixmap.deviceIndependentSize()
@@ -505,13 +528,13 @@ class Spinner(QWidget):
     def paintEvent(self, _: Any) -> None:  # noqa: N802
         t = theme.current()
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         width = max(3, self.width() // 10)
         rect = QRectF(width, width, self.width() - 2 * width, self.height() - 2 * width)
         painter.setPen(QPen(QColor(t.accent_soft), width))
         painter.drawEllipse(rect)
         pen = QPen(QColor(t.accent), width)
-        pen.setCapStyle(Qt.RoundCap)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawArc(rect, -self._angle * 16, 100 * 16)
         painter.end()
@@ -525,7 +548,7 @@ def pill(text: str, color: str, background: str) -> QLabel:
     font.setPixelSize(12)
     font.setBold(True)
     widget.setMinimumWidth(QFontMetrics(font).horizontalAdvance(text) + 2 * 8 + 6)
-    widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     return widget
 
 
@@ -565,23 +588,23 @@ class EmptyState(QWidget):
         super().__init__()
         t = theme.current()
         layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(10)
         art = _EmptyArt(icon)
-        layout.addWidget(art, alignment=Qt.AlignCenter)
+        layout.addWidget(art, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addSpacing(6)
         heading = label(title, "sectionTitle")
-        heading.setAlignment(Qt.AlignCenter)
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
         heading.setStyleSheet("font-size: 18px;")
         layout.addWidget(heading)
         body = label(text, "pageSubtitle", wrap=True)
-        body.setAlignment(Qt.AlignCenter)
+        body.setAlignment(Qt.AlignmentFlag.AlignCenter)
         body.setMaximumWidth(420)
         body.setStyleSheet(f"color: {t.text_muted};")
-        layout.addWidget(body, alignment=Qt.AlignCenter)
+        layout.addWidget(body, alignment=Qt.AlignmentFlag.AlignCenter)
         if action:
             layout.addSpacing(8)
-            layout.addWidget(action, alignment=Qt.AlignCenter)
+            layout.addWidget(action, alignment=Qt.AlignmentFlag.AlignCenter)
 
 
 class _EmptyArt(QWidget):
@@ -595,16 +618,16 @@ class _EmptyArt(QWidget):
     def paintEvent(self, _: Any) -> None:  # noqa: N802
         t = theme.current()
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         back = QRectF(46, 10, 120, 76)
         front = QRectF(14, 34, 120, 76)
-        painter.setPen(QPen(QColor(t.border), 2, Qt.DashLine))
-        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(t.border), 2, Qt.PenStyle.DashLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(back, 12, 12)
         painter.setPen(QPen(QColor(t.accent), 2))
         painter.setBrush(QColor(t.surface))
         painter.drawRoundedRect(front, 12, 12)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(t.accent_soft))
         painter.drawRoundedRect(QRectF(28, 50, 34, 34), 8, 8)
         painter.drawRoundedRect(QRectF(72, 56, 46, 7), 3, 3)
@@ -620,7 +643,7 @@ class Toast(QLabel):
     def __init__(self, parent: QWidget):
         super().__init__(parent)
         self.setObjectName("toast")
-        self.setTextFormat(Qt.PlainText)
+        self.setTextFormat(Qt.TextFormat.PlainText)
         self.hide()
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -630,7 +653,7 @@ class Toast(QLabel):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         # After the window is rebuilt (language, profile, password) its new content gets its real size
         # only later: follow it instead of staying where the provisional size put the notice.
-        if watched is self.parentWidget() and event.type() == QEvent.Resize:
+        if watched is self.parentWidget() and event.type() == QEvent.Type.Resize:
             self._place()
         return False
 
@@ -639,6 +662,8 @@ class Toast(QLabel):
 
     def _place(self) -> None:
         parent = self.parentWidget()
+        if parent is None:
+            return
         box = self.area() if callable(self.area) else parent.rect()
         self.move(box.x() + (box.width() - self.width()) // 2, parent.height() - self.height() - 28)
 
@@ -664,8 +689,8 @@ def fade_in(widget: QWidget, ms: int = 160) -> None:
     animation.setDuration(ms)
     animation.setStartValue(0.0)
     animation.setEndValue(1.0)
-    animation.setEasingCurve(QEasingCurve.OutCubic)
-    animation.finished.connect(lambda: widget.setGraphicsEffect(None))
+    animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+    animation.finished.connect(lambda: widget.setGraphicsEffect(None))  # type: ignore[arg-type]  # None removes it
     animation.start()
 
 
