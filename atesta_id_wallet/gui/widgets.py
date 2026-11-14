@@ -33,6 +33,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
+    QImage,
     QImageReader,
     QLinearGradient,
     QPainter,
@@ -40,6 +41,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
@@ -58,6 +60,7 @@ from PySide6.QtWidgets import (
 from .. import i18n
 from ..i18n import tr
 from ..storage import credential_holder, credential_issuer_name, credential_name, validity
+from ..vci import logo_type
 from . import theme
 
 
@@ -267,6 +270,13 @@ def _decode_logo(data: str, size: int) -> QPixmap | None:
         raw = base64.b64decode(data, validate=True)
     except (binascii.Error, ValueError):
         return None
+    # Checked again, whatever wrote the stored logo: Qt's image reader also takes SVG (its qsvg
+    # plugin), which must go through the same check.
+    kind = logo_type(raw)
+    if kind == "image/svg+xml":
+        return _render_svg(raw, size)
+    if kind is None:
+        return None
     buffer = QBuffer()
     buffer.setData(QByteArray(raw))
     buffer.open(QIODevice.ReadOnly)
@@ -278,6 +288,22 @@ def _decode_logo(data: str, size: int) -> QPixmap | None:
     if image.isNull():
         return None
     return QPixmap.fromImage(image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+
+def _render_svg(raw: bytes, size: int) -> QPixmap | None:
+    """An SVG logo drawn in size x size, keeping its proportions."""
+    renderer = QSvgRenderer(QByteArray(raw))
+    view = renderer.viewBoxF()
+    if not renderer.isValid() or view.width() <= 0 or view.height() <= 0:
+        return None
+    scale = size / max(view.width(), view.height())
+    width, height = max(1, round(view.width() * scale)), max(1, round(view.height() * scale))
+    image = QImage(width, height, QImage.Format_ARGB32_Premultiplied)
+    image.fill(Qt.transparent)
+    painter = QPainter(image)
+    renderer.render(painter, QRectF(0, 0, width, height))
+    painter.end()
+    return QPixmap.fromImage(image)
 
 
 class CredentialCard(QWidget):

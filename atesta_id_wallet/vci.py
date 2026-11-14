@@ -1091,7 +1091,7 @@ def pick_display(displays: Any, locales: tuple[str, ...] | None = None) -> dict[
 
 
 LOGO_MAX_BYTES = 256 * 1024
-# Raster formats only, recognised by their first bytes; SVG is left out (scripts, external references).
+# Raster formats, recognised by their first bytes; SVG (HAIP 1.0 §4.1) only when is_safe_svg.
 _LOGO_TYPES = (
     (b"\x89PNG\r\n\x1a\n", "image/png"),
     (b"\xff\xd8\xff", "image/jpeg"),
@@ -1100,10 +1100,36 @@ _LOGO_TYPES = (
 )
 
 
-def _logo_type(data: bytes) -> str | None:
+# What an SVG logo must not have: a DTD (entities), scripts, event handlers, embedded documents or
+# images, style sheets that load others. Qt's renderer (SVG Tiny 1.2) runs no script, but an
+# <image> or a reference outside the file could make it read a local file into the card.
+_SVG_FORBIDDEN = re.compile(
+    rb"<!DOCTYPE|<!ENTITY|<\?xml-stylesheet|<script|<foreignObject|<image|<iframe|<object|<embed|<audio|<video"
+    rb"|@import|javascript:|\son[a-z]+\s*=", re.IGNORECASE)
+_SVG_REFERENCE = re.compile(rb"""(?:href\s*=\s*["']|url\(\s*["']?)([^"')]*)""", re.IGNORECASE)
+
+
+def is_safe_svg(data: bytes) -> bool:
+    """An SVG image that refers to nothing outside itself (only '#fragment' references)."""
+    head = data.lstrip(b"\xef\xbb\xbf \t\r\n")
+    if not head.startswith((b"<?xml", b"<svg", b"<!--")) or b"<svg" not in head[:2048]:
+        return False
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    if _SVG_FORBIDDEN.search(data):
+        return False
+    return all(ref.strip().startswith(b"#") for ref in _SVG_REFERENCE.findall(data))
+
+
+def logo_type(data: bytes) -> str | None:
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
-    return next((mime for magic, mime in _LOGO_TYPES if data.startswith(magic)), None)
+    mime = next((mime for magic, mime in _LOGO_TYPES if data.startswith(magic)), None)
+    if mime is None and is_safe_svg(data):
+        return "image/svg+xml"
+    return mime
 
 
 def _logo_uri(entry: dict[str, Any]) -> str | None:
@@ -1113,7 +1139,8 @@ def _logo_uri(entry: dict[str, Any]) -> str | None:
 
 
 def fetch_logo(session: requests.Session, uri: str, issuer: str = "") -> dict[str, str]:
-    """{"logo": base64, "logo_type": mime} for a small raster image, or {} (a logo is never required)."""
+    """{"logo": base64, "logo_type": mime} for a small PNG, JPEG, GIF, WebP or SVG image, or {} (a logo is
+    never required)."""
     try:
         if uri.startswith("data:"):
             header, _, payload = uri[5:].partition(",")
@@ -1130,9 +1157,10 @@ def fetch_logo(session: requests.Session, uri: str, issuer: str = "") -> dict[st
                 if response.status_code != 200:
                     return {}
                 data = response.raw.read(LOGO_MAX_BYTES + 1, decode_content=True)
-        mime = _logo_type(data)
+        mime = logo_type(data)
         if len(data) > LOGO_MAX_BYTES or mime is None:
-            debug(f"Logo ignored ({len(data)} bytes, not a small PNG/JPEG/GIF/WebP): {uri[:80]}")
+            debug(f"Logo ignored ({len(data)} bytes, not a small PNG/JPEG/GIF/WebP or a self-contained SVG): "
+                  f"{uri[:80]}")
             return {}
         return {"logo": base64.b64encode(data).decode("ascii"), "logo_type": mime}
     except (WalletError, requests.RequestException, binascii.Error, ValueError) as exc:

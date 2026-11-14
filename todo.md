@@ -258,7 +258,8 @@ the full manual Windows test and the CITCOM verifier trust list.
        2026). Done: pushed authorization requests (PAR, RFC 9126) whenever the server offers them,
        with a DPoP proof; tested against Keycloak 26.6.2, 26.7 and latest with a client that only
        accepts PAR; `A256GCM` for encrypted responses when the verifier accepts both; DCQL
-       `trusted_authorities` of type `aki`. Still to do: SVG logos, `haip-vci://` / `haip-vp://` links, then the OpenID Foundation conformance suite.
+       `trusted_authorities` of type `aki`; SVG logos without external references. Still to do:
+       `haip-vci://` / `haip-vp://` links, then the OpenID Foundation conformance suite.
        Not before the hardware keys (phase 3): key attestation and wallet attestation.
 
 ## Later (after the pilot)

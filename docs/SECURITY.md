@@ -215,9 +215,13 @@ Names published by issuers are reduced to one short line of text before they are
   wallet never contacts anyone, and declining an offer reveals nothing to a third-party logo host.
   Only HTTPS or `data:` URIs, never this computer or the local network (loopback, private and
   link-local addresses), no redirects, at most 256 KiB, and only PNG, JPEG, GIF or WebP
-  recognised by their first bytes (no SVG: scripts and external references). The window reads the
-  image dimensions from the header and refuses images larger than 2048 px before decoding. A logo
-  that fails any check is left out; the credential is stored anyway.
+  recognised by their first bytes, or SVG (HAIP 1.0 §4.1) that refers to nothing outside itself:
+  no DTD or entities, scripts, event handlers, `<image>`, `<foreignObject>` or other embedded
+  content, `@import`, and every `href` or `url(...)` a `#fragment` in the same file. SVG is drawn
+  by Qt's renderer (SVG Tiny 1.2, no scripts). The window checks the stored logo again before
+  drawing it (Qt's image reader would also take an SVG), reads raster dimensions from the header
+  and refuses images larger than 2048 px before decoding. A logo that fails any check is left out;
+  the credential is stored anyway.
 
 ## Revocation (Token Status List)
 

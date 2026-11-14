@@ -316,9 +316,24 @@ class LogoTests(unittest.TestCase):
         logo = vci.fetch_logo(requests.Session(), self.data_uri(png_bytes()))
         self.assertEqual((base64.b64decode(logo["logo"]), logo["logo_type"]), (png_bytes(), "image/png"))
 
-    def test_svg_and_unknown_rejected(self):
-        svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
-        self.assertEqual(vci.fetch_logo(requests.Session(), self.data_uri(svg, "image/svg+xml")), {})
+    def test_self_contained_svg_accepted(self):
+        """HAIP 1.0 §4.1: SVG logos, as data URIs or HTTPS addresses."""
+        svg = (b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" '
+               b'xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10"><defs><linearGradient id="g"/>'
+               b'</defs><rect fill="url(#g)" width="10" height="10"/><use xlink:href="#g"/></svg>')
+        logo = vci.fetch_logo(requests.Session(), self.data_uri(svg, "image/svg+xml"))
+        self.assertEqual((base64.b64decode(logo["logo"]), logo["logo_type"]), (svg, "image/svg+xml"))
+
+    def test_unsafe_svg_and_unknown_rejected(self):
+        for svg in (b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+                    b'<svg><image href="file:///etc/passwd"/></svg>',
+                    b'<svg><use href="https://tracker.example/a.svg#a"/></svg>',
+                    b'<svg><rect fill="url(https://tracker.example/p)"/></svg>',
+                    b'<svg><style>@import url(x.css)</style></svg>',
+                    b'<!DOCTYPE svg [<!ENTITY a "aaaa">]><svg>&a;</svg>',
+                    b'<svg onload="x()"/>',
+                    b'<svg><text>\xff</text></svg>'):
+            self.assertEqual(vci.fetch_logo(requests.Session(), self.data_uri(svg, "image/svg+xml")), {}, svg)
         self.assertEqual(vci.fetch_logo(requests.Session(), self.data_uri(b"hello")), {})
 
     def test_too_big_rejected(self):

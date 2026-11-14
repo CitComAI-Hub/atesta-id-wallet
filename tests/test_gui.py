@@ -100,6 +100,17 @@ class GuiFlowTests(unittest.TestCase):
         card = widgets.CredentialCard({**record, "issuer": "https://kc.example.org"})
         card.grab()  # paints with the logo
 
+    def test_card_svg_logo(self):
+        """HAIP 1.0 §4.1: SVG logos, drawn keeping their proportions; unsafe ones are not drawn."""
+        from atesta_id_wallet.gui import widgets
+        svg = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20">'
+               b'<rect width="40" height="20" fill="#c03"/></svg>')
+        pixmap = widgets.issuer_logo({"display": {"logo": base64.b64encode(svg).decode()}}, 24)
+        self.assertEqual((pixmap.width(), pixmap.height()), (24, 12))
+        self.assertEqual(pixmap.toImage().pixelColor(12, 6).name(), "#cc0033")
+        unsafe = svg.replace(b"<rect", b'<image href="file:///etc/hosts" width="9" height="9"/><rect')
+        self.assertIsNone(widgets.issuer_logo({"display": {"logo": base64.b64encode(unsafe).decode()}}, 24))
+
     def test_password_can_be_shown(self):
         from atesta_id_wallet.gui import widgets
         field = widgets.password_field()
