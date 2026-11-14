@@ -118,6 +118,23 @@ class JweTests(unittest.TestCase):
         )
         self.assertEqual(json.loads(plain), {"vp_token": "abc"})
 
+    def test_content_encryption_choice(self):
+        """HAIP 1.0 §5: A256GCM when the verifier accepts both, whatever their order."""
+        n = ec.generate_private_key(ec.SECP256R1()).public_key().public_numbers()
+        jwk = {"kty": "EC", "crv": "P-256", "x": common.b64u(n.x.to_bytes(32, "big")),
+               "y": common.b64u(n.y.to_bytes(32, "big"))}
+
+        def enc(values):
+            meta = {"jwks": {"keys": [jwk]}, **({} if values is None else {"encrypted_response_enc_values_supported": values})}
+            jwe = jose.encrypt_response_jwe({}, {"client_metadata": meta}, apv=None)
+            return json.loads(common.b64u_decode(jwe.split(".")[0]))["enc"]
+
+        self.assertEqual(enc(["A128GCM", "A256GCM"]), "A256GCM")
+        self.assertEqual(enc(["A128GCM"]), "A128GCM")
+        self.assertEqual(enc(None), "A128GCM")  # OpenID4VP 1.0 §8.3: the default
+        with self.assertRaises(common.WalletError):
+            enc(["A192CBC-HS384"])
+
 
 if __name__ == "__main__":
     unittest.main()

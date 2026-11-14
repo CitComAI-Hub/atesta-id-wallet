@@ -154,7 +154,8 @@ def encrypt_response_jwe(payload: dict[str, Any], request: dict[str, Any], *, ap
     )
     if not isinstance(enc_values, list):
         enc_values = [enc_values]
-    enc = next((e for e in enc_values if isinstance(e, str) and e in ("A128GCM", "A256GCM")), None)
+    # HAIP 1.0 §5: A256GCM when the verifier accepts both.
+    enc = next((e for e in ("A256GCM", "A128GCM") if e in enc_values), None)
     if enc is None:
         raise WalletError(tr("Unsupported response encryption algorithm: {values}", values=enc_values))
     key_bits = 128 if enc == "A128GCM" else 256
