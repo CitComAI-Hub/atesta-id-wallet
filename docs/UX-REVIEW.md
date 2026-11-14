@@ -61,8 +61,12 @@ catalogs (native review still pending, `todo.md` item 10).
    on the same computer is not obvious for someone who is not technical, and Print Screen behaves
    differently on each desktop. Ideas: a short animation the first time; "Paste link" as visible as
    "Scan QR"; registering the links (now offered in the guide) so that the button on the page works.
-3. **Text size** (sev. 2, WCAG 1.4.4). Font sizes are fixed pixels: the window ignores the system's
-   text size setting. Move the style sheet to sizes relative to the system font.
+3. ~~**Text size**~~ (sev. 2, WCAG 1.4.4) — **done**: the style sheet's sizes follow the system's
+   text size (Windows "Make text bigger", the font size in KDE or GNOME), up to twice the design;
+   the sidebar, panels and fields widen with it (up to 1.5 times), panels taller than the window
+   scroll, and the wallet header, the credential page and Settings rows put their parts one under
+   the other when they do not fit. `tests/test_ux.py` audits every screen at 200 % in the smallest
+   window (French, the longest texts); `ATESTA_ID_WALLET_TEXT_SCALE=1.5` tries a size by hand.
 4. **Screen readers** (sev. 2). Names and keyboard are in place, but nobody has tried the window with
    Orca (Linux) or NVDA (Windows). To do before the pilot if a participant needs one.
 5. **Technical sections of Settings** (sev. 2). *Trust* (CAs, remembered verifiers) and *Advanced*

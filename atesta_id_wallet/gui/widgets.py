@@ -121,6 +121,12 @@ def qapp() -> QApplication:
     return cast(QApplication, QApplication.instance())
 
 
+def fit_width(widget: QWidget) -> int:
+    """Width the widget needs for its text with the style sheet applied (the layout may ask before it is)."""
+    widget.ensurePolished()
+    return widget.sizeHint().width()
+
+
 def on_click(widget: QWidget, action: Callable[[], Any]) -> None:
     """Runs 'action' when the widget is pressed (rows whose whole area ticks their box, a label that opens)."""
     widget.mousePressEvent = lambda _event: action()  # type: ignore[method-assign]
@@ -543,11 +549,7 @@ class Spinner(QWidget):
 def pill(text: str, color: str, background: str) -> QLabel:
     widget = label(text, "pill")
     widget.setStyleSheet(f"QLabel#pill {{ color: {color}; background: {background}; }}")
-    # Sized from its own font: the layout may measure it before the style sheet (12 px bold, 8 px padding) applies.
-    font = QFont(widget.font())
-    font.setPixelSize(12)
-    font.setBold(True)
-    widget.setMinimumWidth(QFontMetrics(font).horizontalAdvance(text) + 2 * 8 + 6)
+    widget.setMinimumWidth(fit_width(widget))
     widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     return widget
 
@@ -590,21 +592,30 @@ class EmptyState(QWidget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(10)
+        self._margin = layout.contentsMargins().left()
         art = _EmptyArt(icon)
         layout.addWidget(art, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addSpacing(6)
         heading = label(title, "sectionTitle")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        heading.setStyleSheet("font-size: 18px;")
+        heading.setStyleSheet(f"font-size: {theme.px(18)}px;")
         layout.addWidget(heading)
         body = label(text, "pageSubtitle", wrap=True)
         body.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        body.setMaximumWidth(420)
+        body.setMaximumWidth(theme.wide(420))
         body.setStyleSheet(f"color: {t.text_muted};")
         layout.addWidget(body, alignment=Qt.AlignmentFlag.AlignCenter)
+        self._body = body
         if action:
             layout.addSpacing(8)
             layout.addWidget(action, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802
+        # A wrapped label does not tell the scroll area around it how tall it is: say it here, or a
+        # long text (large system text) is drawn over the title instead of making the page scroll.
+        super().resizeEvent(event)
+        width = min(self._body.maximumWidth(), self.width() - 2 * self._margin)
+        self._body.setMinimumHeight(self._body.heightForWidth(max(width, 1)))
 
 
 class _EmptyArt(QWidget):

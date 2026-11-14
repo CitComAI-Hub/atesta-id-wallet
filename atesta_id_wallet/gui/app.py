@@ -237,6 +237,9 @@ class MainWindow(QMainWindow):
         hints = QGuiApplication.styleHints()
         if hasattr(hints, "colorSchemeChanged"):
             hints.colorSchemeChanged.connect(self._system_scheme_changed)
+        app = QGuiApplication.instance()
+        if isinstance(app, QGuiApplication):
+            app.fontChanged.connect(lambda _font: self.apply_theme())  # the system's text size
         theme.preference = load_settings().get("theme", "auto")
         self.apply_theme()
 
@@ -248,6 +251,7 @@ class MainWindow(QMainWindow):
 
     def apply_theme(self) -> None:
         t = theme.current()
+        theme.text_scale = theme.system_text_scale()
         app = qapp()
         app.setPalette(theme.palette(t))
         app.setStyleSheet(theme.stylesheet(t))
@@ -284,7 +288,7 @@ class MainWindow(QMainWindow):
         bar = QWidget()
         bar.setObjectName("sidebar")
         bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
-        bar.setFixedWidth(232)
+        bar.setFixedWidth(theme.wide(232))
         column = QVBoxLayout(bar)
         column.setContentsMargins(18, 24, 18, 20)
         column.setSpacing(4)

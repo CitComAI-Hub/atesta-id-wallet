@@ -209,35 +209,68 @@ def _icon_file(name: str, color: str) -> str:
     return path.as_posix()
 
 
+# Text size (WCAG 1.4.4): the style sheet's sizes are for an 11 pt system font at 96 dpi (14.7 px).
+# A larger system font (Windows "Make text bigger", the font size in KDE or GNOME settings) makes
+# them larger in proportion, up to twice; a smaller one leaves them as they are.
+REFERENCE_FONT_PX = 11 * 96 / 72
+text_scale = 1.0
+
+
+def system_text_scale() -> float:
+    """How much larger than the reference the system's text is (1 to 2); ATESTA_ID_WALLET_TEXT_SCALE overrides it."""
+    override = os.environ.get("ATESTA_ID_WALLET_TEXT_SCALE", "")
+    try:
+        scale = float(override) if override else 0.0
+    except ValueError:
+        scale = 0.0
+    if not scale:
+        font = QGuiApplication.font()
+        screen = QGuiApplication.primaryScreen()
+        dpi = screen.logicalDotsPerInchY() if screen is not None else 96.0
+        size = font.pixelSize() if font.pixelSize() > 0 else font.pointSizeF() * dpi / 72
+        scale = size / REFERENCE_FONT_PX
+    return min(2.0, max(1.0, scale))
+
+
+def px(size: float) -> int:
+    """A font size of the design (in pixels) at the system's text size."""
+    return round(size * text_scale)
+
+
+def wide(size: float) -> int:
+    """A width of the design (sidebar, panels, fields) for the system's text size: wider, up to 1.5 times."""
+    return round(size * min(text_scale, 1.5))
+
+
 def stylesheet(t: Theme) -> str:
     arrow = _arrow_file(t.text_muted)
     check = _icon_file("check", t.on_accent)
     return f"""
 * {{ outline: none; }}
-QWidget {{ color: {t.text}; font-size: 14px; }}
+QWidget {{ color: {t.text}; font-size: {px(14)}px; }}
 QMainWindow, #page, QScrollArea, QScrollArea > QWidget > QWidget#scrollContent {{ background: {t.window}; }}
 QScrollArea {{ border: none; }}
 QToolTip {{ background: {t.surface}; color: {t.text}; border: 1px solid {t.border}; padding: 6px; }}
 
 #sidebar {{ background: {t.surface}; border-right: 1px solid {t.border}; }}
-#appName {{ font-size: 16px; font-weight: 700; }}
+#appName {{ font-size: {px(16)}px; font-weight: 700; }}
 #navButton {{
     text-align: left; padding: 10px 12px; border: none; border-radius: 10px;
     color: {t.text_muted}; font-weight: 600; background: transparent;
 }}
 #navButton:hover {{ background: {t.surface_alt}; color: {t.text}; }}
 #navButton:checked {{ background: {t.accent_soft}; color: {t.accent}; }}
-#sidebarCaption {{ color: {t.text_muted}; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; }}
+#sidebarCaption {{ color: {t.text_muted}; font-size: {px(12)}px; font-weight: 700; letter-spacing: 0.6px; }}
 
-#pageTitle {{ font-size: 26px; font-weight: 700; }}
+#pageTitle {{ font-size: {px(26)}px; font-weight: 700; }}
 #pageSubtitle, .muted {{ color: {t.text_muted}; }}
-#sectionTitle {{ font-size: 15px; font-weight: 700; }}
-#caption {{ color: {t.text_muted}; font-size: 13px; }}
+#sectionTitle {{ font-size: {px(15)}px; font-weight: 700; }}
+#caption {{ color: {t.text_muted}; font-size: {px(13)}px; }}
 
 #panel {{ background: {t.surface}; border: 1px solid {t.border}; border-radius: 14px; }}
 #row {{ border-bottom: 1px solid {t.border}; }}
-#rowLabel {{ color: {t.text_muted}; font-size: 12px; font-weight: 600; }}
-#rowValue {{ font-size: 14px; }}
+#rowLabel {{ color: {t.text_muted}; font-size: {px(12)}px; font-weight: 600; }}
+#rowValue {{ font-size: {px(14)}px; }}
 
 QPushButton {{
     background: {t.surface}; color: {t.text}; border: 1px solid {t.border};
@@ -298,7 +331,7 @@ QRadioButton::indicator {{
 QRadioButton::indicator:checked {{ border: 5px solid {t.accent}; width: 10px; height: 10px; }}
 QPlainTextEdit {{
     background: {t.surface_alt}; border: 1px solid {t.border}; border-radius: 10px; padding: 8px;
-    font-family: monospace; font-size: 12px;
+    font-family: monospace; font-size: {px(12)}px;
 }}
 
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
@@ -310,14 +343,15 @@ QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::su
 QScrollBar:horizontal {{ height: 0; }}
 
 #overlay {{ background: {t.backdrop}; }}
+#overlayScroll, #overlayScroll > QWidget, #overlayContent {{ background: transparent; }}
 #sheet {{ background: {t.surface}; border: 1px solid {t.border}; border-radius: 18px; }}
-#sheetTitle {{ font-size: 20px; font-weight: 700; }}
+#sheetTitle {{ font-size: {px(20)}px; font-weight: 700; }}
 #sheetBody {{ color: {t.text_muted}; }}
 #trust_ok {{ background: {t.success_soft}; color: {t.success}; border-radius: 10px; padding: 10px 12px; }}
 #trust_warn {{ background: {t.warning_soft}; color: {t.warning}; border-radius: 10px; padding: 10px 12px; }}
 #trust_danger {{ background: {t.danger_soft}; color: {t.danger}; border-radius: 10px; padding: 10px 12px; }}
 #claimBox {{ background: {t.surface_alt}; border-radius: 12px; }}
-#claimName {{ color: {t.text_muted}; font-size: 12px; font-weight: 600; }}
+#claimName {{ color: {t.text_muted}; font-size: {px(12)}px; font-weight: 600; }}
 #toast {{ background: {t.text}; color: {t.window}; border-radius: 10px; padding: 10px 16px; font-weight: 600; }}
-#pill {{ border-radius: 9px; padding: 2px 8px; font-size: 12px; font-weight: 700; }}
+#pill {{ border-radius: 9px; padding: 2px 8px; font-size: {px(12)}px; font-weight: 700; }}
 """

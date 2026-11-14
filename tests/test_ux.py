@@ -54,6 +54,9 @@ class ScreenAuditTests(unittest.TestCase):
             # the smallest window the wallet allows (920×640), with the longest texts
             small = ux_audit.run(gui, ["fr"], ["light"], keyboard=False, size=(920, 640))
             cls.results[("fr", "light-920x640")] = small[("fr", "light")]
+            # and with the system's text at 200 % (WCAG 1.4.4: text resized without losing content)
+            large = ux_audit.run(gui, ["fr"], ["light"], keyboard=False, size=(920, 640), text_scale=2)
+            cls.results[("fr", "light-920x640-text200")] = large[("fr", "light")]
         finally:
             i18n.set_language(saved)
 

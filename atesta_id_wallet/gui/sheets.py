@@ -73,8 +73,21 @@ class Overlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         self.hide()
         self.sheet: Sheet | None = None
-        self._layout = QVBoxLayout(self)
+        # A panel taller than the window (large system text, a small window) scrolls instead of being cut.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self._scroll = QScrollArea()
+        self._scroll.setObjectName("overlayScroll")
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        content.setObjectName("overlayContent")
+        self._layout = QVBoxLayout(content)
+        self._layout.setContentsMargins(16, 16, 16, 16)
         self._layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._scroll.setWidget(content)
+        outer.addWidget(self._scroll)
         parent.installEventFilter(self)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
@@ -136,7 +149,7 @@ class Sheet(QFrame):
                  title: str = "", body: str = ""):
         super().__init__()
         self.setObjectName("sheet")
-        self.setFixedWidth(width)
+        self.setFixedWidth(theme.wide(width))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Maximum)
         self.on_escape: Callable[[], None] | None = None
         self._focus: QWidget | None = None

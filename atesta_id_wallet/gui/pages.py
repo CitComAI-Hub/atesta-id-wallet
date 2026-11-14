@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QLocale, Qt
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QCheckBox,
     QComboBox,
     QHBoxLayout,
@@ -46,6 +47,7 @@ from .widgets import (
     button,
     hline,
     key_value_row,
+    fit_width,
     keyboard_focus_ring,
     on_activate,
     label,
@@ -73,17 +75,29 @@ class _PageHeader(QWidget):
 
     def __init__(self, title: str, subtitle: str = ""):
         super().__init__()
-        self.row = QHBoxLayout(self)
+        self.row = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
         self.row.setContentsMargins(0, 0, 0, 0)
         text = QVBoxLayout()
         text.setSpacing(2)
-        text.addWidget(label(title, "pageTitle"))
+        heading = label(title, "pageTitle")
+        self.title_width = fit_width(heading)
+        heading.setMinimumWidth(self.title_width)  # the search field gives way first
+        text.addWidget(heading)
         self.subtitle = label(subtitle, "pageSubtitle", wrap=True)  # long translations in a small window
         text.addWidget(self.subtitle)
         self.row.addLayout(text, 1)
 
 
-def _header(title: str, subtitle: str = "") -> tuple[_PageHeader, QHBoxLayout]:
+def _scrolling(widget: QWidget) -> QScrollArea:
+    """The widget in a page that scrolls when it does not fit (large system text, a small window)."""
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(widget)
+    return _scroll_page(host)
+
+
+def _header(title: str, subtitle: str = "") -> tuple[_PageHeader, QBoxLayout]:
     header = _PageHeader(title, subtitle)
     return header, header.row
 
@@ -116,16 +130,24 @@ class WalletPage(Page):
         self.search.setPlaceholderText(tr("Search"))
         self.search.setAccessibleName(tr("Search credentials"))
         self.search.setClearButtonEnabled(True)
-        self.search.setFixedWidth(220)
+        # Narrower before the title or the button are cut (large system text, a small window).
+        self.search.setMinimumWidth(theme.wide(110))
+        self.search.setMaximumWidth(theme.wide(220))
         glass = self.search.addAction(theme.icon("search", theme.current().text_muted, 16), QLineEdit.ActionPosition.LeadingPosition)
         glass.setText(tr("Search credentials"))
         self.search.textChanged.connect(self.refresh)
-        row.addWidget(self.search, alignment=Qt.AlignmentFlag.AlignVCenter)
         self.scan_button = button(tr("Scan QR"), "primary", "scan-line")
+        self.scan_button.setMinimumWidth(fit_width(self.scan_button))
         self.scan_button.setToolTip(tr("Read a QR code or a link to receive a credential or to sign in"))
         self.scan_button.clicked.connect(window.scan)
-        row.addSpacing(8)
-        row.addWidget(self.scan_button, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # Beside the title; under it when both do not fit (large system text, a small window).
+        self.header_actions = QWidget()
+        actions = QHBoxLayout(self.header_actions)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(8)
+        actions.addWidget(self.search)
+        actions.addWidget(self.scan_button)
+        row.addWidget(self.header_actions, alignment=Qt.AlignmentFlag.AlignVCenter)
         self.root.addWidget(self.header)
         self.root.setSpacing(6)
 
@@ -142,9 +164,18 @@ class WalletPage(Page):
                "QR and take a screenshot of the QR code."),
             action=self._empty_action(),
         )
-        self.root.addWidget(self.empty, 1)
+        self.empty_area = _scrolling(self.empty)
+        self.root.addWidget(self.empty_area, 1)
         self.no_results = EmptyState("search", tr("No results"), tr("No credential matches the search."))
         self.root.addWidget(self.no_results, 1)
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        margins = self.root.contentsMargins()
+        room = self.width() - margins.left() - margins.right() - 36  # 36: the header's own margins
+        narrow = room < self.header.title_width + 24 + self.header_actions.sizeHint().width()
+        self.header.row.setDirection(QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight)
+        self.header.row.setAlignment(self.header_actions, Qt.AlignmentFlag.AlignLeft if narrow else Qt.AlignmentFlag.AlignVCenter)
 
     def _empty_action(self) -> Any:
         action = button(tr("Scan QR"), "primary", "scan-line")
@@ -170,7 +201,7 @@ class WalletPage(Page):
         self.header.subtitle.setText(text)
         self.search.setVisible(count > 0)
         self.scroll_area.setVisible(bool(shown))
-        self.empty.setVisible(not records)
+        self.empty_area.setVisible(not records)
         self.no_results.setVisible(bool(records) and not shown)
 
 
@@ -299,7 +330,8 @@ class CredentialPage(Page):
         self.root.addWidget(back, alignment=Qt.AlignmentFlag.AlignLeft)
 
         content = QWidget()
-        columns = QHBoxLayout(content)
+        # Card and data side by side; one under the other when both do not fit (large text, small window).
+        columns = self._columns = QBoxLayout(QBoxLayout.Direction.LeftToRight, content)
         columns.setContentsMargins(0, 0, 0, 0)
         columns.setSpacing(32)
 
@@ -322,6 +354,7 @@ class CredentialPage(Page):
         left.addWidget(delete, alignment=Qt.AlignmentFlag.AlignLeft)
         left.addStretch()
         columns.addLayout(left)
+        self._left_width = max(card.width(), fit_width(state_pill), fit_width(delete))
 
         right = QVBoxLayout()
         right.setSpacing(12)
@@ -378,6 +411,11 @@ class CredentialPage(Page):
 
         self.root.addWidget(_scroll_page(content), 1)
 
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        narrow = self.width() < self._left_width + 32 + theme.wide(380) + 72  # 72: the page's side margins
+        self._columns.setDirection(QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight)
+
 
 # ---------------------------------------------------------------------------
 # Activity
@@ -429,7 +467,8 @@ class ActivityPage(Page):
         self.empty = EmptyState("history", tr("No activity yet"),
                                 tr("Here you will see every credential you receive and every time you share (or "
                                    "decline to share) your data."))
-        self.root.addWidget(self.empty, 1)
+        self.empty_area = _scrolling(self.empty)
+        self.root.addWidget(self.empty_area, 1)
 
     def show_contact(self, party_id: str | None) -> None:
         self.contact = party_id
@@ -452,7 +491,7 @@ class ActivityPage(Page):
             ) if n]
             self.contact_summary.setText("\n".join(p for p in (place if place != name else "", " · ".join(parts)) if p))
         self.scroll_area.setVisible(bool(events))
-        self.empty.setVisible(not events)
+        self.empty_area.setVisible(not events)
         if not events:
             return
         panel = Panel((20, 4, 20, 4))
@@ -521,27 +560,56 @@ def _party_place(event: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
+class _SettingRow(QWidget):
+    """A setting: title and description, its controls to the right; under them when they do not fit."""
+
+    def __init__(self, title: str, description: str, controls: tuple[QWidget, ...], leading: QWidget | None):
+        super().__init__()
+        self._layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self._layout.setContentsMargins(0, 14, 0, 14)
+        self._layout.setSpacing(16)
+        head = QHBoxLayout()
+        head.setSpacing(16)
+        if leading is not None:
+            head.addWidget(leading, alignment=Qt.AlignmentFlag.AlignVCenter)
+        text = QVBoxLayout()
+        text.setSpacing(2)
+        text.addWidget(label(title, "sectionTitle"))
+        if description:
+            text.addWidget(label(description, "caption", wrap=True))
+        head.addLayout(text, 1)
+        self._layout.addLayout(head, 1)
+        self.controls = QWidget()
+        self._controls = QBoxLayout(QBoxLayout.Direction.LeftToRight, self.controls)
+        self._controls.setContentsMargins(0, 0, 0, 0)
+        self._controls.setSpacing(8)
+        for control in controls:
+            if not control.accessibleName() and not getattr(control, "text", lambda: "")():
+                control.setAccessibleName(title)
+            if description and not control.accessibleDescription():
+                control.setAccessibleDescription(description)
+            keyboard_focus_ring(control)
+            self._controls.addWidget(control)
+        if controls:
+            self._layout.addWidget(self.controls, alignment=Qt.AlignmentFlag.AlignVCenter)
+        else:
+            self.controls.hide()
+
+    def fit(self, width: int) -> None:
+        """Lays the row out for this width: controls beside the text, under it, or one under the other."""
+        controls = self._controls
+        controls.setDirection(QBoxLayout.Direction.LeftToRight)
+        widgets = [controls.itemAt(i) for i in range(controls.count())]
+        in_line = sum(item.sizeHint().width() for item in widgets if item is not None) + 8 * (controls.count() - 1)
+        beside = width >= theme.wide(200) + 16 + in_line
+        self._layout.setDirection(QBoxLayout.Direction.LeftToRight if beside else QBoxLayout.Direction.TopToBottom)
+        self._layout.setAlignment(self.controls, Qt.AlignmentFlag.AlignVCenter if beside else Qt.AlignmentFlag.AlignLeft)
+        controls.setDirection(QBoxLayout.Direction.LeftToRight if beside or in_line <= width
+                              else QBoxLayout.Direction.TopToBottom)
+
+
 def _setting(title: str, description: str, *controls: QWidget, leading: QWidget | None = None) -> QWidget:
-    row = QWidget()
-    layout = QHBoxLayout(row)
-    layout.setContentsMargins(0, 14, 0, 14)
-    layout.setSpacing(16)
-    if leading is not None:
-        layout.addWidget(leading, alignment=Qt.AlignmentFlag.AlignVCenter)
-    text = QVBoxLayout()
-    text.setSpacing(2)
-    text.addWidget(label(title, "sectionTitle"))
-    if description:
-        text.addWidget(label(description, "caption", wrap=True))
-    layout.addLayout(text, 1)
-    for control in controls:
-        if not control.accessibleName() and not getattr(control, "text", lambda: "")():
-            control.setAccessibleName(title)
-        if description and not control.accessibleDescription():
-            control.setAccessibleDescription(description)
-        keyboard_focus_ring(control)
-        layout.addWidget(control, alignment=Qt.AlignmentFlag.AlignVCenter)
-    return row
+    return _SettingRow(title, description, controls, leading)
 
 
 class SettingsPage(Page):
@@ -554,6 +622,17 @@ class SettingsPage(Page):
         self.column.setContentsMargins(0, 0, 8, 24)
         self.column.setSpacing(10)
         self.root.addWidget(_scroll_page(self.content), 1)
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_rows()
+
+    def _fit_rows(self) -> None:
+        margins = self.root.contentsMargins()
+        # The page's margins, the room left for the scroll bar (8) and the panels' padding (2 × 20).
+        width = self.width() - margins.left() - margins.right() - 8 - 40
+        for row in self.content.findChildren(_SettingRow):
+            row.fit(width)
 
     def refresh(self) -> None:
         clear_layout(self.column)
@@ -667,6 +746,7 @@ class SettingsPage(Page):
                                   self._action(tr("Download"), w.open_release, "download", "primary")))
         self._section(tr("About"), about)
         self.column.addStretch()
+        self._fit_rows()
 
     def _section(self, title: str, rows: list[QWidget]) -> None:
         self.column.addSpacing(8)
@@ -683,7 +763,7 @@ class SettingsPage(Page):
     def _action(self, text: str, slot: Any, icon: str | None = None, kind: str | None = None,
                 enabled: bool = True) -> QWidget:
         widget = button(text, kind, icon)
-        widget.setMinimumWidth(132)  # the actions of Settings line up in one column
+        widget.setMinimumWidth(max(theme.wide(132), fit_width(widget)))  # Settings' actions line up in one column
         widget.clicked.connect(slot)
         widget.setEnabled(enabled)
         return widget
@@ -695,7 +775,7 @@ class SettingsPage(Page):
         for code, name in i18n.LANGUAGES.items():
             combo.addItem(name, code)
         combo.setCurrentIndex(max(0, combo.findData(load_settings().get("language", i18n.AUTO))))
-        combo.setMinimumWidth(180)
+        combo.setMinimumWidth(theme.wide(180))
         combo.currentIndexChanged.connect(lambda _index: self.window_.set_language(combo.currentData()))
         return combo
 
@@ -704,7 +784,7 @@ class SettingsPage(Page):
         for code, name in (("auto", tr("Automatic")), ("light", tr("Light")), ("dark", tr("Dark"))):
             combo.addItem(name, code)
         combo.setCurrentIndex(max(0, combo.findData(theme.preference)))
-        combo.setMinimumWidth(180)
+        combo.setMinimumWidth(theme.wide(180))
         combo.currentIndexChanged.connect(lambda _index: self.window_.set_theme(combo.currentData()))
         return combo
 
@@ -712,6 +792,6 @@ class SettingsPage(Page):
         combo = QComboBox()
         combo.addItems(list_profiles())
         combo.setCurrentText(storage.PROFILE)
-        combo.setMinimumWidth(160)
+        combo.setMinimumWidth(theme.wide(160))
         combo.currentTextChanged.connect(self.window_.switch_profile)
         return combo

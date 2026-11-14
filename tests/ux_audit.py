@@ -608,8 +608,28 @@ def _fresh_home() -> None:
 
 
 def run(gui: Any, langs: list[str], themes: list[str], outdir: Path | None = None,
-        keyboard: bool = True, size: tuple[int, int] = (1100, 740)) -> dict[tuple[str, str], Audit]:
-    """Renders every screen in each language and theme; returns the audits (and saves the screenshots)."""
+        keyboard: bool = True, size: tuple[int, int] = (1100, 740),
+        text_scale: float | None = None) -> dict[tuple[str, str], Audit]:
+    """
+    Renders every screen in each language and theme; returns the audits (and saves the screenshots).
+    text_scale: the system's text that much larger (2 = 200 %, WCAG 1.4.4).
+    """
+    import os
+
+    saved = os.environ.get("ATESTA_ID_WALLET_TEXT_SCALE")
+    if text_scale:
+        os.environ["ATESTA_ID_WALLET_TEXT_SCALE"] = str(text_scale)
+    try:
+        return _run(gui, langs, themes, outdir, keyboard, size)
+    finally:
+        if saved is None:
+            os.environ.pop("ATESTA_ID_WALLET_TEXT_SCALE", None)
+        else:
+            os.environ["ATESTA_ID_WALLET_TEXT_SCALE"] = saved
+
+
+def _run(gui: Any, langs: list[str], themes: list[str], outdir: Path | None,
+         keyboard: bool, size: tuple[int, int]) -> dict[tuple[str, str], Audit]:
     from PySide6.QtWidgets import QApplication
 
     from atesta_id_wallet.gui import theme as theme_module
@@ -878,6 +898,9 @@ def main(argv: list[str]) -> int:
     # the smallest window the wallet allows, with the longest texts
     small = run(gui, ["fr"], ["light"], args.outdir / "smallest-window", keyboard=False, size=(920, 640))
     results[("fr", "light · 920×640")] = small[("fr", "light")]
+    # and with the system's text at 200 % (WCAG 1.4.4)
+    large = run(gui, ["fr"], ["light"], args.outdir / "text-200", keyboard=False, size=(920, 640), text_scale=2)
+    results[("fr", "light · 920×640 · text 200 %")] = large[("fr", "light")]
     (args.outdir / "report.md").write_text(report(results, langs, costs, timings), encoding="utf-8")
     total = sum(len(a.findings) for a in results.values())
     print(f"{sum(a.screens for a in results.values())} screens, {total} findings → {args.outdir / 'report.md'}")
