@@ -63,6 +63,41 @@ class SdJwtTests(unittest.TestCase):
         dcql["credential_sets"] = [{"options": [["vc"]]}]
         self.assertEqual([m.query_id for m in vp.match_dcql(dcql, [self.record], False)], ["vc"])
 
+    def test_trusted_authorities_aki(self):
+        """OpenID4VP 1.0 §6.1.1.1: 'aki' matches the AuthorityKeyIdentifier of a certificate in the x5c."""
+        import dataclasses
+        ca_key, leaf_key = ec.generate_private_key(ec.SECP256R1()), ec.generate_private_key(ec.SECP256R1())
+        ca_ski = x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()).digest
+        leaf = (
+            x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "issuer.example")]))
+            .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "CA")]))
+            .public_key(leaf_key.public_key()).serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime(2025, 1, 1)).not_valid_after(datetime.datetime(2030, 1, 1))
+            .add_extension(x509.AuthorityKeyIdentifier(ca_ski, None, None), critical=False)
+            .sign(ca_key, hashes.SHA256())
+        )
+        der = base64.b64encode(leaf.public_bytes(serialization.Encoding.DER)).decode()
+        with_chain = dict(self.record, _sd=dataclasses.replace(self.sd, header={**self.sd.header, "x5c": [der]}))
+
+        def matches(authorities, record):
+            dcql = {"credentials": [{"id": "q", "format": "dc+sd-jwt", "trusted_authorities": authorities}]}
+            try:
+                return bool(vp.match_dcql(dcql, [record], False))
+            except vp.NoMatchingCredential:
+                return False
+
+        aki = [{"type": "aki", "values": [common.b64u(ca_ski)]}]
+        other = [{"type": "aki", "values": [common.b64u(b"\x07" * 20), "not base64!"]}]
+        self.assertTrue(matches(aki, with_chain))
+        self.assertFalse(matches(other, with_chain))
+        self.assertFalse(matches(aki, self.record))  # no x5c: nothing to match
+        # A type the wallet cannot evaluate might be the one that matches: nothing is left out.
+        self.assertTrue(matches(other + [{"type": "etsi_tl", "values": ["https://tl.example"]}], self.record))
+        for bad in ([], {"type": "aki"}, [{"type": "aki", "values": []}], [{"values": ["x"]}]):
+            with self.assertRaisesRegex(common.WalletError, "trusted_authorities"):
+                matches(bad, with_chain)
+
     def test_presentation_exchange(self):
         pd = {"id": "pd", "input_descriptors": [{"id": "d1", "constraints": {"fields": [
             {"path": ["$.vct"], "filter": {"const": "LegalPersonCredential"}}, {"path": ["$.email"]}]}}]}

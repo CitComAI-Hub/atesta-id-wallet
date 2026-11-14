@@ -257,9 +257,8 @@ the full manual Windows test and the CITCOM verifier trust list.
 14. [ ] **HAIP 1.0** (phase 2 of the roadmap): requirements checked against the wallet (November
        2026). Done: pushed authorization requests (PAR, RFC 9126) whenever the server offers them,
        with a DPoP proof; tested against Keycloak 26.6.2, 26.7 and latest with a client that only
-       accepts PAR; `A256GCM` for encrypted responses when the verifier accepts both. Still to do:
-       `trusted_authorities` (`aki`),
-       SVG logos, `haip-vci://` / `haip-vp://` links, then the OpenID Foundation conformance suite.
+       accepts PAR; `A256GCM` for encrypted responses when the verifier accepts both; DCQL
+       `trusted_authorities` of type `aki`. Still to do: SVG logos, `haip-vci://` / `haip-vp://` links, then the OpenID Foundation conformance suite.
        Not before the hardware keys (phase 3): key attestation and wallet attestation.
 
 ## Later (after the pilot)
@@ -278,7 +277,7 @@ the full manual Windows test and the CITCOM verifier trust list.
 - [ ] Issuer trust list / allow-list; validate issuer `x5c` chains (today a self-signed certificate
       naming the issuer's host is taken as the issuer's key, also for status lists: see Known gaps)
 - [ ] Deferred issuance; `jwt_vc_json` and mso_mdoc if a verifier needs them
-- [ ] DCQL `trusted_authorities`; verifier attestations / OpenID Federation client_ids
+- [ ] DCQL `trusted_authorities` of type `etsi_tl` (with the trusted lists); verifier attestations / OpenID Federation client_ids
 - [ ] Digital Credentials API (browser-mediated presentation), when browsers support it on desktop
 - [x] Redact secrets (codes, tokens) from the verbose log shown in *Settings → Advanced*: also
       credentials and proofs (any JWT), in the window's technical details and in CLI errors (`common.redact`)

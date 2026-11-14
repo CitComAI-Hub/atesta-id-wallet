@@ -107,6 +107,11 @@ requested claims are disclosed, following OpenID4VP 1.0 §6.4.1:
   `path`, `claim_sets`, `credential_sets`...) is refused before anything is matched;
 - a DCQL query without `claims` gets **no** selectively disclosable claim, only the mandatory parts;
 - with `claim_sets`, the wallet uses the first option it can satisfy, not the union of all claims;
+- with `trusted_authorities` of type `aki`, only credentials whose issuer certificate chain (`x5c`)
+  has one of the given AuthorityKeyIdentifiers are offered, so the wallet does not show the
+  verifier a credential it would reject; a list with any other type (`etsi_tl`,
+  `openid_federation`) leaves nothing out, since that one might match. It only narrows the choice:
+  trust in the issuer is still the verifier's to check;
 - with Presentation Exchange, only the fields of an input descriptor with
   `limit_disclosure: required` are selected; otherwise the whole credential is disclosed, as that
   specification intends, and the consent screen shows it.

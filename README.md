@@ -271,8 +271,8 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
   with `--allow-unverified`). DIDs, verifier attestations and OpenID Federation are not supported.
 - Supported `response_mode` values: `direct_post` and `direct_post.jwt` (ECDH-ES + AES-GCM).
   No Digital Credentials API (browser-mediated) flows.
-- DCQL: `credentials`, `credential_sets`, `claims` (with `values`) and `claim_sets`;
-  `trusted_authorities` and `multiple` are ignored.
+- DCQL: `credentials`, `credential_sets`, `claims` (with `values`), `claim_sets` and
+  `trusted_authorities` of type `aki` (other types do not filter); `multiple` is ignored.
 - Keys are software keys (no TPM or secure element). See [docs/SECURITY.md](docs/SECURITY.md).
 - Copies of a credential (batch issuance) only from issuers that advertise
   `batch_credential_issuance` (in Keycloak, the realm attribute

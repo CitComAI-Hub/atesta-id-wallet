@@ -13,6 +13,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs
 
 import requests
+from cryptography import x509
 
 from .common import (
     SD_JWT_FORMATS,
@@ -21,6 +22,7 @@ from .common import (
     _json,
     _last_deep_link,
     b64u,
+    b64u_decode,
     debug,
     host_of,
     jwt_decode_unverified,
@@ -30,7 +32,7 @@ from .common import (
     split_url,
 )
 from .i18n import tr
-from .jose import encrypt_response_jwe
+from .jose import _x5c_chain, encrypt_response_jwe
 from .sdjwt import SdJwt, _claim_at, _sd_digest, select_disclosures
 from . import status
 from .storage import HolderKey, add_history, credential_name, holder_key, is_usable, mark_used
@@ -244,6 +246,42 @@ def _dcql_claims(query: dict[str, Any], claims: Any) -> list[dict[str, Any]] | N
     return None
 
 
+def _authority_key_ids(sd: SdJwt) -> set[bytes]:
+    """The AuthorityKeyIdentifier of every certificate in the issuer's x5c (none if it has none)."""
+    try:
+        chain = _x5c_chain(sd.header)
+    except WalletError:
+        return set()
+    found = set()
+    for cert in chain:
+        try:
+            key_id = cert.extensions.get_extension_for_class(x509.AuthorityKeyIdentifier).value.key_identifier
+        except (x509.ExtensionNotFound, ValueError):
+            continue
+        if key_id:
+            found.add(key_id)
+    return found
+
+
+def _trusted_by(query: dict[str, Any], sd: SdJwt) -> bool:
+    """
+    Whether the credential matches the query's trusted_authorities (OpenID4VP 1.0 §6.1.1). Only the
+    'aki' type can be told here: when the list has any other (etsi_tl, openid_federation), the
+    credential might match that one, so nothing is left out.
+    """
+    authorities = query.get("trusted_authorities")
+    if not authorities or any(a.get("type") != "aki" for a in authorities):
+        return True
+    wanted = set()
+    for authority in authorities:
+        for value in authority["values"]:
+            try:
+                wanted.add(b64u_decode(value))
+            except ValueError:
+                continue
+    return bool(wanted & _authority_key_ids(sd))
+
+
 def _dcql_problem(dcql: Any) -> str | None:
     """What is wrong with the shape of a DCQL query (OpenID4VP 1.0 §6), or None if nothing."""
     def strings(value: Any) -> bool:
@@ -274,6 +312,12 @@ def _dcql_problem(dcql: Any) -> str | None:
                 return f"'values' in '{query['id']}' must be an array"
             if "id" in claim and not isinstance(claim["id"], str):
                 return f"claim ids in '{query['id']}' must be strings"
+        authorities = query.get("trusted_authorities")
+        if "trusted_authorities" in query and (not isinstance(authorities, list) or not authorities or not all(
+                isinstance(a, dict) and isinstance(a.get("type"), str) and strings(a.get("values")) and a["values"]
+                for a in authorities)):
+            return (f"'trusted_authorities' of '{query['id']}' must be a non-empty array of objects with a "
+                    "'type' and non-empty 'values'")
         claim_sets = query.get("claim_sets", [])
         if not isinstance(claim_sets, list) or not all(strings(option) and option for option in claim_sets):
             return f"'claim_sets' of '{query['id']}' must be an array of non-empty arrays of claim ids"
@@ -310,6 +354,8 @@ def match_dcql(dcql: dict[str, Any], records: list[dict[str, Any]], disclose_all
             if fmt and record.get("format") != fmt and (strict_format or fmt not in SD_JWT_FORMATS):
                 continue
             if vcts and sd.claims.get("vct") not in vcts:
+                continue
+            if not _trusted_by(query, sd):
                 continue
             if _dcql_claims(query, sd.claims) is not None:
                 found.append(record)
