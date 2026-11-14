@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import helpers  # noqa: E402,F401  (first: own data folder, memory keyring)
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 
-from atesta_id_wallet import common, i18n, sdjwt, storage, trust, ui, vp  # noqa: E402
+from atesta_id_wallet import common, i18n, sdjwt, storage, trust, ui, vci, vp  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 PACKAGE = REPO / "atesta_id_wallet"
@@ -254,6 +254,11 @@ def fill_wallet() -> None:
          "trust": "new", "credentials": ["CITCOM membership"], "claims": ["email", "given_name", "family_name"]},
     ):
         storage.add_history(event)
+    # An issuer the wallet knows: the scan panel offers to ask it for another credential.
+    config = storage.load_config()
+    config.setdefault("issuers", {})["https://keycloak.citcom.example/realms/citcom"] = {
+        "catalog": {"name": "CITCOM TEF", "credentials": {"MembershipCredential": None}, "names": {}}}
+    storage.save_config(config)
 
 
 def _prepared(level: str, records: list[dict[str, Any]], paths: list[Any]) -> vp.PreparedPresentation:
@@ -348,6 +353,11 @@ def screens(gui: Any) -> list[tuple[str, Callable[[Any], None]]]:
         ("received", lambda w: w._issued([_Issued(_citcom(w)["_path"], "marta.ribes@example.org")])),
         ("shared", lambda w: w._presented((_prepared("pinned", [_citcom(w)], [[["email"], ["roles"]]]), None))),
         ("missing-credential", missing),
+        ("request", lambda w: w._choose_request([
+            vci.KnownIssuer("https://keycloak.citcom.example/realms/citcom", "CITCOM TEF",
+                            [("MembershipCredential", "CITCOM membership"), ("UserCredential", "CITCOM user")]),
+            vci.KnownIssuer("https://auth.pgtec-vrain-dataspace.eu/realms/pgtec", "pgtec-vrain-dataspace.eu",
+                            [("LegalPersonCredential", "Legal Person Credential")])])),
         ("error-connection", failed(requests.ConnectionError("HTTPSConnectionPool(host='x', port=443)"))),
         ("error-issue", failed(common.WalletError("credential_endpoint missing"))),
         ("error-present", failed(common.WalletError("x5c broken"), "present")),

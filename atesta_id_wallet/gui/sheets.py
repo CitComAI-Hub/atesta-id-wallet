@@ -439,6 +439,41 @@ class ChooseSheet(Sheet):
         self._focus = accept
 
 
+class RequestSheet(Sheet):
+    """Asks an organisation the wallet already knows for a credential (wallet-initiated issuance)."""
+
+    def __init__(self, known: list[Any], on_answer: Callable[[tuple[str, str] | None], None]):
+        super().__init__(icon="wallet", title=tr("Request a credential"),
+                         body=tr("Organisations you have received credentials from. Choose the credential you "
+                                 "want; you will sign in with them to receive it."))
+        group = QButtonGroup(self)
+        choices: list[tuple[str, str]] = []
+        for issuer in known:
+            self.add(label(issuer.name, "sectionTitle"))
+            for config_id, name in issuer.credentials:
+                box = QFrame()
+                box.setObjectName("claimBox")
+                layout = QHBoxLayout(box)
+                layout.setContentsMargins(12, 8, 12, 8)
+                radio = keyboard_focus_ring(QRadioButton())
+                radio.setAccessibleName(name)
+                radio.setAccessibleDescription(issuer.name)
+                radio.setChecked(not choices)
+                group.addButton(radio, len(choices))
+                choices.append((issuer.issuer, config_id))
+                layout.addWidget(radio)
+                layout.addWidget(label(name, wrap=True), 1)
+                box.mousePressEvent = lambda _e, r=radio: r.setChecked(True)  # the whole row is clickable
+                self.add(box)
+        cancel = button(tr("Cancel"))
+        cancel.clicked.connect(lambda: on_answer(None))
+        accept = button(tr("Request it"), "primary")
+        accept.clicked.connect(lambda: on_answer(choices[group.checkedId()]))
+        self.add_buttons(cancel, accept)
+        self.on_escape = lambda: on_answer(None)
+        self._focus = accept
+
+
 class ConsentSheet(Sheet):
     """Who asks for which data and where it goes. Declining is the default."""
 
@@ -553,7 +588,8 @@ class LicensesSheet(Sheet):
 class ScanSheet(Sheet):
     """Waits for a QR code to appear (screenshot or clipboard); the window detects it by itself."""
 
-    def __init__(self, on_image: Callable[[], None], on_paste: Callable[[], None], on_cancel: Callable[[], None]):
+    def __init__(self, on_image: Callable[[], None], on_paste: Callable[[], None], on_cancel: Callable[[], None],
+                 on_request: Callable[[], None] | None = None):
         super().__init__(icon="scan-line", title=tr("Waiting for a QR code"))
         shortcut = {"win32": tr("<b>Win + Shift + S</b>"), "darwin": tr("<b>Cmd + Ctrl + Shift + 4</b>")}.get(
             sys.platform, tr("<b>Print Screen</b>"))
@@ -570,7 +606,13 @@ class ScanSheet(Sheet):
         paste.clicked.connect(on_paste)
         cancel = button(tr("Cancel"), "ghost")
         cancel.clicked.connect(on_cancel)
-        self.add_buttons(cancel, paste, image)
+        buttons = [cancel, paste, image]
+        if on_request:
+            # Without a QR code: ask an organisation the wallet already knows.
+            request = button(tr("Request from an organisation you know…"), icon="wallet")
+            request.clicked.connect(on_request)
+            buttons.insert(1, request)
+        self.add_buttons(*buttons)
         self.on_escape = on_cancel
         self._focus = image
 

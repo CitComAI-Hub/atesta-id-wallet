@@ -801,6 +801,21 @@ class AuditNovember2026Tests(unittest.TestCase):
         with self.assertRaises(common.WalletError):
             updates.download_update(updates.Release("99.0.0/../x", updates.RELEASES_PAGE), "appimage")
 
+    def test_known_issuers_list_their_credentials_by_name(self):
+        meta = {"display": [{"name": "City"}], "credential_configurations_supported": {
+            "b_id": {"credential_metadata": {"display": [{"name": "Empleado", "locale": "es"},
+                                                         {"name": "Employee\u202e", "locale": "en"}]}},
+            "a_id": {"display": "not a list"}}}
+        storage.save_config({"issuers": {"https://i.example": {"catalog": vci._catalog(meta, "https://i.example")},
+                                         "https://broken.example": {}}})
+        session = mock.Mock()
+        session.get.side_effect = requests.ConnectionError("offline")
+        with mock.patch.object(i18n, "current", return_value="en"):
+            [known] = vci.known_issuers(session)
+        self.assertEqual((known.issuer, known.name), ("https://i.example", "City"))
+        # Sorted by name; a name without control characters; no name published -> from the id.
+        self.assertEqual(known.credentials, [("a_id", "A id"), ("b_id", "Employee")])
+
     def test_missing_credential_is_matched_without_contacting_the_issuers(self):
         meta = {"credential_configurations_supported": {"LegalPersonCredential": {"vct": "LegalPerson"}},
                 "display": [{"name": "City"}]}

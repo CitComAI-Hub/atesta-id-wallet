@@ -315,8 +315,9 @@ even if the browser already has one. Options (decide with whoever administers Ke
       "Continue in your browser"; `--in-app-login` turns it off. Covered by the Keycloak tests.
 - [ ] **C. Remember the wallet session** (no server changes): keep the SSO cookie in the profile.
       Only avoids later logins; the cookie gives access to the account while it is valid.
-- [ ] **GUI for wallet-initiated issuance** ("Request a credential" from a known issuer); today only
-      `issue --issuer` in the CLI.
+- [x] **GUI for wallet-initiated issuance**: *Scan QR → Request from an organisation you know…* lists
+      the credentials each issuer used in the profile offers (its catalog, now with the credentials'
+      names) and asks for the one chosen, like `issue --issuer`.
 - [x] **Register `atesta-id-wallet`** in each issuer realm (public, standard flow only, PKCE S256,
       redirect `http://127.0.0.1/callback`, `oid4vci.enabled`, `profile` and `email` as default scopes
       so the wallet can say which account signed in, the credential scopes as optional scopes): CITCOM connectors (dataspace-on-upv), PGTEC (ask its admin). No wallet change needed.

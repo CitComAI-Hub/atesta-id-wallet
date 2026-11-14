@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from helpers import (  # noqa: E402  (first: sets the test environment)
-    FakeIssuer, FakeVerifier, QApplication, QGuiApplication, _wide_png, gui, isolated_home, make_cert,
+    FakeIssuer, FakeVerifier, QApplication, QGuiApplication, QLabel, _wide_png, gui, isolated_home, make_cert,
     make_sd_jwt, png_bytes, qr_png, verifier_request,
 )
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
@@ -135,6 +135,33 @@ class GuiFlowTests(unittest.TestCase):
         self.wait()
         self.assertEqual(requested, [(FakeIssuer.base, ["Legal"])])
         del holder
+
+    def test_request_from_known_issuer(self):
+        # No issuer used yet: the scan panel has no request button.
+        self.window.scan()
+        self.assertFalse([b for b in self.window.overlay.sheet.findChildren(gui.QPushButton)
+                          if b.text().startswith("Pedir a una")])
+        self.window._close_sheet()
+        # An issuer used before 0.14 (no names in its catalog): its metadata is read once.
+        storage.save_config({"issuers": {FakeIssuer.base: {"catalog": {"name": "Ayuntamiento",
+                                                                      "credentials": {"Legal": None}}}}})
+        self.addCleanup(setattr, gui, "issue_from_issuer", gui.issue_from_issuer)
+        requested = []
+        gui.issue_from_issuer = lambda session, issuer, ids, options, prompter: requested.append((issuer, ids)) or []
+        self.window.scan()
+        [ask] = [b for b in self.window.overlay.sheet.findChildren(gui.QPushButton) if b.text().startswith("Pedir a una")]
+        ask.click()
+        self.wait()
+        sheet = self.window.overlay.sheet
+        self.assertIsInstance(sheet, gui.RequestSheet)
+        names = [w.text() for w in sheet.findChildren(QLabel)]
+        self.assertIn("Ayuntamiento", names)
+        self.assertIn("Persona jurídica", names)  # the credential's name, not its id
+        [accept] = [b for b in sheet.findChildren(gui.QPushButton) if b.text() == "Pedirla"]
+        accept.click()
+        self.wait()
+        self.assertEqual(requested, [(FakeIssuer.base, ["Legal"])])
+        self.assertIn("names", storage.load_config()["issuers"][FakeIssuer.base]["catalog"])
 
     def test_activity_by_contact(self):
         for event in ({"type": "issued", "party": "Ayuntamiento", "party_id": "https://i.example/r"},

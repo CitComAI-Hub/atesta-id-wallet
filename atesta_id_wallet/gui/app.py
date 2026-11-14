@@ -76,7 +76,7 @@ from ..storage import (
     write_backup,
 )
 from ..ui import OfferSummary, Prompter, consent_items
-from ..vci import IssueOptions, issue, issue_from_issuer, known_issuer_for
+from ..vci import IssueOptions, issue, issue_from_issuer, known_issuer_for, known_issuers
 from ..vp import NoMatchingCredential, build_response, prepare_presentation, record_declined, send_presentation
 from . import theme
 from .pages import ActivityPage, CredentialPage, LockPage, SettingsPage, WalletPage
@@ -90,6 +90,7 @@ from .sheets import (
     OfferSheet,
     Overlay,
     ProgressSheet,
+    RequestSheet,
     ResultSheet,
     ScanSheet,
     TextSheet,
@@ -554,7 +555,8 @@ class MainWindow(QMainWindow):
             self.process(found)
             return
         self._watch = {"since": time.time(), "seen": set(), "clipboard": self._clipboard_signature()}
-        self._sheet(ScanSheet(self.open_image, self.paste_link, self._close_sheet))
+        self._sheet(ScanSheet(self.open_image, self.paste_link, self._close_sheet,
+                              self.request_credential if load_config().get("issuers") else None))
         self._watch_timer.start(1200)
 
     def _stop_watch(self) -> None:
@@ -631,6 +633,28 @@ class MainWindow(QMainWindow):
             self._result(False, tr("No QR code found"),
                          tr("The image has no wallet QR code. Make sure the whole QR code is visible and sharp, "
                             "and try again."), details=str(exc))
+
+    def request_credential(self) -> None:
+        """Wallet-initiated issuance: a credential from an organisation this profile has used."""
+        self._stop_watch()
+        if self.busy:
+            return
+        self._run(tr("Looking at what they offer…"), lambda: known_issuers(new_session()), self._choose_request)
+
+    def _choose_request(self, known: list[Any]) -> None:
+        if not known:
+            return self._result(False, tr("No organisations yet"),
+                                tr("Receive a credential by scanning the QR code an organisation shows you; after "
+                                   "that you can ask it for more here."), icon="wallet", tone="warn")
+
+        def answer(choice: tuple[str, str] | None) -> None:
+            self._close_sheet()
+            if choice:
+                issuer, config_id = choice
+                self._run(tr("Receiving the credential…"),
+                          lambda: issue_from_issuer(new_session(), issuer, [config_id], IssueOptions(), self.prompter),
+                          self._issued)
+        self._sheet(RequestSheet(known, answer))
 
     def paste_link(self) -> None:
         self._stop_watch()

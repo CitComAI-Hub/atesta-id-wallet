@@ -18,7 +18,7 @@ import time
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 import requests
@@ -1019,6 +1019,37 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     return issued
 
 
+@dataclass
+class KnownIssuer:
+    """An issuer this profile has received credentials from, and what it offers (its catalog)."""
+    issuer: str
+    name: str
+    credentials: list[tuple[str, str]]  # (credential_configuration_id, name in the interface language)
+
+
+def _known_catalogs(session: requests.Session) -> Iterator[tuple[str, dict[str, Any]]]:
+    """(issuer, catalog) of up to 8 issuers used in this profile, read one by one (lazily)."""
+    config = load_config()
+    issuers = config.get("issuers", {})
+    for issuer in list(issuers)[:8]:
+        catalog = issuers[issuer].get("catalog") if isinstance(issuers[issuer], dict) else None
+        if not isinstance(catalog, dict) or "names" not in catalog:
+            # Issuers used before 0.13.1 have no catalog yet, and before 0.14 no credential names in it:
+            # their metadata is read once and kept.
+            try:
+                require_https(issuer, "credential_issuer")
+                catalog = _catalog(_get_first_json(session, _well_known(issuer, "openid-credential-issuer")), issuer)
+            except (WalletError, requests.RequestException):
+                if not isinstance(catalog, dict):
+                    continue
+            else:
+                config = load_config()
+                if isinstance(config.get("issuers", {}).get(issuer), dict):
+                    config["issuers"][issuer]["catalog"] = catalog
+                    save_config(config)
+        yield issuer, catalog
+
+
 def known_issuer_for(session: requests.Session, wanted: list[str]) -> tuple[str, str, str] | None:
     """
     (issuer, credential_configuration_id, issuer name) of an issuer already used in this profile that
@@ -1026,21 +1057,7 @@ def known_issuer_for(session: requests.Session, wanted: list[str]) -> tuple[str,
     is read; errors just mean "no".
     """
     wanted_set = {w for w in wanted if w}
-    config = load_config()
-    issuers = config.get("issuers", {})
-    for issuer in list(issuers)[:8]:
-        catalog = issuers[issuer].get("catalog") if isinstance(issuers[issuer], dict) else None
-        if not isinstance(catalog, dict):
-            # Issuers used before 0.13.1 have no catalog yet: their metadata is read once and kept.
-            try:
-                require_https(issuer, "credential_issuer")
-                catalog = _catalog(_get_first_json(session, _well_known(issuer, "openid-credential-issuer")), issuer)
-            except (WalletError, requests.RequestException):
-                continue
-            config = load_config()
-            if isinstance(config.get("issuers", {}).get(issuer), dict):
-                config["issuers"][issuer]["catalog"] = catalog
-                save_config(config)
+    for issuer, catalog in _known_catalogs(session):
         offered = catalog.get("credentials")
         for config_id, vct in (offered.items() if isinstance(offered, dict) else ()):
             if config_id in wanted_set or (vct and vct in wanted_set):
@@ -1048,14 +1065,41 @@ def known_issuer_for(session: requests.Session, wanted: list[str]) -> tuple[str,
     return None
 
 
+def known_issuers(session: requests.Session) -> list[KnownIssuer]:
+    """The issuers used in this profile with the credentials they offer, for asking one of them again."""
+    result = []
+    for issuer, catalog in _known_catalogs(session):
+        offered = catalog.get("credentials")
+        names = catalog.get("names")
+        names = names if isinstance(names, dict) else {}
+        credentials = [(str(c), clean_text(pick_display(names.get(c)).get("name")) or humanize(str(c)))
+                       for c in (offered if isinstance(offered, dict) else {})]
+        if credentials:
+            result.append(KnownIssuer(issuer, clean_text(catalog.get("name")) or site_of(issuer),
+                                      sorted(credentials, key=lambda item: item[1].casefold())))
+    return result
+
+
 def _catalog(meta: dict[str, Any], issuer: str) -> dict[str, Any]:
-    """{"name": issuer name, "credentials": {configuration id: vct or None}} from the issuer metadata."""
+    """
+    {"name": issuer name, "credentials": {configuration id: vct or None}, "names": {configuration id:
+    [{"locale", "name"}]}} from the issuer metadata.
+    """
     configs = meta.get("credential_configurations_supported") or {}
     configs = configs if isinstance(configs, dict) else {}
+    names = {}
+    for c, v in list(configs.items())[:100]:
+        metadata = v.get("credential_metadata") if isinstance(v, dict) else None
+        displays = (v.get("display") if isinstance(v, dict) else None) or (
+            metadata.get("display") if isinstance(metadata, dict) else None)
+        entries = [{"locale": clean_text(d.get("locale"), 16) or "", "name": clean_text(d.get("name"))}
+                   for d in (displays if isinstance(displays, list) else [])[:12] if isinstance(d, dict)]
+        names[str(c)] = [e for e in entries if e["name"]]
     return {
         "name": clean_text(pick_display(meta.get("display")).get("name")) or site_of(issuer),
         "credentials": {str(c): (v.get("vct") if isinstance(v, dict) and isinstance(v.get("vct"), str) else None)
                         for c, v in list(configs.items())[:100]},
+        "names": names,
     }
 
 

@@ -132,6 +132,10 @@ Lissi. Scan them as usual: the wallet then asks the same issuer for the same cre
 with the login you just typed, so you sign in only once. This works when your account is
 entitled to that credential.
 
+Once you have a credential from an issuer, you can ask it for another one without a QR code:
+**Scan QR → Request from an organisation you know…** lists the credentials each issuer you used
+offers. You sign in as usual, and the issuer decides whether your account is entitled to it.
+
 **2. Sign in to a verifier.** Click the login link, or press **Scan QR** and take a screenshot
 of the login QR code. Before anything is sent, the wallet shows:
 

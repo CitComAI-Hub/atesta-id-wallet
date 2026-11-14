@@ -409,7 +409,7 @@ class FakeDPoPIssuer(FakeIssuer):
 try:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtGui import QGuiApplication  # noqa: F401  (for the GUI tests)
-    from PySide6.QtWidgets import QApplication  # noqa: F401  (for the GUI tests)
+    from PySide6.QtWidgets import QApplication, QLabel  # noqa: F401  (for the GUI tests)
 
     from atesta_id_wallet.gui import app as gui
 except ImportError:  # the GUI is optional
