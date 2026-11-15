@@ -19,7 +19,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from helpers import isolated_home, make_sd_jwt  # noqa: E402  (first: sets the test environment)
 
-from atesta_id_wallet import common, sdjwt, storage, vci, vp  # noqa: E402
+import cbor2  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
+
+from atesta_id_wallet import common, cose, sdjwt, storage, vci, vp  # noqa: E402
 
 ROUNDS = int(os.environ.get("ATESTA_FUZZ_ROUNDS", "400"))
 SEED = int(os.environ.get("ATESTA_FUZZ_SEED", "20261103"))
@@ -103,6 +106,40 @@ class FuzzTests(unittest.TestCase):
             self.only_wallet_errors(common.jwt_decode_unverified, mutate(self.rng, valid))
             payload = common.b64u(json.dumps(random_json(self.rng)).encode())
             self.only_wallet_errors(common.jwt_decode_unverified, f"e30.{payload}.sig")
+
+    def test_cose_sign1(self):
+        """Bytes from a status list server: only CoseError, and reading a decoded one never fails."""
+        key = ec.generate_private_key(ec.SECP256R1())
+        valid = cbor2.dumps(cbor2.CBORTag(18, [cbor2.dumps({1: -7, 16: "application/statuslist+cwt"}),
+                                               {4: b"k1", 33: b"\x30\x00"}, cbor2.dumps({2: "x"}), b"\x00" * 64]))
+        cose.decode_sign1(valid)
+
+        def read(data):
+            try:
+                message = cose.decode_sign1(data)
+                message.jose_header()
+                self.assertIs(cose.verify_sign1(message, key.public_key()), False)
+            except cose.CoseError:
+                pass
+            except Exception as exc:  # noqa: BLE001
+                self.fail(f"{type(exc).__name__}: {exc}\ninput: {data!r}\nseed: ATESTA_FUZZ_SEED={SEED}")
+
+        for _ in range(ROUNDS):
+            data = bytearray(valid)
+            for _ in range(self.rng.randint(1, 4)):
+                i = self.rng.randrange(len(data))
+                kind = self.rng.randrange(3)
+                if kind == 0:
+                    data[i] = self.rng.randrange(256)
+                elif kind == 1:
+                    del data[i:i + self.rng.randint(1, 4)]
+                else:
+                    data[i:i] = bytes(self.rng.randrange(256) for _ in range(self.rng.randint(1, 4)))
+                if not data:
+                    break
+            read(bytes(data))
+            read(cbor2.dumps(cbor2.CBORTag(18, [cbor2.dumps(random_json(self.rng)), random_json(self.rng) or {},
+                                                b"", b""])))
 
     def test_offers(self):
         class NoNetwork:

@@ -286,7 +286,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
   `oid4vci.batch_credential_issuance.batch_size`). Otherwise a credential has one copy, and its
   presentations can be linked by the issuer's signature and its key. With copies, they are used in
   turn: after 5 presentations a copy is shown again.
-- Revocation: Token Status List in JWT form only (no CWT lists); see
+- Revocation: Token Status List (JWT or CWT form) only; see
   [docs/SECURITY.md](docs/SECURITY.md#revocation-token-status-list).
 
 ## Architecture
@@ -296,6 +296,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 | `common` | Errors, messages, base64url/JWT/JSON helpers, HTTP helpers |
 | `i18n` | `tr()` / `tr_n()` translations with English fallback; `es.json`, `da.json` catalogs |
 | `jose` | JWS verification, JWK/X.509 keys, JWE encryption of responses |
+| `cose` | COSE_Sign1 and CWT (CBOR): status lists in CWT form |
 | `sdjwt` | SD-JWT VC parsing (strict) and disclosure selection |
 | `storage` | Profiles, holder key, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
 | `vault` | Profile encryption: data key in the system keyring or wrapped with the wallet password |

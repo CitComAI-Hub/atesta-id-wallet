@@ -243,7 +243,7 @@ the full manual Windows test and the CITCOM verifier trust list.
        system's, audited at 200 %), help in the app (sidebar, Settings, error panel), technical
        sections of Settings folded. Pending there: scanning by screenshot, a screen reader test. Then a
        usability test with 5–8 people of the pilot profile (part of item 7).
-12. [x] **Revocation check** (Token Status List, `status` claim; `status.py`): before presenting (a
+12. [x] **Revocation check** (Token Status List in JWT or CWT form, `status` claim; `status.py`, `cose.py`): before presenting (a
        revoked or suspended credential is not offered), in the window in the background, and with
        `list --check`; "Revoked" / "Suspended" on the card and in the details; can be turned off in
        Settings → Security (on by default). Still to do: try it

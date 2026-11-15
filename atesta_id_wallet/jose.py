@@ -31,6 +31,11 @@ def _verify_jws(token: str, public_key: Any) -> bool:
         alg = json.loads(b64u_decode(header_b64)).get("alg", "")
     except (ValueError, AttributeError):
         return False
+    return verify_signature(alg, signature, signing_input, public_key)
+
+
+def verify_signature(alg: Any, signature: bytes, signing_input: bytes, public_key: Any) -> bool:
+    """A JWS-style signature (RFC 7518: ECDSA as r || s) of 'alg' over 'signing_input'; JWS and COSE share it."""
     if not isinstance(alg, str):
         return False
     digest = {"256": hashes.SHA256(), "384": hashes.SHA384(), "512": hashes.SHA512()}.get(alg[-3:])
@@ -41,9 +46,8 @@ def _verify_jws(token: str, public_key: Any) -> bool:
             size = (public_key.curve.key_size + 7) // 8
             if public_key.curve.name != _ES_CURVES[alg] or len(signature) != 2 * size:
                 return False
-            half = size
             der = encode_dss_signature(
-                int.from_bytes(signature[:half], "big"), int.from_bytes(signature[half:], "big")
+                int.from_bytes(signature[:size], "big"), int.from_bytes(signature[size:], "big")
             )
             public_key.verify(der, signing_input, ec.ECDSA(digest))
         elif isinstance(public_key, rsa.RSAPublicKey) and public_key.key_size < 2048:

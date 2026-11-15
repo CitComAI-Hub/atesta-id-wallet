@@ -578,6 +578,7 @@ THIRD_PARTY = (
     ("keyring", "MIT", "https://github.com/jaraco/keyring"),
     ("zxing-cpp", "Apache-2.0", "https://github.com/zxing-cpp/zxing-cpp"),
     ("Pillow", "MIT-CMU", "https://github.com/python-pillow/Pillow"),
+    ("cbor2", "MIT", "https://github.com/agronholm/cbor2"),
     ("Lucide icons", "ISC", "https://lucide.dev"),
     ("Python", "PSF-2.0", "https://www.python.org"),
 )

@@ -15,10 +15,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from helpers import FakeIssuer, isolated_home  # noqa: E402  (first: sets the test environment)
+import cbor2  # noqa: E402
 import requests  # noqa: E402
+from cryptography.hazmat.primitives import hashes  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature  # noqa: E402
 
-from atesta_id_wallet import common, sdjwt, status, storage, vp  # noqa: E402
+from atesta_id_wallet import common, cose, sdjwt, status, storage, vp  # noqa: E402
 
 
 def pack(values, bits):
@@ -31,6 +34,15 @@ def pack(values, bits):
 
 def lst(values, bits):
     return common.b64u(zlib.compress(pack(values, bits)))
+
+
+def sign1(key, payload, protected=None, unprotected=None, tag=True):
+    """A COSE_Sign1 (ES256) of 'payload' (bytes) with this EC key."""
+    protected_raw = cbor2.dumps({cose.ALG: -7, **(protected or {})})
+    der = key.sign(cbor2.dumps(["Signature1", protected_raw, b"", payload]), ec.ECDSA(hashes.SHA256()))
+    r, s = decode_dss_signature(der)
+    structure = [protected_raw, unprotected or {}, payload, r.to_bytes(32, "big") + s.to_bytes(32, "big")]
+    return cbor2.dumps(cbor2.CBORTag(18, structure) if tag else structure)
 
 
 class StatusIssuer(FakeIssuer):
@@ -51,9 +63,9 @@ class StatusIssuer(FakeIssuer):
                 return
             if answer is None:
                 return self._json({"error": "not_found"}, 404)
-            body = answer.encode()
+            body = answer if isinstance(answer, bytes) else answer.encode()
             self.send_response(200)
-            self.send_header("Content-Type", "application/statuslist+jwt")
+            self.send_header("Content-Type", "application/statuslist+" + ("cwt" if isinstance(answer, bytes) else "jwt"))
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -133,6 +145,13 @@ class StatusListTests(unittest.TestCase):
         payload.pop("typ", None)
         StatusIssuer.lists[path] = storage.HolderKey(key or StatusIssuer.key).sign_jwt(header, payload)
 
+    def publish_cwt(self, values, bits=1, *, path="/status/1", key=None, typ=status.CWT_TYPE, claims=None):
+        """The list in CWT form: COSE_Sign1 over the claims with integer keys, 'lst' as bytes."""
+        payload = {2: self.base + path, 6: int(time.time()),
+                   65533: {"bits": bits, "lst": zlib.compress(pack(values, bits))}, **(claims or {})}
+        StatusIssuer.lists[path] = sign1(key or StatusIssuer.key, cbor2.dumps(payload),
+                                         {cose.TYP: typ} if typ else {}, {cose.KID: b"k1"})
+
     def store(self, index, uri=None, name="Legal"):
         """A credential with one copy at 'index' in the list, or one copy per index if a list is given."""
         email = common.b64u(json.dumps(["s1", "email", "user@example.org"]).encode())
@@ -172,7 +191,8 @@ class StatusListTests(unittest.TestCase):
         self.assertEqual(status.check(session, valid), "valid")
         self.assertEqual(status.check(session, revoked), "revoked")
         self.assertEqual(status.check(session, suspended), "suspended")
-        self.assertEqual(StatusIssuer.seen[0], ("/status/1", "application/statuslist+jwt"))
+        self.assertEqual(StatusIssuer.seen[0], ("/status/1", "application/statuslist+jwt, "
+                                                             "application/statuslist+cwt;q=0.9"))
         # Stored with the credential: known without asking again, and after a restart.
         by_name = {r["credential_configuration_id"]: r for r in storage.load_credentials()}
         self.assertTrue(storage.is_usable(by_name["A"]))
@@ -237,6 +257,35 @@ class StatusListTests(unittest.TestCase):
                 with self.assertRaises(status.StatusError):
                     status.check(requests.Session(), record)
                 self.assertNotIn("revocation", storage.load_credentials()[0])  # nothing concluded
+
+    def test_list_in_cwt_form(self):
+        self.publish_cwt([0, 1, 2], bits=2, claims={65534: 600})
+        session = requests.Session()
+        valid, revoked, suspended = self.store(0, name="A"), self.store(1, name="B"), self.store(2, name="C")
+        self.assertEqual(status.check(session, valid), "valid")
+        self.assertEqual(status.check(session, revoked), "revoked")
+        self.assertEqual(status.check(session, suspended), "suspended")
+        next_check = storage.load_credentials()[0]["revocation"]["next_check"]
+        self.assertAlmostEqual(next_check, time.time() + 600, delta=30)  # its ttl (key 65534)
+
+    def test_cwt_tokens_that_are_not_accepted(self):
+        record = self.store(0)
+        other = ec.generate_private_key(ec.SECP256R1())
+        cases = {
+            "typ": lambda: self.publish_cwt([1], typ="application/cwt"),
+            "no typ": lambda: self.publish_cwt([1], typ=None),
+            "sub": lambda: self.publish_cwt([1], claims={2: self.base + "/status/other"}),
+            "expired": lambda: self.publish_cwt([1], claims={4: int(time.time()) - 10}),
+            "signed by another key": lambda: self.publish_cwt([1], key=other),
+            "not CBOR": lambda: StatusIssuer.lists.__setitem__("/status/1", b"\xff\x00 not cbor"),
+            "not COSE_Sign1": lambda: StatusIssuer.lists.__setitem__("/status/1", cbor2.dumps(cbor2.CBORTag(17, []))),
+        }
+        for name, prepare in cases.items():
+            with self.subTest(name):
+                prepare()
+                with self.assertRaises(status.StatusError):
+                    status.check(requests.Session(), record)
+                self.assertNotIn("revocation", storage.load_credentials()[0])
 
     def test_failure_is_logged_and_changes_nothing(self):
         self.publish([0])
@@ -337,3 +386,44 @@ class StatusListTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoseTests(unittest.TestCase):
+    def setUp(self):
+        self.key = ec.generate_private_key(ec.SECP256R1())
+
+    def test_sign1_tagged_or_not(self):
+        for tag in (True, False):
+            message = cose.decode_sign1(sign1(self.key, b"hello", tag=tag))
+            self.assertEqual(message.payload, b"hello")
+            self.assertTrue(cose.verify_sign1(message, self.key.public_key()))
+            self.assertFalse(cose.verify_sign1(message, ec.generate_private_key(ec.SECP256R1()).public_key()))
+            self.assertFalse(cose.verify_sign1(message, self.key.public_key(), payload=b"other"))
+
+    def test_algorithm_must_be_protected(self):
+        raw = list(cbor2.loads(sign1(self.key, b"x")).value)
+        raw[0], raw[1] = b"", {cose.ALG: -7}  # the same signature, alg moved out of the protected header
+        self.assertFalse(cose.verify_sign1(cose.decode_sign1(cbor2.dumps(raw)), self.key.public_key()))
+
+    def test_detached_payload(self):
+        raw = list(cbor2.loads(sign1(self.key, b"content")).value)
+        raw[2] = None
+        message = cose.decode_sign1(cbor2.CBORTag(18, raw))
+        self.assertFalse(cose.verify_sign1(message, self.key.public_key()))
+        self.assertTrue(cose.verify_sign1(message, self.key.public_key(), payload=b"content"))
+
+    def test_x5chain_and_kid(self):
+        cert = b"\x30\x03\x02\x01\x01"
+        message = cose.decode_sign1(sign1(self.key, b"x", {cose.X5CHAIN: cert}, {cose.KID: b"k1"}))
+        self.assertEqual(message.x5chain, [cert])
+        header = message.jose_header()
+        self.assertEqual((header["alg"], header["kid"], len(header["x5c"])), ("ES256", "k1", 1))
+        with self.assertRaises(cose.CoseError):
+            _ = cose.decode_sign1(sign1(self.key, b"x", {cose.X5CHAIN: [1, 2]})).x5chain
+
+    def test_malformed(self):
+        for data in (b"", b"\xff", cbor2.dumps([1, 2, 3]), cbor2.dumps(cbor2.CBORTag(17, [b"", {}, b"", b""])),
+                     cbor2.dumps([b"", [], b"", b""]), cbor2.dumps([cbor2.dumps([1]), {}, b"", b""]),
+                     b"\x00" * (cose.MAX_BYTES + 1)):
+            with self.assertRaises(cose.CoseError, msg=data[:20]):
+                cose.decode_sign1(data)

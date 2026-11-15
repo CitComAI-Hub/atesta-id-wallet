@@ -3,8 +3,9 @@
 Revocation of stored credentials: Token Status List (IETF draft-ietf-oauth-status-list).
 
 A credential that can be revoked carries "status": {"status_list": {"idx": N, "uri": U}}. U serves a
-JWT (typ statuslist+jwt) signed by the issuer, with a compressed array of 1, 2, 4 or 8 bits per
-credential; entry N is this one's: 0 valid, 1 revoked (final), 2 suspended (may be lifted).
+token signed by the issuer, a JWT (typ statuslist+jwt) or a CWT (COSE_Sign1, typ
+application/statuslist+cwt), with a compressed array of 1, 2, 4 or 8 bits per credential; entry N is
+this one's: 0 valid, 1 revoked (final), 2 suspended (may be lifted).
 
 The list covers many credentials, so fetching it tells the issuer only that some holder looked; no
 personal data is sent. The verifier checks the status itself: the wallet checks so that the user
@@ -15,12 +16,13 @@ from __future__ import annotations
 
 import time
 import zlib
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urljoin
 
 import requests
 
-from . import storage
+from . import cose, storage
 from .common import WalletError, b64u_decode, debug, host_of, is_local_host, jwt_decode_unverified, log, \
     require_https
 from .i18n import tr
@@ -81,16 +83,16 @@ def decode_list(status_list: Any, uri: str = "") -> tuple[int, bytes]:
     def invalid(problem: str) -> StatusError:
         return StatusError(tr("The status list {uri} is not valid: {problem}.", uri=uri, problem=problem))
 
-    if not isinstance(status_list, dict):
+    if not isinstance(status_list, Mapping):
         raise invalid("'status_list' is not an object")
     bits, lst = status_list.get("bits"), status_list.get("lst")
     if type(bits) is not int or bits not in (1, 2, 4, 8):
         raise invalid("'bits' must be 1, 2, 4 or 8")
-    if not isinstance(lst, str):
+    if not isinstance(lst, (str, bytes)):  # base64url text in a JWT, a byte string in a CWT
         raise invalid("'lst' is not a string")
     try:
         inflater = zlib.decompressobj()
-        data = inflater.decompress(b64u_decode(lst), LIST_MAX_BYTES)
+        data = inflater.decompress(b64u_decode(lst) if isinstance(lst, str) else lst, LIST_MAX_BYTES)
     except (ValueError, zlib.error) as exc:
         raise invalid(f"'lst' is not base64url ZLIB data ({exc})") from exc
     if inflater.unconsumed_tail:
@@ -107,8 +109,14 @@ def status_at(bits: int, data: bytes, index: int, uri: str = "") -> int:
     return (data[position // 8] >> (position % 8)) & ((1 << bits) - 1)
 
 
-def fetch_token(session: requests.Session, uri: str, issuer: str) -> str:
-    """Downloads the signed list (JWT form), following a few checked redirects."""
+JWT_TYPE, CWT_TYPE = "application/statuslist+jwt", "application/statuslist+cwt"
+
+
+def fetch_token(session: requests.Session, uri: str, issuer: str) -> str | bytes:
+    """
+    Downloads the signed list, following a few checked redirects: the JWT form as text, the CWT form
+    as bytes (told by the media type, or by not being a JWT).
+    """
     url = uri
     for _ in range(MAX_REDIRECTS + 1):
         require_https(url, "status_list uri")
@@ -116,7 +124,7 @@ def fetch_token(session: requests.Session, uri: str, issuer: str) -> str:
         if is_local_host(host_of(url)) and not is_local_host(host_of(issuer)):
             raise StatusError(tr("The status list {uri} is not valid: {problem}.", uri=uri,
                                  problem="it is on a local address"))
-        with session.get(url, headers={"Accept": "application/statuslist+jwt"}, timeout=20, stream=True,
+        with session.get(url, headers={"Accept": f"{JWT_TYPE}, {CWT_TYPE};q=0.9"}, timeout=20, stream=True,
                          allow_redirects=False) as response:
             if response.is_redirect and response.headers.get("Location"):
                 url = urljoin(url, response.headers["Location"])
@@ -124,9 +132,12 @@ def fetch_token(session: requests.Session, uri: str, issuer: str) -> str:
             if response.status_code != 200:
                 raise StatusError(f"GET {url} -> HTTP {response.status_code}")
             body = response.raw.read(TOKEN_MAX_BYTES + 1, decode_content=True)
+            media_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
         if len(body) > TOKEN_MAX_BYTES:
             raise StatusError(tr("The status list {uri} is not valid: {problem}.", uri=uri,
                                  problem="the response is too large"))
+        if media_type == CWT_TYPE or (media_type != JWT_TYPE and not body.lstrip().startswith(b"ey")):
+            return body
         return body.decode("ascii", errors="replace").strip()
     raise StatusError(tr("The status list {uri} is not valid: {problem}.", uri=uri, problem="too many redirects"))
 
@@ -141,9 +152,16 @@ def _issuer_metadata(session: requests.Session, issuer: str) -> dict[str, Any]:
     return authorization_server_metadata(session, meta, issuer)
 
 
-def verify_token(session: requests.Session, token: str, uri: str, record: dict[str, Any],
+# CWT claim keys (RFC 8392; status list draft §5.2) -> the names of the JWT form.
+CWT_CLAIMS = {2: "sub", 6: "iat", 4: "exp", 65534: "ttl", 65533: "status_list"}
+
+
+def verify_token(session: requests.Session, token: str | bytes, uri: str, record: dict[str, Any],
                  now: float | None = None) -> dict[str, Any]:
-    """The payload of a status list token, once its type, subject, dates and signature are checked."""
+    """
+    The payload of a status list token (a CWT's with the JWT form's claim names), once its type,
+    subject, dates and signature are checked.
+    """
     from .vci import issuer_keys
 
     now = time.time() if now is None else now
@@ -151,12 +169,29 @@ def verify_token(session: requests.Session, token: str, uri: str, record: dict[s
     def invalid(problem: str) -> StatusError:
         return StatusError(tr("The status list {uri} is not valid: {problem}.", uri=uri, problem=problem))
 
-    try:
-        header, payload = jwt_decode_unverified(token)
-    except WalletError as exc:
-        raise invalid("it is not a JWT") from exc
-    if header.get("typ") != "statuslist+jwt":
-        raise invalid(f"typ is {header.get('typ')!r}, not 'statuslist+jwt'")
+    sign1 = None
+    if isinstance(token, bytes):
+        try:
+            sign1 = cose.decode_sign1(token)
+            claims = cose.loads(sign1.payload or b"")
+        except cose.CoseError as exc:
+            raise invalid(f"it is not a CWT ({exc})") from exc
+        if not isinstance(claims, Mapping):
+            raise invalid("its claims are not a map")
+        if sign1.protected.get(cose.TYP) != CWT_TYPE:
+            raise invalid(f"typ is {sign1.protected.get(cose.TYP)!r}, not '{CWT_TYPE}'")
+        payload = {name: claims[key] for key, name in CWT_CLAIMS.items() if key in claims}
+        try:
+            header = sign1.jose_header()
+        except cose.CoseError as exc:
+            raise invalid(str(exc)) from exc
+    else:
+        try:
+            header, payload = jwt_decode_unverified(token)
+        except WalletError as exc:
+            raise invalid("it is not a JWT") from exc
+        if header.get("typ") != "statuslist+jwt":
+            raise invalid(f"typ is {header.get('typ')!r}, not 'statuslist+jwt'")
     if payload.get("sub") != uri:  # a list for other credentials, served at this address
         raise invalid(f"its sub is {payload.get('sub')!r}")
     if not isinstance(payload.get("iat"), (int, float)):
@@ -167,7 +202,11 @@ def verify_token(session: requests.Session, token: str, uri: str, record: dict[s
     issuer = str(record.get("issuer") or "")
     iss = str(sd.payload.get("iss") or issuer)
     keys, bound = issuer_keys(session, header, iss, issuer, lambda: _issuer_metadata(session, issuer))
-    if not bound or not any(_verify_jws(token, key) for key in keys):
+    if sign1 is not None:
+        signed = any(cose.verify_sign1(sign1, key) for key in keys)
+    else:
+        signed = any(_verify_jws(str(token), key) for key in keys)
+    if not bound or not signed:
         raise StatusError(tr("The status list {uri} is not signed by the credential's issuer.", uri=uri))
     return payload
 

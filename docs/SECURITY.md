@@ -235,12 +235,15 @@ Names published by issuers are reduced to one short line of text before they are
 ## Revocation (Token Status List)
 
 - A credential that carries `status.status_list` (`idx`, `uri`) is checked against the issuer's
-  status list (IETF Token Status List, JWT form): 0 valid, 1 revoked, 2 suspended. Other values
+  status list (IETF Token Status List, in JWT or CWT form): 0 valid, 1 revoked, 2 suspended. Other values
   and any failure leave the state unknown: the wallet never concludes "revoked" or "valid" from a
   list it could not verify.
-- The list must have `typ: statuslist+jwt`, a `sub` equal to the credential's `uri` (a list for
-  other credentials served at that address is refused), an `iat`, no past `exp`, and a signature
-  by keys that belong to the credential's `iss`, found the same way as for the credential itself.
+- The list must have `typ: statuslist+jwt` (a CWT: COSE_Sign1 with `typ`
+  `application/statuslist+cwt` and the algorithm in the protected header), a `sub` equal to the
+  credential's `uri` (a list for other credentials served at that address is refused), an `iat`, no
+  past `exp`, and a signature by keys that belong to the credential's `iss`, found the same way as
+  for the credential itself (a CWT's `kid` and `x5chain` stand for the JWT's `kid` and `x5c`). CBOR
+  is read by `cbor2`, at most 1 MiB, and only `CoseError` comes out of malformed input (fuzzed).
   Only HTTPS, never this computer or the local network unless the issuer is, at most 3 redirects,
   each one checked, at most 1 MiB downloaded and 16 MiB decompressed (no zlib bomb).
 - **When it is checked**: before presenting, only for the credentials that match the request
@@ -337,7 +340,7 @@ Names published by issuers are reduced to one short line of text before they are
 | Verifier certificates are not checked for expiry unless a CA vouches for them | A pinned (trust on first use) certificate keeps its level after it expires. | Part of the trust list work. |
 | A credential is stored with a warning if no issuer key is found | The wallet may hold a credential whose signature it could not check. The verifier will check it anyway. | Make it an error once the pilot issuers are known. |
 | Copies are reused | A credential has at most 5 copies (fewer if the issuer allows fewer, one without batch issuance), used in turn. Verifiers that compare notes can link presentations of the same copy by its issuer signature and key. | Ask for new copies when they run out (needs re-issuance without a new login). |
-| Revocation is only as fresh as the last check | Offline, or if the issuer's list cannot be fetched or verified, a revoked credential may still be offered (the verifier is expected to check status). Only Token Status List in JWT form; no CWT lists or other mechanisms. | — |
+| Revocation is only as fresh as the last check | Offline, or if the issuer's list cannot be fetched or verified, a revoked credential may still be offered (the verifier is expected to check status). Only Token Status List (JWT or CWT form); no other mechanisms. | — |
 | Clipboard and recent screenshots are read automatically by *Scan QR* | A QR the user did not intend could be picked. | Mitigated by the offer review and consent screens, which show what was picked and who asks. |
 | Windows builds not code-signed; builds not reproducible | SmartScreen warns, and users rely on the checksums and the CI attestation to know what they installed. | Authenticode certificate for the Windows builds. |
 | No external security review | Bugs like the ones fixed in 0.5.1 may remain. | Review before handing the wallet to end users. |
