@@ -725,6 +725,11 @@ class SettingsPage(Page):
             _setting(tr("New versions"), tr("Check once a day for a new version on GitHub and, where the wallet can "
                                             "update itself, download it. Nothing about your wallet is sent."),
                      auto_update, self._action(tr("Check now"), w.check_for_updates)),
+            _setting(tr("Help"), tr("How to receive credentials and use them, and what to do when something fails."),
+                     self._action(tr("Open the guide"), w.open_help, "info")),
+            _setting(tr("Report a problem"), tr("Tell the team on GitHub what went wrong. Reports are public: do not "
+                                                "include your data or your credentials."),
+                     self._action(tr("Report…"), w.report_problem, "send")),
             _setting(tr("Licenses"), tr("Open source software this application is built with."),
                      self._action(tr("Show"), w.show_licenses, "info")),
         ]

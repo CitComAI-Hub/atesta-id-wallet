@@ -317,6 +317,17 @@ class MainWindow(QMainWindow):
             self.nav_buttons[key] = nav
             column.addWidget(nav)
         column.addStretch()
+        # Not a page: the guide opens in the browser.
+        help_button = QPushButton(f"  {tr('Help')}")
+        help_button.setObjectName("navButton")
+        help_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        help_button.setToolTip(tr("Opens the guide in your browser"))
+        keyboard_focus_ring(help_button)
+        help_button.setIcon(theme.icon("info", t.text_muted, 18))
+        help_button.clicked.connect(self.open_help)
+        column.addWidget(help_button)
+        column.addSpacing(8)
 
         self.profile_combo = QComboBox()
         self.profile_combo.setToolTip(tr("Each profile is a separate identity"))
@@ -789,7 +800,8 @@ class MainWindow(QMainWindow):
         self._result(False, tr("Something went wrong"),
                      tr("This is a problem in the wallet itself, and nothing was sent. Please tell the Atesta ID Wallet "
                         "team and include the technical details."),
-                     details=f"{type(exc).__name__}: {exc}\n\n{trace}")
+                     details=f"{type(exc).__name__}: {exc}\n\n{trace}",
+                     secondary=(tr("Report a problem"), self.report_problem))
 
     def _missing_credential(self, exc: NoMatchingCredential, found: tuple[str, str, str] | None) -> None:
         verifier = esc(exc.verifier or tr("The service"))
@@ -1324,6 +1336,12 @@ class MainWindow(QMainWindow):
                 except OSError as exc:
                     return self._result(False, tr("Could not restart the wallet"), esc(exc))
         QApplication.quit()
+
+    def open_help(self) -> None:
+        webbrowser.open(updates.HELP_PAGE)
+
+    def report_problem(self) -> None:
+        webbrowser.open(updates.REPORT_PAGE)
 
     def open_release(self) -> None:
         webbrowser.open(self.available_release.url if self.available_release else updates.RELEASES_PAGE)

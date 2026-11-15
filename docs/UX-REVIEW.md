@@ -178,7 +178,7 @@ What remains, by heuristic (severity 0–4; the measured items above are not rep
 | 4 Consistency | Every task ends with *Done*. For "Sign in" it could close by itself (decisions 3 → 2, ~2.7 s less) | 1 |
 | 6 Recognition rather than recall | The screenshot shortcut is shown in the panel (good); whether people manage it is for the user test | 3 (pending 2) |
 | 8 Minimalist design | Settings has 7 sections; Trust and Advanced are for technicians (pending 5) | 2 |
-| 10 Help and documentation | **There is no help in the app**: no link to a guide or to support from Settings or from the error panels | 2 |
+| 10 Help and documentation | ~~There is no help in the app~~ — done: *Help* at the bottom of the sidebar and in Settings → About (the guide in the README), *Report a problem* in Settings and on the unexpected-error panel (GitHub issues, said to be public) | 2 |
 
 Cognitive walkthrough ("will the person know what to do, and understand what happened?"):
 

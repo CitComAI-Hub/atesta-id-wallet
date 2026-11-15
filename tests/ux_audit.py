@@ -293,8 +293,12 @@ def _scroll_settings_to_end(w: Any) -> None:
 
     w._nav("settings")
     QApplication.instance().processEvents()
-    bar = w.settings_page.findChildren(QScrollArea)[0].verticalScrollBar()
+    [area] = [a for a in w.settings_page.findChildren(QScrollArea) if a.objectName() == "page"]
+    area.widget().adjustSize()
+    QApplication.instance().processEvents()
+    bar = area.verticalScrollBar()
     bar.setValue(bar.maximum())
+    QApplication.instance().processEvents()
 
 
 def screens(gui: Any) -> list[tuple[str, Callable[[Any], None]]]:

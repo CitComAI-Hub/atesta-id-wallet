@@ -447,7 +447,7 @@ class ChooseSheet(Sheet):
                                                                    credential_issuer_name(record)) if p))
             details = " · ".join(p for p in (credential_holder(record), credential_issuer_name(record),
                                              tr("Expired") if is_expired(record) else "") if p)
-            text.addWidget(label(details, "caption"))
+            text.addWidget(label(details, "caption", wrap=True))
             layout.addLayout(text, 1)
             on_click(box, functools.partial(radio.setChecked, True))  # the whole row is clickable
             self.add(box)

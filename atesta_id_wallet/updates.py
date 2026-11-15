@@ -42,6 +42,8 @@ from .storage import load_settings, save_settings
 
 REPOSITORY = "CitComAI-Hub/atesta-id-wallet"
 RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases"
+HELP_PAGE = f"https://github.com/{REPOSITORY}#usage"  # the user guide in the README
+REPORT_PAGE = f"https://github.com/{REPOSITORY}/issues/new"  # public: no personal data in a report
 LATEST_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 DOWNLOAD_PREFIX = f"{RELEASES_PAGE}/download/"
 CHECK_INTERVAL = 24 * 3600
