@@ -265,14 +265,28 @@ def _authority_key_ids(sd: SdJwt) -> set[bytes]:
     return found
 
 
+def _usable_authorities(query: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    The well-formed entries of the query's trusted_authorities: an object with a 'type' and non-empty
+    'values' of strings. The rest is left aside: the list only narrows which credentials are offered
+    (a SHOULD, §6.1), and some verifiers send it empty or half filled in (FIWARE VCVerifier versions
+    that write "trusted_authorities": [] or an entry without values), which must not stop a sign-in.
+    """
+    authorities = query.get("trusted_authorities")
+    if not isinstance(authorities, list):
+        return []
+    return [a for a in authorities if isinstance(a, dict) and isinstance(a.get("type"), str) and a["type"]
+            and isinstance(a.get("values"), list) and a["values"] and all(isinstance(v, str) for v in a["values"])]
+
+
 def _trusted_by(query: dict[str, Any], sd: SdJwt) -> bool:
     """
     Whether the credential matches the query's trusted_authorities (OpenID4VP 1.0 §6.1.1). Only the
     'aki' type can be told here: when the list has any other (etsi_tl, openid_federation), the
-    credential might match that one, so nothing is left out.
+    credential might match that one, so nothing is left out. No usable entry: nothing is left out.
     """
-    authorities = query.get("trusted_authorities")
-    if not authorities or any(a.get("type") != "aki" for a in authorities):
+    authorities = _usable_authorities(query)
+    if not authorities or any(a["type"] != "aki" for a in authorities):
         return True
     wanted = set()
     for authority in authorities:
@@ -315,11 +329,10 @@ def _dcql_problem(dcql: Any) -> str | None:
             if "id" in claim and not isinstance(claim["id"], str):
                 return f"claim ids in '{query['id']}' must be strings"
         authorities = query.get("trusted_authorities")
-        if "trusted_authorities" in query and (not isinstance(authorities, list) or not authorities or not all(
-                isinstance(a, dict) and isinstance(a.get("type"), str) and strings(a.get("values")) and a["values"]
-                for a in authorities)):
-            return (f"'trusted_authorities' of '{query['id']}' must be a non-empty array of objects with a "
-                    "'type' and non-empty 'values'")
+        if "trusted_authorities" in query and len(_usable_authorities(query)) != (
+                len(authorities) if isinstance(authorities, list) else -1):
+            debug(f"'trusted_authorities' of '{query['id']}' is not a non-empty array of objects with a 'type' and "
+                  f"non-empty 'values'; what is malformed is ignored: {json.dumps(authorities)[:300]}")
         claim_sets = query.get("claim_sets", [])
         if not isinstance(claim_sets, list) or not all(strings(option) and option for option in claim_sets):
             return f"'claim_sets' of '{query['id']}' must be an array of non-empty arrays of claim ids"

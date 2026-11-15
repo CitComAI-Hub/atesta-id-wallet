@@ -94,9 +94,13 @@ class SdJwtTests(unittest.TestCase):
         self.assertFalse(matches(aki, self.record))  # no x5c: nothing to match
         # A type the wallet cannot evaluate might be the one that matches: nothing is left out.
         self.assertTrue(matches(other + [{"type": "etsi_tl", "values": ["https://tl.example"]}], self.record))
-        for bad in ([], {"type": "aki"}, [{"type": "aki", "values": []}], [{"values": ["x"]}]):
-            with self.assertRaisesRegex(common.WalletError, "trusted_authorities"):
-                matches(bad, with_chain)
+        # Malformed (as some FIWARE VCVerifier versions send it): ignored, not a reason to refuse the request.
+        for bad in ([], None, {"type": "aki"}, [{"type": "aki", "values": []}], [{"values": ["x"]}],
+                    [{"type": "", "values": None}]):
+            self.assertTrue(matches(bad, with_chain), bad)
+            self.assertTrue(matches(bad, self.record), bad)
+        # The well-formed entries still count.
+        self.assertFalse(matches(other + [{"type": "aki", "values": []}], with_chain))
 
     def test_presentation_exchange(self):
         pd = {"id": "pd", "input_descriptors": [{"id": "d1", "constraints": {"fields": [
