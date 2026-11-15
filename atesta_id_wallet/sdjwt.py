@@ -32,6 +32,11 @@ class SdJwt:
     claims: dict[str, Any]
 
     @property
+    def display_claims(self) -> dict[str, Any]:
+        """The claims as shown to the user (an Mdoc's have no namespaces)."""
+        return self.claims
+
+    @property
     def hash_alg(self) -> str:
         return str(self.payload.get("_sd_alg", "sha-256")).lower()
 

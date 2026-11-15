@@ -17,6 +17,7 @@ from typing import Any, Callable
 
 from .common import WalletError, confirm, printable
 from .i18n import N_, tr
+from . import mdoc
 from .sdjwt import disclosed_claims
 from .storage import credential_label
 
@@ -53,12 +54,18 @@ class ConsentItem:
     claims: list[tuple[str, str]]  # (path, shortened value) the verifier will see
 
 
+def _disclosed(credential: Any, paths: list[list[Any]] | None) -> list[tuple[str, Any, bool]]:
+    if isinstance(credential, mdoc.Mdoc):
+        return mdoc.disclosed_claims(credential, paths)
+    return disclosed_claims(credential, paths)
+
+
 def consent_items(matches: list[Any]) -> list[ConsentItem]:
     """Summary of what will be disclosed, for the console or the GUI."""
     return [
         ConsentItem(
             credential_label(m.record),
-            [(path, short_value(value)) for path, value, _ in disclosed_claims(m.record["_sd"], m.paths)],
+            [(path, short_value(value)) for path, value, _ in _disclosed(m.record["_sd"], m.paths)],
         )
         for m in matches
     ]

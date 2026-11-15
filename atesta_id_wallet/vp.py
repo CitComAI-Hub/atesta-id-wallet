@@ -15,7 +15,7 @@ from urllib.parse import parse_qs
 import requests
 from cryptography import x509
 
-from . import status
+from . import mdoc, status
 from .common import (
     REQUEST_SCHEMES,
     SD_JWT_FORMATS,
@@ -35,7 +35,7 @@ from .common import (
     split_url,
 )
 from .i18n import tr
-from .jose import _x5c_chain, encrypt_response_jwe
+from .jose import _x5c_chain, encrypt_response_jwe, jwk_thumbprint, response_encryption_jwk
 from .sdjwt import SdJwt, _claim_at, _sd_digest, select_disclosures
 from .storage import HolderKey, add_history, credential_name, holder_key, is_usable, mark_used
 from .trust import VerifierIdentity, check_request_object, check_response_uri, remember_verifier, split_client_id
@@ -84,8 +84,10 @@ def fetch_request(session: requests.Session, raw: str) -> tuple[dict[str, Any], 
         accept = {"Accept": "application/oauth-authz-req+jwt, application/jwt, application/json"}
         if qp.get("request_uri_method", "get").lower() == "post":
             wallet_metadata = {
-                "vp_formats_supported": {f: {"sd-jwt_alg_values": ["ES256"], "kb-jwt_alg_values": ["ES256"]}
-                                         for f in SD_JWT_FORMATS},
+                "vp_formats_supported": {
+                    **{f: {"sd-jwt_alg_values": ["ES256"], "kb-jwt_alg_values": ["ES256"]} for f in SD_JWT_FORMATS},
+                    mdoc.FORMAT: {"issuerauth_alg_values": [-7], "deviceauth_alg_values": [-7]},
+                },
                 "response_types_supported": ["vp_token"],
                 "response_modes_supported": ["direct_post", "direct_post.jwt"],
             }
@@ -314,8 +316,10 @@ def _dcql_problem(dcql: Any) -> str | None:
         if "format" in query and not isinstance(query["format"], str):
             return f"'format' of '{query['id']}' must be a string"
         meta = query.get("meta", {})
-        if not isinstance(meta, dict) or ("vct_values" in meta and not strings(meta["vct_values"])):
-            return f"'meta' of '{query['id']}' must be an object, with 'vct_values' an array of strings"
+        if not isinstance(meta, dict) or ("vct_values" in meta and not strings(meta["vct_values"])) \
+                or ("doctype_value" in meta and not isinstance(meta["doctype_value"], str)):
+            return (f"'meta' of '{query['id']}' must be an object, with 'vct_values' an array of strings and "
+                    "'doctype_value' a string")
         claims = query.get("claims", [])
         if not isinstance(claims, list):
             return f"'claims' of '{query['id']}' must be an array"
@@ -361,12 +365,16 @@ def match_dcql(dcql: dict[str, Any], records: list[dict[str, Any]], disclose_all
     def find(query: dict[str, Any], strict_format: bool) -> list[dict[str, Any]]:
         fmt = query.get("format")
         vcts = (query.get("meta") or {}).get("vct_values")
+        doctype = (query.get("meta") or {}).get("doctype_value")
         found = []
         for record in records:
             sd: SdJwt = record["_sd"]
+            if doctype is not None and getattr(sd, "doctype", None) != doctype:
+                continue
             # dc+sd-jwt and vc+sd-jwt are the same format under different names;
             # they are only mixed when no query uses the exact name.
-            if fmt and record.get("format") != fmt and (strict_format or fmt not in SD_JWT_FORMATS):
+            if fmt and record.get("format") != fmt and (strict_format or fmt not in SD_JWT_FORMATS
+                                                         or record.get("format") not in SD_JWT_FORMATS):
                 continue
             if vcts and sd.claims.get("vct") not in vcts:
                 continue
@@ -570,7 +578,16 @@ def build_response(prepared: PreparedPresentation, *, vp_token_style: str = "arr
     POST body for response_uri.
     """
     request, matches = prepared.request, prepared.matches
+    transcript = None
+    if any(isinstance(m.record["_sd"], mdoc.Mdoc) for m in matches):
+        # The device signature binds the answer to this request and, encrypted, to the key it goes to.
+        thumbprint = (jwk_thumbprint(response_encryption_jwk(request))
+                      if prepared.response_mode == "direct_post.jwt" else None)
+        transcript = mdoc.session_transcript(prepared.identity.client_id, prepared.nonce, thumbprint,
+                                             prepared.response_uri)
     presentations = [
+        mdoc.device_response(m.record["_sd"], holder_key(m.record), m.paths, transcript)
+        if isinstance(m.record["_sd"], mdoc.Mdoc) and transcript is not None else
         build_sd_jwt_presentation(
             m.record["_sd"], holder_key(m.record), audience=prepared.identity.client_id, nonce=prepared.nonce,
             requested_paths=m.paths,

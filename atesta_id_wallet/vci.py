@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 import requests
 from cryptography.hazmat.primitives import serialization
 
-from . import i18n
+from . import cose, i18n, mdoc
 from .common import (
     OFFER_SCHEMES,
     SD_JWT_FORMATS,
@@ -1000,11 +1000,14 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
             key = keys[min(index, len(keys) - 1)]
             if fmt in SD_JWT_FORMATS:
                 key = verify_issued_credential(session, raw_credential, keys, issuer, as_meta) or key
+            elif fmt == mdoc.FORMAT:
+                key = verify_issued_mdoc(session, raw_credential, keys, issuer, as_meta)
             copies.append((raw_credential, key))
         path = save_credential(copies, fmt=fmt, issuer=issuer, configuration_id=config_id,
                                display=_stored_display(displays[config_id], logos.get(config_id)))
         debug(f"Credential stored in {path} ({len(copies)} copies)")
-        claims = parse_sd_jwt(raws[0]).claims if fmt in SD_JWT_FORMATS else None
+        claims = (parse_sd_jwt(raws[0]).claims if fmt in SD_JWT_FORMATS
+                  else mdoc.parse_mdoc(raws[0]).claims if fmt == mdoc.FORMAT else None)
         issued.append(IssuedCredential(config_id, path, claims, account))
     config = load_config()
     # What this issuer offers, kept so that a later request for a missing credential is matched here,
@@ -1362,6 +1365,35 @@ def issuer_keys(
         return [], False
     bound = iss == issuer or host_of(iss) == host_of(issuer)
     return _jwks_keys(_fetch_jwks(session, as_meta["jwks_uri"]), kid), bound
+
+
+def verify_issued_mdoc(
+    session: requests.Session, raw: str, holders: list[HolderKey], issuer: str, as_meta: dict[str, Any]
+) -> HolderKey:
+    """
+    Before storing an mso_mdoc: items that match the MSO's digests, the issuer's signature over
+    the MSO, and a device key that is one of this issuance's keys (returned).
+    """
+    document = mdoc.parse_mdoc(raw)
+    keys, bound = issuer_keys(session, document.header, issuer, issuer, as_meta)
+    if not keys:
+        log(tr("Warning: the issuer's public key was not found; the signature could not be verified."))
+    elif not any(cose.verify_sign1(document.issuer_auth, k) for k in keys):
+        raise WalletError(tr("The credential's signature does not match the issuer's keys; it is not stored."),
+                          hint=tr("The credential received could not be checked, so it was not saved. Contact "
+                                  "the organisation that gives it and send them the technical details."))
+    elif bound:
+        log(tr("Valid issuer signature ({iss}).", iss=issuer))
+    else:
+        log(tr("Warning: the signature is valid with the keys of {host}, but they could not be tied to {iss}; "
+               "the verifier may reject it.", host=host_of(issuer), iss=issuer))
+    device = document.device_key.public_numbers()
+    for holder in holders:
+        if holder.private_key.public_key().public_numbers() == device:
+            return holder
+    raise WalletError(tr("The credential is bound to another key, not this wallet's; it is not stored."),
+                      hint=tr("The credential received could not be checked, so it was not saved. Contact "
+                              "the organisation that gives it and send them the technical details."))
 
 
 def verify_issued_credential(

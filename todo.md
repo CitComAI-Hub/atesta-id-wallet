@@ -262,12 +262,15 @@ the full manual Windows test and the CITCOM verifier trust list.
        `trusted_authorities` of type `aki`; SVG logos without external references; `haip-vci://` and
        `haip-vp://` links.
        **Conformance suite** (OpenID Foundation, run locally in Docker, November 2026):
-       - OID4VP 1.0 Final/HAIP wallet plan (SD-JWT VC, `direct_post.jwt`, custom DCQL): 8 modules
-         pass and the 9 negative ones end in the right refusal (they wait for a screenshot, a manual
+       - OID4VP 1.0 Final/HAIP wallet plan (SD-JWT VC, `direct_post.jwt`, custom DCQL): 9 modules
+         pass and the 8 negative ones end in the right refusal (they wait for a screenshot, a manual
          step of certification). Found and fixed: `state` outside the JWE, request objects without
          `typ: oauth-authz-req+jwt`, `redirect_uri` with `direct_post`, `transaction_data` ignored
-         (now refused). `alternate-happy-flow` needs a real browser to run the verifier's page
-         (the wallet hands it the `redirect_uri`, as it should). PID modules need an EUDI PID.
+         (now refused). The test plays the browser's part after the redirect (the verifier's page
+         posts the fragment back). PID modules need an EUDI PID.
+       - The same plan with **mso_mdoc** (`iso_mdl`, the suite's mDL query; an mDL issued in the test
+         by a test IACA, with the ISO 18013-5 Annex B certificate profile and a CRL): 11 modules pass,
+         including `all-mandatory-claims` and `age-over-18`.
        - OID4VCI 1.0 Final/HAIP wallet plan: every module needs wallet attestation (phase 3).
        The VP plan runs every night in CI (`tests/conformance`, `conformance.yml`). The plain
        OID4VCI wallet plan only offers `private_key_jwt`, mTLS or wallet attestation as client
@@ -289,7 +292,9 @@ the full manual Windows test and the CITCOM verifier trust list.
 - [ ] Make "issuer key not found" an error once the pilot issuers are known
 - [ ] Issuer trust list / allow-list; validate issuer `x5c` chains (today a self-signed certificate
       naming the issuer's host is taken as the issuer's key, also for status lists: see Known gaps)
-- [ ] Deferred issuance; `jwt_vc_json` and mso_mdoc if a verifier needs them
+- [x] mso_mdoc (issuance and OpenID4VP presentation; `mdoc.py`, `cose.py`); no proximity (BLE/NFC)
+- [ ] Deferred issuance; `jwt_vc_json` if a verifier needs it
+- [ ] IACA trust list for mdoc issuers (with the issuer trust list)
 - [ ] DCQL `trusted_authorities` of type `etsi_tl` (with the trusted lists); verifier attestations / OpenID Federation client_ids
 - [ ] Digital Credentials API (browser-mediated presentation), when browsers support it on desktop
 - [x] Redact secrets (codes, tokens) from the verbose log shown in *Settings → Advanced*: also

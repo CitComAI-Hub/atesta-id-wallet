@@ -359,7 +359,7 @@ class CredentialPage(Page):
         right = QVBoxLayout()
         right.setSpacing(12)
         sd = record.get("_sd")
-        flat = _flatten(sd.claims if sd else {})
+        flat = _flatten(sd.display_claims if sd else {})
         rows = [(k, v) for k, v, technical in flat if not technical]
         right.addWidget(label(tr("Data"), "sectionTitle"))
         data = Panel((20, 6, 20, 6))
@@ -392,7 +392,8 @@ class CredentialPage(Page):
         right.addWidget(info)
 
         # Identifiers and internals: there to copy for support, folded away from everybody else.
-        technical = [(tr("Technical type"), str(payload.get("vct") or record.get("credential_configuration_id") or "—")),
+        technical = [(tr("Technical type"), str(payload.get("vct") or payload.get("doctype")
+                                                or record.get("credential_configuration_id") or "—")),
                      *[(k, v) for k, v, is_technical in flat if is_technical]]
         self.technical = Panel((20, 6, 20, 6))
         for index, (key, value) in enumerate(technical):

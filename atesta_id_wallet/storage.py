@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from . import vault
+from . import mdoc, vault
 from .common import SD_JWT_FORMATS, WalletError, b64u, b64u_json, debug, host_of, humanize, log, site_of
 from .i18n import tr
 from .sdjwt import SdJwt, parse_sd_jwt
@@ -84,13 +84,15 @@ class HolderKey:
             "y": b64u(numbers.y.to_bytes(32, "big")),
         }
 
+    def sign_raw(self, data: bytes) -> bytes:
+        """ES256 signature as r || s (JWS and COSE alike)."""
+        r, s = decode_dss_signature(self.private_key.sign(data, ec.ECDSA(hashes.SHA256())))
+        return r.to_bytes(32, "big") + s.to_bytes(32, "big")
+
     def sign_jwt(self, header: dict[str, Any], payload: dict[str, Any]) -> str:
         header = {"alg": "ES256", **header}
         signing_input = f"{b64u_json(header)}.{b64u_json(payload)}".encode("ascii")
-        der = self.private_key.sign(signing_input, ec.ECDSA(hashes.SHA256()))
-        r, s = decode_dss_signature(der)
-        signature = r.to_bytes(32, "big") + s.to_bytes(32, "big")
-        return f"{signing_input.decode('ascii')}.{b64u(signature)}"
+        return f"{signing_input.decode('ascii')}.{b64u(self.sign_raw(signing_input))}"
 
 
 def profile_dir(name: str) -> Path:
@@ -325,10 +327,12 @@ def load_credentials() -> list[dict[str, Any]]:
             debug(f"Ignored {path}: not a credential of this version")
             continue
         record["_path"] = str(path)
-        if record.get("format") in SD_JWT_FORMATS:
+        parse = parse_sd_jwt if record.get("format") in SD_JWT_FORMATS else \
+            mdoc.parse_mdoc if record.get("format") == mdoc.FORMAT else None
+        if parse is not None:
             try:
                 for instance in instances:
-                    instance["_sd"] = parse_sd_jwt(instance["credential"])
+                    instance["_sd"] = parse(instance["credential"])  # an SdJwt or an Mdoc
             except Exception as exc:  # damaged credential: ignored
                 debug(f"Could not parse {path}: {exc}")
                 continue
@@ -401,7 +405,7 @@ def credential_name(record: dict[str, Any]) -> str:
 def credential_holder(record: dict[str, Any]) -> str:
     """The value that best identifies the holder (email, username, name...), if any."""
     sd: SdJwt | None = record.get("_sd")
-    claims = sd.claims if sd else {}
+    claims = sd.display_claims if sd else {}
     for keys in (("given_name", "family_name"), ("firstName", "lastName")):
         if all(isinstance(claims.get(k), str) for k in keys):
             return " ".join(claims[k] for k in keys)

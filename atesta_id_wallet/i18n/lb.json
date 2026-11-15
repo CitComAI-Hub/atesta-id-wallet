@@ -447,6 +447,8 @@
     "The login form": "De Formulaire fir d'Umeldung",
     "The login form would send the password to {target}, not to {host}. Aborting; if it is a legitimate external identity provider, use --browser-login.": "De Formulaire fir d'Umeldung géif d'Passwuert un {target} schécken, net un {host}. Ofbroch; wann et e legitimen externen Identitéitsprovider ass, benotz --browser-login.",
     "The login page": "D'Säit fir d'Umeldung",
+    "The mdoc is not valid: {problem}.": "Den mdoc ass net gëlteg: {problem}.",
+    "The mdoc's device key is not a supported EC key.": "Den Apparatschlëssel vum mdoc ass keen ënnerstëtzten EC-Schlëssel.",
     "The offer contains neither credential_offer nor credential_offer_uri.": "D'Offer enthält weder credential_offer nach credential_offer_uri.",
     "The offer does not name any credential_configuration_ids.": "D'Offer nennt keng credential_configuration_ids.",
     "The offer does not say which credential_issuer it comes from.": "D'Offer seet net, vu wéi engem credential_issuer se kënnt.",

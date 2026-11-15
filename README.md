@@ -2,7 +2,7 @@
 
 A desktop wallet for **verifiable credentials**. It receives credentials with
 OpenID4VCI 1.0 and uses them to sign in with OpenID4VP 1.0, in SD-JWT VC format
-(`dc+sd-jwt`). It replaces a phone wallet such as Lissi: you get credentials from
+(`dc+sd-jwt`) or as ISO mdoc (`mso_mdoc`). It replaces a phone wallet such as Lissi: you get credentials from
 Keycloak and log in to verifiers (e.g. the CITCOM/VRAIN marketplace) from your laptop.
 
 <picture>
@@ -273,7 +273,8 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 
 ## Limitations
 
-- SD-JWT VC only (`dc+sd-jwt` / `vc+sd-jwt`). No `jwt_vc_json`, mso_mdoc or deferred issuance.
+- SD-JWT VC (`dc+sd-jwt` / `vc+sd-jwt`) and ISO mdoc (`mso_mdoc`, over OpenID4VP; no proximity
+  presentation by Bluetooth or NFC). No `jwt_vc_json` or deferred issuance.
 - Verifier client_id schemes: `x509_san_dns`, `x509_hash` and `redirect_uri` (the last one only
   with `--allow-unverified`). DIDs, verifier attestations and OpenID Federation are not supported.
 - Supported `response_mode` values: `direct_post` and `direct_post.jwt` (ECDH-ES + AES-GCM).
@@ -296,7 +297,8 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 | `common` | Errors, messages, base64url/JWT/JSON helpers, HTTP helpers |
 | `i18n` | `tr()` / `tr_n()` translations with English fallback; `es.json`, `da.json` catalogs |
 | `jose` | JWS verification, JWK/X.509 keys, JWE encryption of responses |
-| `cose` | COSE_Sign1 and CWT (CBOR): status lists in CWT form |
+| `cose` | COSE_Sign1 and CWT (CBOR): status lists in CWT form, the mdoc issuer signature |
+| `mdoc` | ISO 18013-5 mdoc: IssuerSigned checked against its MSO, DeviceResponse for OpenID4VP |
 | `sdjwt` | SD-JWT VC parsing (strict) and disclosure selection |
 | `storage` | Profiles, holder key, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
 | `vault` | Profile encryption: data key in the system keyring or wrapped with the wallet password |

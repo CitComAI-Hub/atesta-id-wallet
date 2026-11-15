@@ -447,6 +447,8 @@
     "The login form": "Le formulaire de connexion",
     "The login form would send the password to {target}, not to {host}. Aborting; if it is a legitimate external identity provider, use --browser-login.": "Le formulaire de connexion enverrait le mot de passe à {target}, et non à {host}. Abandon ; s’il s’agit d’un fournisseur d’identité externe légitime, utilisez --browser-login.",
     "The login page": "La page de connexion",
+    "The mdoc is not valid: {problem}.": "Le mdoc n’est pas valide : {problem}.",
+    "The mdoc's device key is not a supported EC key.": "La clé d’appareil du mdoc n’est pas une clé EC prise en charge.",
     "The offer contains neither credential_offer nor credential_offer_uri.": "L’offre ne contient ni credential_offer ni credential_offer_uri.",
     "The offer does not name any credential_configuration_ids.": "L’offre ne nomme aucune credential_configuration_ids.",
     "The offer does not say which credential_issuer it comes from.": "L’offre n’indique pas de quel credential_issuer elle provient.",

@@ -1,6 +1,6 @@
 # The OpenID Foundation conformance suite's OID4VP 1.0 Final/HAIP wallet plan against the wallet
-# (tests/conformance), with a credential from the test Keycloak. Nightly, by hand, and when the
-# presentation code or these tests change.
+# (tests/conformance): SD-JWT VC from the test Keycloak, and an mDL issued by the test itself.
+# Nightly, by hand, and when the presentation code or these tests change.
 name: Conformance
 
 on:
@@ -13,6 +13,8 @@ on:
       - "atesta_id_wallet/trust.py"
       - "atesta_id_wallet/jose.py"
       - "atesta_id_wallet/sdjwt.py"
+      - "atesta_id_wallet/mdoc.py"
+      - "atesta_id_wallet/cose.py"
       - "atesta_id_wallet/common.py"
       - "tests/conformance/**"
       - ".github/workflows/conformance.yml"

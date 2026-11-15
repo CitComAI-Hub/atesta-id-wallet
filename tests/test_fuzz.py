@@ -22,7 +22,7 @@ from helpers import isolated_home, make_sd_jwt  # noqa: E402  (first: sets the t
 import cbor2  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 
-from atesta_id_wallet import common, cose, sdjwt, storage, vci, vp  # noqa: E402
+from atesta_id_wallet import common, cose, mdoc, sdjwt, storage, vci, vp  # noqa: E402
 
 ROUNDS = int(os.environ.get("ATESTA_FUZZ_ROUNDS", "400"))
 SEED = int(os.environ.get("ATESTA_FUZZ_SEED", "20261103"))
@@ -140,6 +140,21 @@ class FuzzTests(unittest.TestCase):
             read(bytes(data))
             read(cbor2.dumps(cbor2.CBORTag(18, [cbor2.dumps(random_json(self.rng)), random_json(self.rng) or {},
                                                 b"", b""])))
+
+    def test_mdoc(self):
+        """An IssuerSigned from an issuer: only WalletError, whatever is changed in it."""
+        from helpers import make_cert
+        from test_mdoc import make_mdoc
+        issuer_key = ec.generate_private_key(ec.SECP256R1())
+        valid = make_mdoc(storage.HolderKey.generate(), issuer_key, make_cert(issuer_key, "issuer.example"))
+        mdoc.parse_mdoc(valid)
+        raw = common.b64u_decode(valid)
+        for _ in range(ROUNDS):
+            self.only_wallet_errors(mdoc.parse_mdoc, mutate(self.rng, valid))
+            data = bytearray(raw)
+            for _ in range(self.rng.randint(1, 3)):
+                data[self.rng.randrange(len(data))] = self.rng.randrange(256)
+            self.only_wallet_errors(mdoc.parse_mdoc, common.b64u(bytes(data)))
 
     def test_offers(self):
         class NoNetwork:

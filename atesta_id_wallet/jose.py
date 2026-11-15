@@ -140,18 +140,32 @@ def _concat_kdf(z: bytes, alg_id: str, apu: bytes, apv: bytes, key_bits: int) ->
     return out[: key_bits // 8]
 
 
-def encrypt_response_jwe(payload: dict[str, Any], request: dict[str, Any], *, apv: str | None) -> str:
-    """JWE ECDH-ES (direct key agreement) + AxxxGCM for response_mode direct_post.jwt."""
+def response_encryption_jwk(request: dict[str, Any]) -> dict[str, Any]:
+    """The verifier's key the response is encrypted to: EC, for ECDH-ES (OpenID4VP 1.0 §8.3)."""
     meta = request.get("client_metadata")
     meta = meta if isinstance(meta, dict) else {}
     jwks = meta.get("jwks")
     keys = jwks.get("keys") if isinstance(jwks, dict) else None
-    # The verifier key must be usable for ECDH-ES (OpenID4VP 1.0 §8.3: the JWE alg is the key's).
     jwk = next((k for k in keys if isinstance(k, dict) and k.get("kty") == "EC" and k.get("use", "enc") == "enc"
                 and isinstance(k.get("crv"), str) and k["crv"] in _CURVES
+                and isinstance(k.get("x"), str) and isinstance(k.get("y"), str)
                 and k.get("alg", "ECDH-ES") == "ECDH-ES"), None) if isinstance(keys, list) else None
     if jwk is None:
         raise WalletError(tr("direct_post.jwt requires an EC encryption key in client_metadata.jwks."))
+    return jwk
+
+
+def jwk_thumbprint(jwk: dict[str, Any]) -> bytes:
+    """JWK SHA-256 Thumbprint (RFC 7638) of an EC key."""
+    members = {name: jwk[name] for name in ("crv", "kty", "x", "y")}
+    return hashlib.sha256(json.dumps(members, separators=(",", ":"), sort_keys=True).encode("utf-8")).digest()
+
+
+def encrypt_response_jwe(payload: dict[str, Any], request: dict[str, Any], *, apv: str | None) -> str:
+    """JWE ECDH-ES (direct key agreement) + AxxxGCM for response_mode direct_post.jwt."""
+    meta = request.get("client_metadata")
+    meta = meta if isinstance(meta, dict) else {}
+    jwk = response_encryption_jwk(request)
     enc_values = (
         meta.get("encrypted_response_enc_values_supported")
         or [meta.get("authorization_encrypted_response_enc") or "A128GCM"]
