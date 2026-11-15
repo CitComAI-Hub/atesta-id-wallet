@@ -69,9 +69,9 @@ catalogs (native review still pending, `todo.md` item 10).
    window (French, the longest texts); `ATESTA_ID_WALLET_TEXT_SCALE=1.5` tries a size by hand.
 4. **Screen readers** (sev. 2). Names and keyboard are in place, but nobody has tried the window with
    Orca (Linux) or NVDA (Windows). To do before the pilot if a participant needs one.
-5. **Technical sections of Settings** (sev. 2). *Trust* (CAs, remembered verifiers) and *Advanced*
-   (protocol log) are shown to everybody next to language and backup. Move them under a collapsed
-   "Advanced" area.
+5. ~~**Technical sections of Settings**~~ (sev. 2) — **done**: *Trust* (CAs, remembered verifiers)
+   and *Advanced* (protocol log) are after *About*, behind "Show technical settings", folded until
+   opened (it stays open while the window lives). The UX audit opens them in its own screen.
 6. **Credential names from the issuers** (sev. 2). "Legal Person Credential" and "User Credential"
    are built from the technical type because the issuer publishes no display name. Ask CITCOM and
    PGTEC to publish `display.name` (and colours, logo) in their metadata.

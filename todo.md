@@ -240,8 +240,8 @@ the full manual Windows test and the CITCOM verifier trust list.
 11. [ ] **UX**: expert review and a measured second round ([docs/UX-REVIEW.md](docs/UX-REVIEW.md): 28 problems
        fixed, WCAG 2.2 AA checks, readability, task cost), automated in `tests/test_ux.py` (every push) and
        `.github/workflows/ux.yml` (every night, report with screenshots). Text size done (follows the
-       system's, audited at 200 %), help in the app (sidebar, Settings, error panel). Pending there:
-       scanning by screenshot, a screen reader test, technical sections of Settings. Then a
+       system's, audited at 200 %), help in the app (sidebar, Settings, error panel), technical
+       sections of Settings folded. Pending there: scanning by screenshot, a screen reader test. Then a
        usability test with 5–8 people of the pilot profile (part of item 7).
 12. [x] **Revocation check** (Token Status List, `status` claim; `status.py`): before presenting (a
        revoked or suspended credential is not offered), in the window in the background, and with

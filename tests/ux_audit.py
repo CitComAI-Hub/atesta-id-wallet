@@ -343,6 +343,8 @@ def screens(gui: Any) -> list[tuple[str, Callable[[Any], None]]]:
         ("activity-contact", lambda w: w.activity_page.show_contact("x509_san_dns:marketplace.citcom.example")),
         ("settings", lambda w: w._nav("settings")),
         ("settings-end", _scroll_settings_to_end),
+        ("settings-technical", lambda w: (setattr(w, "advanced_settings_open", True), w.settings_page.refresh(),
+                                          _scroll_settings_to_end(w), setattr(w, "advanced_settings_open", False))),
         ("scan", lambda w: (w._go("wallet"), w.scan())),
         ("offer", lambda w: w._ask_offer(_Ask(ui.OfferSummary("https://keycloak.citcom.example/realms/citcom",
                                                               "CITCOM TEF", ["CITCOM membership"], False)))),

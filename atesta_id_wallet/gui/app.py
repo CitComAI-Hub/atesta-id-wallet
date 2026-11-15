@@ -209,6 +209,7 @@ class MainWindow(QMainWindow):
         self._status_running = False
         self.prompter = GuiPrompter(self.bridge)
         self.busy = False
+        self.advanced_settings_open = False  # Settings' technical sections, folded at start
         self._instance_server: QLocalServer | None = None  # set by main(): links from later launches
         self.records: list[dict[str, Any]] = []
         self.log_text = ""

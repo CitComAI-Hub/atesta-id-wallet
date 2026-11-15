@@ -691,31 +691,6 @@ class SettingsPage(Page):
             _setting(tr("Restore a backup"), tr("It is restored into the active profile, which must be empty."),
                      self._action(tr("Restore…"), w.restore, "archive-restore")),
         ])
-        anchors = load_trust_anchors()
-        verifiers = load_config().get("verifiers", {})
-        anchor_text = ", ".join(c.subject.rfc4514_string() for c in anchors) or tr("None yet.")
-        self._section(tr("Trust"), [
-            _setting(tr("Verifier authorities"), tr("Verifiers with certificates from these CAs are shown as trusted. "
-                                                    "{authorities}", authorities=anchor_text),
-                     self._action(tr("Add CA…"), w.add_ca, "shield-check")),
-            _setting(tr("Remembered verifiers"),
-                     tr_n("{n} verifier whose certificate is remembered since its first use; you will be warned if "
-                          "it changes.", "{n} verifiers whose certificate is remembered since their first use; you "
-                          "will be warned if it changes.", len(verifiers)),
-                     self._action(tr("Forget all"), w.forget_verifiers, enabled=bool(verifiers))),
-        ])
-        verbose = QCheckBox()
-        verbose.setChecked(common.VERBOSE)
-        verbose.toggled.connect(lambda on: setattr(common, "VERBOSE", on))
-        log = QPlainTextEdit(w.log_text)
-        log.setReadOnly(True)
-        log.setMinimumHeight(160)
-        log.setPlaceholderText(tr("No technical activity in this session."))
-        self._section(tr("Advanced"), [
-            _setting(tr("Protocol details"), tr("Log the OpenID4VC requests and responses (for debugging)."),
-                     verbose),
-            log,
-        ])
         auto_update = QCheckBox()
         auto_update.setChecked(updates.automatic_check_enabled())
         auto_update.toggled.connect(w.set_update_check)
@@ -750,12 +725,58 @@ class SettingsPage(Page):
                                   tr("Install it over this one; your credentials and settings are kept."),
                                   self._action(tr("Download"), w.open_release, "download", "primary")))
         self._section(tr("About"), about)
+        # For technicians (verifier trust, protocol log): folded away, open while the window lives.
+        open_ = self.window_.advanced_settings_open
+        toggle = button(tr("Hide technical settings") if open_ else tr("Show technical settings"), "ghost",
+                        "chevron-down")
+        toggle.setStyleSheet("padding-left: 0px;")
+        self.column.addSpacing(8)
+        self.column.addWidget(toggle, alignment=Qt.AlignmentFlag.AlignLeft)
+        technical = QWidget()
+        advanced = QVBoxLayout(technical)
+        advanced.setContentsMargins(0, 0, 0, 0)
+        advanced.setSpacing(10)
+        anchors = load_trust_anchors()
+        verifiers = load_config().get("verifiers", {})
+        anchor_text = ", ".join(c.subject.rfc4514_string() for c in anchors) or tr("None yet.")
+        self._section(tr("Trust"), column=advanced, rows=[
+            _setting(tr("Verifier authorities"), tr("Verifiers with certificates from these CAs are shown as trusted. "
+                                                    "{authorities}", authorities=anchor_text),
+                     self._action(tr("Add CA…"), w.add_ca, "shield-check")),
+            _setting(tr("Remembered verifiers"),
+                     tr_n("{n} verifier whose certificate is remembered since its first use; you will be warned if "
+                          "it changes.", "{n} verifiers whose certificate is remembered since their first use; you "
+                          "will be warned if it changes.", len(verifiers)),
+                     self._action(tr("Forget all"), w.forget_verifiers, enabled=bool(verifiers))),
+        ])
+        verbose = QCheckBox()
+        verbose.setChecked(common.VERBOSE)
+        verbose.toggled.connect(lambda on: setattr(common, "VERBOSE", on))
+        log = QPlainTextEdit(w.log_text)
+        log.setReadOnly(True)
+        log.setMinimumHeight(160)
+        log.setPlaceholderText(tr("No technical activity in this session."))
+        self._section(tr("Advanced"), column=advanced, rows=[
+            _setting(tr("Protocol details"), tr("Log the OpenID4VC requests and responses (for debugging)."),
+                     verbose),
+            log,
+        ])
+        technical.setVisible(open_)
+        self.column.addWidget(technical)
+
+        def show_technical() -> None:
+            self.window_.advanced_settings_open = not technical.isVisible()
+            technical.setVisible(self.window_.advanced_settings_open)
+            toggle.setText(tr("Hide technical settings") if technical.isVisible() else tr("Show technical settings"))
+            self._fit_rows()
+        toggle.clicked.connect(show_technical)
         self.column.addStretch()
         self._fit_rows()
 
-    def _section(self, title: str, rows: list[QWidget]) -> None:
-        self.column.addSpacing(8)
-        self.column.addWidget(label(title.upper(), "sidebarCaption"))
+    def _section(self, title: str, rows: list[QWidget], column: QVBoxLayout | None = None) -> None:
+        column = column or self.column
+        column.addSpacing(8)
+        column.addWidget(label(title.upper(), "sidebarCaption"))
         panel = Panel((20, 2, 20, 2))
         for index, row in enumerate(rows):
             panel.body.addWidget(row)
@@ -763,7 +784,7 @@ class SettingsPage(Page):
                 panel.body.addWidget(hline())
         if isinstance(rows[-1], QPlainTextEdit):
             panel.body.addSpacing(14)
-        self.column.addWidget(panel)
+        column.addWidget(panel)
 
     def _action(self, text: str, slot: Any, icon: str | None = None, kind: str | None = None,
                 enabled: bool = True) -> QWidget:
