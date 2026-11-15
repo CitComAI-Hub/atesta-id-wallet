@@ -104,6 +104,7 @@ from .widgets import (
     clear_logo_cache,
     esc,
     keyboard_focus_ring,
+    fingerprint_label,
     label,
     qapp,
 )
@@ -297,7 +298,8 @@ class MainWindow(QMainWindow):
         brand = QHBoxLayout()
         brand.setSpacing(10)
         brand.addWidget(app_logo(34), alignment=Qt.AlignmentFlag.AlignVCenter)
-        brand.addWidget(label("Atesta ID Wallet", "appName"), 1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # Two lines if the system's text is large (it never shrinks the sidebar).
+        brand.addWidget(label("Atesta ID Wallet", "appName", wrap=True), 1, alignment=Qt.AlignmentFlag.AlignVCenter)
         column.addLayout(brand)
         column.addSpacing(28)
 
@@ -484,12 +486,12 @@ class MainWindow(QMainWindow):
         self._sheet(ResultSheet(ok, title, body, self._close_sheet, **kwargs))
 
     def _confirm(self, title: str, body: str, action: Callable[[], None], *, confirm_text: str | None = None,
-                 danger: bool = False, icon: str = "info") -> None:
+                 danger: bool = False, icon: str = "info", extra: QWidget | None = None) -> None:
         def answer(ok: bool) -> None:
             self._close_sheet()
             if ok:
                 action()
-        self._sheet(ConfirmSheet(title, body, answer, confirm_text=confirm_text, danger=danger, icon=icon))
+        self._sheet(ConfirmSheet(title, body, answer, confirm_text=confirm_text, danger=danger, icon=icon, extra=extra))
 
     # -- first start -----------------------------------------------------------
 
@@ -1055,12 +1057,11 @@ class MainWindow(QMainWindow):
             self._confirm(
                 tr("Trust this list?"),
                 tr("<b>{operator}</b> ({territory}) lists {n} services in force. Credentials from the organisations "
-                   "they certify will say so.<br><br>Signed by: {subject}<br>SHA-256:<br><tt>{fingerprint}</tt><br><br>"
+                   "they certify will say so.<br><br>Signed by: {subject}<br><br>"
                    "Compare the fingerprint with the one the list's operator publishes.",
                    operator=esc(trusted.operator), territory=esc(trusted.territory or "-"), n=len(trusted.services),
-                   subject=esc(trusted.signer.subject.rfc4514_string()),
-                   fingerprint=trustlist.fingerprint(trusted.signer, lines=2).replace("\n", "<br>")),
-                add, confirm_text=tr("Trust"), icon="shield-check")
+                   subject=esc(trusted.signer.subject.rfc4514_string())),
+                add, confirm_text=tr("Trust"), icon="shield-check", extra=fingerprint_label(trusted.signer))
         self._ask_text_then(tr("Add a trusted list"), tr("Address of the trusted list (ETSI TS 119 612, XML)."), fetch,
                             placeholder="https://…", icon="shield-check")
 

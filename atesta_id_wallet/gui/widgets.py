@@ -546,6 +546,20 @@ class Spinner(QWidget):
         painter.end()
 
 
+def fingerprint_label(cert: Any) -> QLabel:
+    """A certificate's SHA-256 fingerprint, in monospaced lines the user can select and compare."""
+    from .. import trustlist
+
+    lines = 2 if theme.text_scale < 1.5 else 4  # no spaces to wrap at: shorter lines for large text
+    widget = label("SHA-256\n" + trustlist.fingerprint(cert, lines=lines), "caption", selectable=True)
+    font = QFont("monospace")
+    font.setStyleHint(QFont.StyleHint.Monospace)
+    font.setPixelSize(theme.px(12))
+    widget.setFont(font)
+    widget.setAccessibleName(tr("SHA-256 fingerprint: {fingerprint}", fingerprint=trustlist.fingerprint(cert)))
+    return widget
+
+
 def pill(text: str, color: str, background: str) -> QLabel:
     widget = label(text, "pill")
     widget.setStyleSheet(f"QLabel#pill {{ color: {color}; background: {background}; }}")

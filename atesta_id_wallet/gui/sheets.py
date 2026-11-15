@@ -40,6 +40,7 @@ from .widgets import (
     button,
     esc,
     fade_in,
+    fit_width,
     keyboard_focus_ring,
     label,
     on_click,
@@ -142,6 +143,9 @@ class Overlay(QWidget):
             super().keyPressEvent(event)
 
 
+MAX_SHEET_WIDTH = 580  # at the normal text size: the smallest window (920) minus the sidebar stays around it
+
+
 class Sheet(QFrame):
     """Panel with icon, title, text, content and buttons."""
 
@@ -195,6 +199,7 @@ class Sheet(QFrame):
     def add_buttons(self, *buttons: QPushButton) -> None:
         """In a row, right-aligned; one under the other, full width, when the row does not fit (long translations)."""
         margins = self.layout_.contentsMargins()
+        self.fit_buttons(*buttons)
         available = self.width() - margins.left() - margins.right()
         needed = sum(b.sizeHint().width() for b in buttons) + 10 * (len(buttons) - 1)
         self.layout_.addSpacing(8)
@@ -211,6 +216,13 @@ class Sheet(QFrame):
         for widget in reversed(buttons):  # the main action (last in the row) on top
             column.addWidget(widget)
         self.layout_.addLayout(column)
+
+    def fit_buttons(self, *buttons: QPushButton) -> None:
+        """A button cannot wrap its text: the panel widens to its widest one (fonts differ between systems)."""
+        margins = self.layout_.contentsMargins()
+        widest = max((fit_width(b) for b in buttons), default=0) + margins.left() + margins.right()
+        if widest > self.width():
+            self.setFixedWidth(min(widest, theme.wide(MAX_SHEET_WIDTH)))
 
     def focus(self) -> None:
         """The focus goes inside the panel, or Tab would go on through the page behind it (no ring: not the keyboard)."""
@@ -284,6 +296,7 @@ class ResultSheet(Sheet):
         if secondary:  # a discreet way out, e.g. undo what just happened
             other = button(secondary[0], "ghost")
             other.clicked.connect(secondary[1])
+            self.fit_buttons(other)
             self.add(other)
         if action:
             act = button(action[0], "primary")
@@ -306,8 +319,10 @@ class ResultSheet(Sheet):
 class ConfirmSheet(Sheet):
     def __init__(self, title: str, body: str, on_answer: Callable[[bool], None], *,
                  confirm_text: str | None = None, danger: bool = False, icon: str = "info",
-                 cancel_text: str | None = None, step: str = ""):
+                 cancel_text: str | None = None, step: str = "", extra: QWidget | None = None):
         super().__init__(icon=icon, tone="danger" if danger else "accent", title=title, body=body)
+        if extra is not None:
+            self.add(extra)
         if step:
             self.add(label(step, "caption"))
         confirm_text = confirm_text or tr("Continue")
@@ -597,7 +612,7 @@ class LicensesSheet(Sheet):
         rows.setSpacing(6)
         for name, licence, url in THIRD_PARTY:
             line = QHBoxLayout()
-            line.addWidget(label(name, "claimName"), 1)
+            line.addWidget(label(name, "claimName", wrap=True), 1)
             line.addWidget(label(licence, "caption"))
             rows.addLayout(line)
             rows.addWidget(label(url, "caption", selectable=True))
