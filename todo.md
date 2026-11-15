@@ -290,12 +290,15 @@ the full manual Windows test and the CITCOM verifier trust list.
       - Decide first: a hardware key cannot be exported, so backups cannot restore credentials
         on another computer; a new or broken laptop means asking the issuers again.
 - [ ] Make "issuer key not found" an error once the pilot issuers are known
-- [ ] Issuer trust list / allow-list; validate issuer `x5c` chains (today a self-signed certificate
-      naming the issuer's host is taken as the issuer's key, also for status lists: see Known gaps)
+- [x] Trusted lists (ETSI TS 119 612, `trustlist.py`): added by the user with the signer pinned;
+      issuers they certify are shown as such; DCQL `etsi_tl`. Done November 2026.
+- [ ] Issuer allow-list (only receive from issuers in a list); validate issuer `x5c` chains also
+      without a list (today a self-signed certificate naming the issuer's host is taken as the
+      issuer's key, also for status lists: see Known gaps)
 - [x] mso_mdoc (issuance and OpenID4VP presentation; `mdoc.py`, `cose.py`); no proximity (BLE/NFC)
 - [ ] Deferred issuance; `jwt_vc_json` if a verifier needs it
-- [ ] IACA trust list for mdoc issuers (with the issuer trust list)
-- [ ] DCQL `trusted_authorities` of type `etsi_tl` (with the trusted lists); verifier attestations / OpenID Federation client_ids
+- [ ] IACA lists for mdoc issuers (VICAL); the EU LOTL if a pilot needs qualified providers
+- [ ] Verifier attestations / OpenID Federation client_ids; verifiers (relying party access certificates) from trusted lists
 - [ ] Digital Credentials API (browser-mediated presentation), when browsers support it on desktop
 - [x] Redact secrets (codes, tokens) from the verbose log shown in *Settings → Advanced*: also
       credentials and proofs (any JWT), in the window's technical details and in CLI errors (`common.redact`)

@@ -15,7 +15,7 @@ from urllib.parse import parse_qs
 import requests
 from cryptography import x509
 
-from . import mdoc, status
+from . import mdoc, status, trustlist
 from .common import (
     REQUEST_SCHEMES,
     SD_JWT_FORMATS,
@@ -283,21 +283,33 @@ def _usable_authorities(query: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _trusted_by(query: dict[str, Any], sd: SdJwt) -> bool:
     """
-    Whether the credential matches the query's trusted_authorities (OpenID4VP 1.0 §6.1.1). Only the
-    'aki' type can be told here: when the list has any other (etsi_tl, openid_federation), the
-    credential might match that one, so nothing is left out. No usable entry: nothing is left out.
+    Whether the credential matches the query's trusted_authorities (OpenID4VP 1.0 §6.1.1): 'aki'
+    (§6.1.1.1) by the AuthorityKeyIdentifiers of its issuer's chain, 'etsi_tl' (§6.1.1.2) by the
+    trusted lists the user added. An entry the wallet cannot tell (openid_federation, a list the
+    user did not add or that is out of date) might be the one that matches, so nothing is left out.
+    No usable entry: nothing is left out.
     """
     authorities = _usable_authorities(query)
-    if not authorities or any(a["type"] != "aki" for a in authorities):
+    if not authorities:
         return True
-    wanted = set()
+    lists = {t.url: t for t in trustlist.current(None)} if any(a["type"] == "etsi_tl" for a in authorities) else {}
     for authority in authorities:
-        for value in authority["values"]:
-            try:
-                wanted.add(b64u_decode(value))
-            except ValueError:
-                continue
-    return bool(wanted & _authority_key_ids(sd))
+        if authority["type"] == "aki":
+            wanted = set()
+            for value in authority["values"]:
+                try:
+                    wanted.add(b64u_decode(value))
+                except ValueError:
+                    continue
+            if wanted & _authority_key_ids(sd):
+                return True
+        elif authority["type"] == "etsi_tl":
+            known = [lists[url] for url in authority["values"] if url in lists]
+            if len(known) < len(authority["values"]) or trustlist.certification(sd, known):
+                return True
+        else:
+            return True
+    return False
 
 
 def _dcql_problem(dcql: Any) -> str | None:

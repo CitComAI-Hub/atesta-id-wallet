@@ -224,6 +224,25 @@ Without a trusted CA, the wallet works like SSH and trusts a verifier on first u
 verifier's certificate after the first successful login and warns loudly if the certificate
 changes. See [docs/SECURITY.md](docs/SECURITY.md).
 
+## Trusted lists
+
+Trusted lists (ETSI TS 119 612) name trust service providers and the certificates of their
+services, signed by a scheme operator (a data space, a Member State). With a list added, a
+credential whose issuer's certificate chains to one of those services says so ("Certified by"
+in its details), and verifiers that ask for credentials from issuers in a list (DCQL
+`trusted_authorities` of type `etsi_tl`) are answered with them.
+
+```bash
+atesta-id-wallet trust add-list https://trust.example/tl.xml                  # shows the signer to compare
+atesta-id-wallet trust add-list https://trust.example/tl.xml --signer op.pem   # or pins a known one
+atesta-id-wallet trust remove-list https://trust.example/tl.xml
+```
+
+In the window: *Settings → Show technical settings → Trusted lists → Add list…*. The certificate
+that signs the list is pinned when it is added: compare its SHA-256 fingerprint with the one the
+operator publishes. The list is downloaded again after its NextUpdate, and only accepted signed by
+that certificate. No list is added by default.
+
 ## Useful options
 
 - `issue --browser-login`: log in to Keycloak in the browser instead of the wallet. You need
@@ -299,6 +318,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 | `jose` | JWS verification, JWK/X.509 keys, JWE encryption of responses |
 | `cose` | COSE_Sign1 and CWT (CBOR): status lists in CWT form, the mdoc issuer signature |
 | `mdoc` | ISO 18013-5 mdoc: IssuerSigned checked against its MSO, DeviceResponse for OpenID4VP |
+| `trustlist` | ETSI TS 119 612 trusted lists: signature by the pinned certificate (signxml), issuers they certify |
 | `sdjwt` | SD-JWT VC parsing (strict) and disclosure selection |
 | `storage` | Profiles, holder key, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
 | `vault` | Profile encryption: data key in the system keyring or wrapped with the wallet password |

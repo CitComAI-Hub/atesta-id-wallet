@@ -15,6 +15,8 @@ dependencies = [
     "Pillow>=10",
     "keyring>=24",
     "cbor2>=5.6",  # CWT status lists, mso_mdoc (CBOR, COSE)
+    "signxml>=5.1",  # trusted lists (ETSI TS 119 612): XMLDSig/XAdES
+    "lxml>=5.2.1",
 ]
 
 [project.optional-dependencies]
@@ -51,3 +53,7 @@ exclude = ["\\.venv/"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 
+[[tool.mypy.overrides]]
+# lxml has no type information of its own (trusted lists, trustlist.py; signxml is typed).
+module = ["lxml", "lxml.*"]
+ignore_missing_imports = true

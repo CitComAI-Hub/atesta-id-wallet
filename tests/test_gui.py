@@ -163,6 +163,38 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(requested, [(FakeIssuer.base, ["Legal"])])
         self.assertIn("names", storage.load_config()["issuers"][FakeIssuer.base]["catalog"])
 
+    def test_trusted_lists_in_settings(self):
+        from atesta_id_wallet import trustlist
+        signer = make_cert(ec.generate_private_key(ec.SECP256R1()), "operator.example", ca=True)
+        listed = trustlist.TrustedList("https://tl.example/tl.xml", "Data space operator", "EU",
+                                       time.time() + 86400, [], signer)
+        self.addCleanup(setattr, gui.trustlist, "preview", gui.trustlist.preview)
+        asked = []
+        gui.trustlist.preview = lambda session, url, signer=None: asked.append(url) or listed
+        self.window.add_trusted_list()
+        sheet = self.window.overlay.sheet
+        sheet.field.setText(" https://tl.example/tl.xml ")
+        [accept] = [b for b in sheet.findChildren(gui.QPushButton) if b.text() == "Continuar"]
+        accept.click()
+        self.wait()
+        self.assertEqual(asked, ["https://tl.example/tl.xml"])
+        confirm = self.window.overlay.sheet
+        shown = " ".join(w.text() for w in confirm.findChildren(QLabel))
+        self.assertIn("Data space operator", shown)
+        self.assertIn(trustlist.fingerprint(signer, lines=2).split("\n")[0], shown)  # compared before trusting
+        [trust] = [b for b in confirm.findChildren(gui.QPushButton) if b.text() == "Confiar"]
+        trust.click()
+        self.assertEqual([e["url"] for e in trustlist.configured()], ["https://tl.example/tl.xml"])
+        self.window._nav("settings")
+        self.window.advanced_settings_open = True
+        self.window.settings_page.refresh()
+        labels = [w.text() for w in self.window.settings_page.findChildren(QLabel)]
+        self.assertIn("Data space operator", labels)
+        self.window.remove_trusted_list("https://tl.example/tl.xml")
+        [remove] = [b for b in self.window.overlay.sheet.findChildren(gui.QPushButton) if b.text() == "Eliminar"]
+        remove.click()
+        self.assertEqual(trustlist.configured(), [])
+
     def test_activity_by_contact(self):
         for event in ({"type": "issued", "party": "Ayuntamiento", "party_id": "https://i.example/r"},
                       {"type": "presented", "party": "Verificador", "party_id": "x509_san_dns:v.example"},

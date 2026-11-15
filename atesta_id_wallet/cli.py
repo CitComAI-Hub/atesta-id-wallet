@@ -16,8 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from cryptography import x509
 
-from . import common, i18n, status, storage, updates, vault
+from . import common, i18n, status, storage, trustlist, updates, vault
 from .common import Cancelled, WalletError, __version__, confirm, log, new_session, printable
 from .desktop import (
     FROZEN,
@@ -321,6 +322,28 @@ def cmd_trust(args: argparse.Namespace) -> int:
         target.unlink()
         print(tr("✔ {file} removed.", file=target.name))
         return 0
+    if args.action == "add-list":
+        if not args.target:
+            raise WalletError(tr("Give the address of the trusted list."))
+        signer = None
+        if args.signer:
+            signer = x509.load_pem_x509_certificate(Path(args.signer).expanduser().read_bytes())
+        trusted = trustlist.preview(new_session(), args.target, signer)
+        print(printable(tr("Trusted list of {operator} ({territory}): {n} services in force.",
+                           operator=trusted.operator, territory=trusted.territory or "-", n=len(trusted.services))))
+        print(printable(tr("Signed by: {subject}", subject=trusted.signer.subject.rfc4514_string())))
+        print(tr("SHA-256 fingerprint: {fingerprint}", fingerprint=trustlist.fingerprint(trusted.signer)))
+        if signer is None and not confirm(tr("Compare the fingerprint with the one the list's operator publishes. "
+                                             "Trust this list and its signing certificate?"), assume_yes=args.yes):
+            raise Cancelled()
+        trustlist.add(trusted)
+        print(tr("✔ Done."))
+        return 0
+    if args.action == "remove-list":
+        if not trustlist.remove(args.target or ""):
+            raise WalletError(tr("No trusted list has the address '{url}'.", url=args.target))
+        print(tr("✔ Done."))
+        return 0
     if args.action == "forget":
         config = load_config()
         verifiers = config.get("verifiers", {})
@@ -341,6 +364,11 @@ def cmd_trust(args: argparse.Namespace) -> int:
     for client_id, info in load_config().get("verifiers", {}).items():
         used = time.strftime("%Y-%m-%d", time.localtime(info.get("last_used", 0)))
         print(f"  {client_id}  " + tr("(last used {date})", date=used))
+    print("\n" + tr("Trusted lists (issuers certified by their providers):"))
+    for entry in trustlist.configured():
+        until = time.strftime("%Y-%m-%d", time.localtime(entry.get("next_update", 0)))
+        print(printable(f"  {entry.get('url')}  {entry.get('operator', '')}  ")
+              + tr("({n} services, next update {date})", n=len(entry.get("services") or []), date=until))
     return 0
 
 
@@ -485,8 +513,11 @@ def build_parser() -> argparse.ArgumentParser:
     profiles.set_defaults(func=cmd_profiles)
 
     trust = sub.add_parser("trust", help=tr("Trusted CAs and remembered verifiers"))
-    trust.add_argument("action", nargs="?", choices=("list", "add-ca", "remove-ca", "forget"), default="list")
-    trust.add_argument("target", nargs="?", metavar=tr("FILE|NAME|CLIENT_ID"))
+    trust.add_argument("action", nargs="?", choices=("list", "add-ca", "remove-ca", "forget", "add-list", "remove-list"),
+                       default="list")
+    trust.add_argument("target", nargs="?", metavar=tr("FILE|NAME|CLIENT_ID|URL"))
+    trust.add_argument("--signer", metavar="PEM",
+                       help=tr("With add-list: the certificate that signs the list (else shown to compare)."))
     trust.add_argument("--yes", "-y", action="store_true")
     trust.set_defaults(func=cmd_trust)
 

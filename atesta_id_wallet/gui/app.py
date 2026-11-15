@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, status, storage, updates, vault
+from .. import common, i18n, status, storage, trustlist, updates, vault
 from ..common import Cancelled, WalletError, __version__, humanize, new_session
 from ..desktop import (
     APP_ICON,
@@ -785,6 +785,11 @@ class MainWindow(QMainWindow):
                              lambda: known_issuer_for(new_session(), exc.wanted),
                              lambda found: self._missing_credential(exc, found), "present")
         receiving = self._flow == "issue"
+        if self._flow == "trustlist" and isinstance(exc, (WalletError, requests.RequestException)):
+            return self._result(False, tr("Could not add the trusted list"),
+                                tr("The address did not give a trusted list the wallet can check. Make sure it is the "
+                                   "list's own address (an XML file signed by its operator) and try again."),
+                                details=str(exc))
         if isinstance(exc, requests.RequestException):
             return self._result(False, tr("Could not connect"),
                                 tr("The wallet could not reach the service. Check your internet connection and try "
@@ -1033,6 +1038,40 @@ class MainWindow(QMainWindow):
         self._confirm(tr("Trust this authority?"), tr("Verifiers with certificates issued by:<br><b>{subjects}</b><br>"
                                                       "will be shown as trusted.", subjects=subjects), add,
                       confirm_text=tr("Trust"), icon="shield-check")
+
+    def add_trusted_list(self) -> None:
+        """Downloads a trusted list, shows who signs it and pins that certificate once the user agrees."""
+        def fetch(url: str) -> None:
+            url = url.strip()
+            if url:
+                self._run(tr("Reading the trusted list…"), lambda: trustlist.preview(new_session(), url), confirm,
+                          "trustlist")
+
+        def confirm(trusted: trustlist.TrustedList) -> None:
+            def add() -> None:
+                trustlist.add(trusted)
+                self.reload()
+                self.toast.show_message(tr("Trusted list added"))
+            self._confirm(
+                tr("Trust this list?"),
+                tr("<b>{operator}</b> ({territory}) lists {n} services in force. Credentials from the organisations "
+                   "they certify will say so.<br><br>Signed by: {subject}<br>SHA-256:<br><tt>{fingerprint}</tt><br><br>"
+                   "Compare the fingerprint with the one the list's operator publishes.",
+                   operator=esc(trusted.operator), territory=esc(trusted.territory or "-"), n=len(trusted.services),
+                   subject=esc(trusted.signer.subject.rfc4514_string()),
+                   fingerprint=trustlist.fingerprint(trusted.signer, lines=2).replace("\n", "<br>")),
+                add, confirm_text=tr("Trust"), icon="shield-check")
+        self._ask_text_then(tr("Add a trusted list"), tr("Address of the trusted list (ETSI TS 119 612, XML)."), fetch,
+                            placeholder="https://…", icon="shield-check")
+
+    def remove_trusted_list(self, url: str) -> None:
+        def remove() -> None:
+            trustlist.remove(url)
+            self.reload()
+            self.toast.show_message(tr("Trusted list removed"))
+        self._confirm(tr("Remove this trusted list?"),
+                      tr("Credentials from the organisations it certifies will no longer say so."), remove,
+                      confirm_text=tr("Remove"), danger=True)
 
     def forget_verifiers(self) -> None:
         def forget() -> None:
@@ -1529,10 +1568,36 @@ def release_widgets() -> None:
     app.processEvents()
 
 
+def _smoke_test_formats() -> None:
+    """CBOR (cbor2) and a signed XML document (signxml, lxml and their schemas), as the wallet reads them."""
+    import datetime
+
+    import cbor2
+    from cryptography import x509 as x509_
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    from lxml import etree
+    from signxml import XMLSigner, XMLVerifier
+
+    if cbor2.loads(cbor2.dumps({1: b"x"})) != {1: b"x"}:
+        raise RuntimeError("cbor2 round trip")
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509_.Name([x509_.NameAttribute(NameOID.COMMON_NAME, "smoke test")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509_.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(1).not_valid_before(now).not_valid_after(now + datetime.timedelta(days=1))
+            .sign(key, hashes.SHA256()))
+    signed = XMLSigner(signature_algorithm="ecdsa-sha256").sign(
+        etree.fromstring(b"<list><item>1</item></list>"), key=key,
+        cert=[cert.public_bytes(serialization.Encoding.PEM).decode()])
+    XMLVerifier().verify(etree.tostring(signed), x509_cert=cert)
+
+
 def smoke_test() -> int:
     """
     Checks that a packaged executable has everything it needs (used by CI): Qt with SVG, icons,
-    catalogs, zxing-cpp, Pillow, cryptography and keyring. Uses $ATESTA_ID_WALLET_HOME if given an empty
+    catalogs, zxing-cpp, Pillow, cryptography, keyring, cbor2, signxml and lxml. Uses $ATESTA_ID_WALLET_HOME if given an empty
     one and returns 0 or 1, without dialogs (on Windows the GUI has no console to write to).
     """
     try:
@@ -1559,6 +1624,7 @@ def smoke_test() -> int:
         keyring.get_keyring()
         importlib.import_module({"win32": "keyring.backends.Windows", "darwin": "keyring.backends.macOS"}.get(
             sys.platform, "keyring.backends.SecretService"))  # the backend for this system is bundled
+        _smoke_test_formats()
         window = MainWindow()
         window.show()
         QApplication.processEvents()

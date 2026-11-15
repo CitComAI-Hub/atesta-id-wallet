@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 import requests
 from cryptography.hazmat.primitives import serialization
 
-from . import cose, i18n, mdoc
+from . import cose, i18n, mdoc, trustlist
 from .common import (
     OFFER_SCHEMES,
     SD_JWT_FORMATS,
@@ -1006,8 +1006,13 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
         path = save_credential(copies, fmt=fmt, issuer=issuer, configuration_id=config_id,
                                display=_stored_display(displays[config_id], logos.get(config_id)))
         debug(f"Credential stored in {path} ({len(copies)} copies)")
-        claims = (parse_sd_jwt(raws[0]).claims if fmt in SD_JWT_FORMATS
-                  else mdoc.parse_mdoc(raws[0]).claims if fmt == mdoc.FORMAT else None)
+        parsed = (parse_sd_jwt(raws[0]) if fmt in SD_JWT_FORMATS
+                  else mdoc.parse_mdoc(raws[0]) if fmt == mdoc.FORMAT else None)
+        claims = parsed.claims if parsed is not None else None
+        found = trustlist.certification(parsed, trustlist.current(session)) if parsed is not None else None
+        if found:
+            log(tr("The issuer is certified by {provider} in the trusted list of {operator}.",
+                   provider=found[1].provider, operator=found[0].operator))
         issued.append(IssuedCredential(config_id, path, claims, account))
     config = load_config()
     # What this issuer offers, kept so that a later request for a missing credential is matched here,

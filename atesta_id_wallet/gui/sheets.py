@@ -579,6 +579,8 @@ THIRD_PARTY = (
     ("zxing-cpp", "Apache-2.0", "https://github.com/zxing-cpp/zxing-cpp"),
     ("Pillow", "MIT-CMU", "https://github.com/python-pillow/Pillow"),
     ("cbor2", "MIT", "https://github.com/agronholm/cbor2"),
+    ("signxml", "Apache-2.0", "https://github.com/XML-Security/signxml"),
+    ("lxml (with libxml2 and libxslt)", "BSD-3-Clause, MIT", "https://lxml.de"),
     ("Lucide icons", "ISC", "https://lucide.dev"),
     ("Python", "PSF-2.0", "https://www.python.org"),
 )

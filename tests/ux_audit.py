@@ -327,6 +327,28 @@ def screens(gui: Any) -> list[tuple[str, Callable[[Any], None]]]:
             w._on_failed(exc, "Traceback …")
         return run
 
+    def trusted_list_confirm(w: Any) -> None:
+        from cryptography.hazmat.primitives.asymmetric import ec as curves
+
+        from atesta_id_wallet import trustlist
+        from helpers import make_cert
+        signer = make_cert(curves.generate_private_key(curves.SECP256R1()), "trust.citcom.example", ca=True)
+        listed = trustlist.TrustedList("https://trust.citcom.example/tl.xml", "CITCOM data space trust operator",
+                                       "EU", time.time() + 86400, [], signer)
+        saved = trustlist.preview
+        trustlist.preview = lambda *_a, **_k: listed
+        try:
+            w.add_trusted_list()
+            w.overlay.sheet.field.setText(listed.url)
+            w.overlay.sheet.field.returnPressed.emit()
+            deadline = time.time() + 5
+            from PySide6.QtWidgets import QApplication
+            while w.busy and time.time() < deadline:
+                QApplication.instance().processEvents()
+            QApplication.instance().processEvents()
+        finally:
+            trustlist.preview = saved
+
     import requests
 
     return [
@@ -369,6 +391,8 @@ def screens(gui: Any) -> list[tuple[str, Callable[[Any], None]]]:
         ("error-present", failed(common.WalletError("x5c broken"), "present")),
         ("error-unexpected", failed(KeyError("credential_configurations_supported"))),
         ("delete", lambda w: w.confirm_delete(_citcom(w))),
+        ("trusted-list-add", lambda w: w.add_trusted_list()),
+        ("trusted-list-confirm", trusted_list_confirm),
         ("new-password", lambda w: w._choose_password(tr("New wallet password"), "…", lambda _: None)),
         ("new-profile", lambda w: w.new_profile()),
         ("licenses", lambda w: w.show_licenses()),

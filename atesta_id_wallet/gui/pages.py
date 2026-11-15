@@ -6,7 +6,7 @@ from __future__ import annotations
 import functools
 import sys
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from PySide6.QtCore import QLocale, Qt
 from PySide6.QtWidgets import (
@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, status, storage, updates, vault
+from .. import common, i18n, status, storage, trustlist, updates, vault
 from ..common import __version__, claim_label, host_of, site_of
 from ..i18n import N_, tr, tr_n
 from ..storage import (
@@ -321,6 +321,13 @@ def _revocation_text(record: dict[str, Any]) -> str:
     return tr("Not revoked (checked on {date})", date=short_date(checked))
 
 
+def _certified_text(credential: Any) -> str | None:
+    """'Provider (list operator)' when a trusted list the user added certifies the issuer."""
+    found = trustlist.certification(credential, trustlist.current(None)) if credential is not None else None
+    return tr("{provider} (trusted list of {operator})", provider=found[1].provider, operator=found[0].operator) \
+        if found else None
+
+
 class CredentialPage(Page):
     def __init__(self, window: MainWindow, record: dict[str, Any]):
         super().__init__(window)
@@ -379,6 +386,7 @@ class CredentialPage(Page):
             (tr("Received"), _date(record.get("stored_at"))),
             *([(tr("Valid from"), _not_before(payload["nbf"]))] if isinstance(payload.get("nbf"), (int, float)) else []),
             (tr("Valid until"), _date(payload.get("exp")) if payload.get("exp") else tr("Does not expire")),
+            *([(tr("Certified by"), certified)] if (certified := _certified_text(sd)) else []),
             (tr("Revocation check"), _revocation_text(record)),
             (tr("Protection against copies"),
              tr("Only this wallet can use it") if (payload.get("cnf") or {}).get("jwk")
@@ -749,6 +757,13 @@ class SettingsPage(Page):
                           "it changes.", "{n} verifiers whose certificate is remembered since their first use; you "
                           "will be warned if it changes.", len(verifiers)),
                      self._action(tr("Forget all"), w.forget_verifiers, enabled=bool(verifiers))),
+            _setting(tr("Trusted lists"), tr("Lists of trust service providers (ETSI). Credentials from the "
+                                             "organisations they certify say so."),
+                     self._action(tr("Add list…"), w.add_trusted_list, "shield-check")),
+            *[_setting(entry.get("operator") or host_of(entry.get("url", "")),
+                       f"{entry.get('url', '')}\n" + tr_n("{n} service", "{n} services", len(entry.get("services") or [])),
+                       self._action(tr("Remove"), self._remover(str(entry.get("url", ""))), "trash-2"))
+              for entry in trustlist.configured()],
         ])
         verbose = QCheckBox()
         verbose.setChecked(common.VERBOSE)
@@ -786,6 +801,10 @@ class SettingsPage(Page):
         if isinstance(rows[-1], QPlainTextEdit):
             panel.body.addSpacing(14)
         column.addWidget(panel)
+
+    def _remover(self, url: str) -> Callable[..., None]:
+        """The slot of a trusted list's Remove button (clicked passes 'checked', which is not wanted)."""
+        return lambda *_: self.window_.remove_trusted_list(url)
 
     def _action(self, text: str, slot: Any, icon: str | None = None, kind: str | None = None,
                 enabled: bool = True) -> QWidget:

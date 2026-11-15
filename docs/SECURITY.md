@@ -159,6 +159,27 @@ Names published by issuers are reduced to one short line of text before they are
 - The issuer's `x5chain` is not validated against an IACA trust list (see Known gaps), as for
   `x5c` in SD-JWT VC. Checked by the OpenID conformance suite's mDL plan (below).
 
+## Trusted lists (ETSI TS 119 612)
+
+- **None by default.** The user adds a list by its address (HTTPS, not this computer or the local
+  network). The certificate in its signature is shown with its SHA-256 fingerprint to compare with
+  the one the operator publishes (or given as a file), and pinned. Every later download must be
+  signed by that certificate (XMLDSig/XAdES, checked by `signxml`); a list signed by another one,
+  even with the same name, is refused, and the copy kept until then is no longer used once its
+  NextUpdate passes.
+- **Only what the signature covers is read**: the reference over the whole document (enveloped);
+  anything outside it, or a signature over part of it, gives no list. The XML parser loads no DTD,
+  resolves no entities and makes no network access; at most 16 MB, 5000 services.
+- **What a list certifies**: an issuer whose signing certificate (`x5c`, an mdoc's `x5chain`)
+  is a service certificate of the list, or chains to one (every link signed by the next, every
+  certificate valid now), with the service in force (granted, recognised at national level...).
+  The credential's details then name the provider and the list. It is computed when shown, with
+  the lists in force, never stored with the credential. It does not change what is accepted at
+  issuance: an issuer outside every list is received as before.
+- **DCQL `etsi_tl`** (OpenID4VP 1.0 §6.1.1.2) is evaluated only with the lists the user added. A
+  list the user did not add is not downloaded (its address comes from the verifier, and fetching
+  it would tell a third party the wallet is in use), so it cannot be told and leaves nothing out.
+
 ## Issuance (OpenID4VCI)
 
 - The first time an offer comes from an issuer, the wallet shows who is offering what and asks
@@ -352,7 +373,7 @@ Names published by issuers are reduced to one short line of text before they are
 |---|---|---|
 | Keys are software keys | Without a wallet password, malware running as the user can ask the keyring for the data key. With one, it can still read the key from memory while the wallet is unlocked. There is no hardware-backed key (TPM, secure element). | Hardware-backed holder keys if the pilot needs them. |
 | No default trust list | Most verifiers start as `new`. Users must judge the domain shown. | Ship the project's verifier CA or trust list. |
-| Issuer trust is not anchored | Any HTTPS issuer the user accepts can issue credentials. An `x5c` issuer certificate (an mdoc's `x5chain` alike: no IACA list) is not validated against a CA, only used to check the signature: for an `https` issuer, a certificate that names the issuer's host counts as the issuer's key even if it is self-signed. This also applies to status lists, so whoever controls the address of a status list (or the TLS connection to it) could sign one with such a certificate and make a credential look revoked or valid in the wallet (the verifier still checks for itself). | Issuer allow-list or trust list; validate `x5c` chains against it. |
+| Issuer trust is not anchored | Any HTTPS issuer the user accepts can issue credentials; a trusted list the user adds only says which issuers it certifies. An `x5c` issuer certificate (an mdoc's `x5chain` alike: no IACA list) is not validated against a CA, only used to check the signature: for an `https` issuer, a certificate that names the issuer's host counts as the issuer's key even if it is self-signed. This also applies to status lists, so whoever controls the address of a status list (or the TLS connection to it) could sign one with such a certificate and make a credential look revoked or valid in the wallet (the verifier still checks for itself). | Issuer allow-list or trust list; validate `x5c` chains against it. |
 | Addresses are checked by name, not by where they resolve | A public host name that resolves to a private address (DNS rebinding) passes the "not this computer or the local network" checks for logos and status lists. Addresses written as numbers are recognised in every spelling (`127.1`, `2130706433`, `0x7f000001`, `localhost.`, IPv4-mapped IPv6), and every range that is not public counts as local (also `100.64.0.0/10`, reserved and multicast). Only HTTPS requests are made, and their answers are not shown. | — |
 | Verifier certificates are not checked for expiry unless a CA vouches for them | A pinned (trust on first use) certificate keeps its level after it expires. | Part of the trust list work. |
 | A credential is stored with a warning if no issuer key is found | The wallet may hold a credential whose signature it could not check. The verifier will check it anyway. | Make it an error once the pilot issuers are known. |
