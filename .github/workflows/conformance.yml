@@ -1,6 +1,7 @@
-# The OpenID Foundation conformance suite's OID4VP 1.0 Final/HAIP wallet plan against the wallet
-# (tests/conformance): SD-JWT VC from the test Keycloak, and an mDL issued by the test itself.
-# Nightly, by hand, and when the presentation code or these tests change.
+# The OpenID Foundation conformance suite's OID4VP 1.0 Final/HAIP and OID4VCI 1.0 Final/HAIP wallet
+# plans against the wallet (tests/conformance): SD-JWT VC from the test Keycloak, an mDL issued by
+# the test itself, and issuance from the suite with the wallet provider (provider/).
+# Nightly, by hand, and when the presentation or issuance code or these tests change.
 name: Conformance
 
 on:
@@ -10,6 +11,10 @@ on:
   push:
     paths:
       - "atesta_id_wallet/vp.py"
+      - "atesta_id_wallet/vci.py"
+      - "atesta_id_wallet/attestation.py"
+      - "atesta_id_wallet/keys.py"
+      - "provider/**"
       - "atesta_id_wallet/trust.py"
       - "atesta_id_wallet/jose.py"
       - "atesta_id_wallet/sdjwt.py"
@@ -27,7 +32,7 @@ env:
 
 jobs:
   oid4vp-wallet:
-    name: OID4VP 1.0 Final/HAIP wallet plan
+    name: OID4VP and OID4VCI 1.0 Final/HAIP wallet plans
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7

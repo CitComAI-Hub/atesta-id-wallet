@@ -10,6 +10,7 @@ import json
 import sys
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -478,6 +479,49 @@ class WalletInitiatedTests(unittest.TestCase):
         self.assertEqual([state for state, _, _ in calls], ["x", None])
         self.assertEqual(storage.load_credentials(), [])
 
+
+
+class AuthorizationResponseTests(unittest.TestCase):
+    """The checks of the authorization response before its code is used (state, RFC 9207 iss)."""
+
+    def redeem(self, callback, **meta):
+        session = mock.Mock()
+        session.post.return_value = mock.Mock(status_code=200, content=b"{}", json=lambda: {"access_token": "AT"},
+                                              headers={})
+        as_meta = {"issuer": "https://as.example/", "token_endpoint": "https://as.example/token", **meta}
+        return vci._redeem_code(session, as_meta, callback, state="S", verifier="V", client_id="c",
+                                redirect_uri="http://127.0.0.1/callback", username=None, dpop=None), session
+
+    def test_iss(self):
+        ok = "http://127.0.0.1/callback?state=S&code=C&iss=https://as.example/"
+        self.assertEqual(self.redeem(ok, authorization_response_iss_parameter_supported=True)[0][0],
+                         {"access_token": "AT"})
+        with self.assertRaisesRegex(common.WalletError, "evil"):
+            self.redeem("http://127.0.0.1/callback?state=S&code=C&iss=https://evil.example/")
+        # A server that always sends iss, without it: refused before the code is used.
+        with self.assertRaisesRegex(common.WalletError, "iss"):
+            _, session = self.redeem("http://127.0.0.1/callback?state=S&code=C",
+                                     authorization_response_iss_parameter_supported=True)
+        self.redeem("http://127.0.0.1/callback?state=S&code=C")  # a server that does not say it sends iss
+        with self.assertRaisesRegex(common.WalletError, "state"):
+            self.redeem("http://127.0.0.1/callback?state=X&code=C&iss=https://as.example/")
+
+    def test_openid_scope_only_where_offered(self):
+        self.assertTrue(vci._wants_openid({"scopes_supported": ["openid", "x"]}, object()))
+        self.assertFalse(vci._wants_openid({"scopes_supported": ["x"]}, None))
+        self.assertTrue(vci._wants_openid({}, None))  # no list: as before (Keycloak)
+        self.assertFalse(vci._wants_openid({}, object()))  # with an attestation: a plain OAuth server
+
+    def test_well_known_paths(self):
+        self.assertEqual(vci._well_known("https://h.example/a/b/", "oauth-authorization-server"),
+                         ["https://h.example/.well-known/oauth-authorization-server/a/b",
+                          "https://h.example/a/b/.well-known/oauth-authorization-server"])
+        self.assertEqual(vci._well_known("https://h.example/a/b/", "openid-credential-issuer"),
+                         ["https://h.example/.well-known/openid-credential-issuer/a/b/",
+                          "https://h.example/.well-known/openid-credential-issuer/a/b",
+                          "https://h.example/a/b/.well-known/openid-credential-issuer"])
+        self.assertEqual(vci._well_known("https://h.example", "openid-credential-issuer"),
+                         ["https://h.example/.well-known/openid-credential-issuer"])
 
 if __name__ == "__main__":
     unittest.main()

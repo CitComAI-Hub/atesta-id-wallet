@@ -442,6 +442,7 @@
     "The address": "Die Adresse",
     "The address did not give a trusted list the wallet can check. Make sure it is the list's own address (an XML file signed by its operator) and try again.": "Unter der Adresse lag keine Vertrauensliste, die die Wallet prüfen kann. Stelle sicher, dass es die Adresse der Liste selbst ist (eine von ihrem Betreiber signierte XML-Datei), und versuche es erneut.",
     "The authorization response comes from {iss}, not from {expected}.": "Die Autorisierungsantwort kommt von {iss}, nicht von {expected}.",
+    "The authorization response does not say which server sent it (iss), although the server always sends it; aborting for safety.": "Die Autorisierungsantwort sagt nicht, welcher Server sie gesendet hat (iss), obwohl der Server das immer sendet; aus Sicherheitsgründen abgebrochen.",
     "The authorization server accepts wallet attestations, but no wallet provider is set up; going on without one.": "Der Autorisierungsserver akzeptiert Wallet-Attestierungen, aber kein Wallet-Anbieter ist eingerichtet; es geht ohne weiter.",
     "The authorization server did not return a request_uri for the pushed request.": "Der Autorisierungsserver hat für die gesendete Anfrage keine request_uri zurückgegeben.",
     "The authorization server metadata belongs to {other}, not to {server}.": "Die Metadaten des Autorisierungsservers gehören zu {other}, nicht zu {server}.",

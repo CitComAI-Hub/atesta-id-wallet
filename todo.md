@@ -271,10 +271,15 @@ the full manual Windows test and the CITCOM verifier trust list.
        - The same plan with **mso_mdoc** (`iso_mdl`, the suite's mDL query; an mDL issued in the test
          by a test IACA, with the ISO 18013-5 Annex B certificate profile and a CRL): 11 modules pass,
          including `all-mandatory-claims` and `age-over-18`.
-       - OID4VCI 1.0 Final/HAIP wallet plan: every module needs wallet attestation (phase 3).
-       The VP plan runs every night in CI (`tests/conformance`, `conformance.yml`). The plain
-       OID4VCI wallet plan only offers `private_key_jwt`, mTLS or wallet attestation as client
-       authentication (the wallet is a public client), so issuance waits for phase 3 too.
+       - OID4VCI 1.0 Final/HAIP wallet plan (`test_vci_wallet.py`, November 2026), with the
+         wallet provider: wallet-initiated issuance, client attestation and its challenge,
+         batch issuance, key attestation in the JWT proof and the `attestation` proof type, and
+         the FAPI2 client modules (issuer mismatch, `iss` changed or removed, `state`, DPoP)
+         pass. It found three bugs: a trailing slash dropped from the issuer, an attestation
+         PoP reused on DPoP's nonce retry, `openid` sent to a plain OAuth server; and a missing
+         `iss` was accepted from a server that always sends it. Not supported yet, so not
+         tested: deferred issuance, encrypted credential requests/responses, notifications.
+       Both plans run every night in CI (`tests/conformance`, `conformance.yml`).
        Not before the hardware keys (phase 3): key attestation and wallet attestation.
 
 ## Later (after the pilot)
@@ -293,8 +298,8 @@ the full manual Windows test and the CITCOM verifier trust list.
         hardware key cannot be exported; a new or broken laptop means asking the issuers again.
       - [x] Wallet provider, step B1 (`provider/`, `attestation.py`): wallet attestation at PAR
         and token (challenge included), key attestation in the proofs when required; no
-        evidence checked yet, so no `key_storage`. Still to do: the OID4VCI wallet conformance
-        plan (`client_attestation` variant), a GUI setting for the provider URL, a deployment.
+        evidence checked yet, so no `key_storage`. The OID4VCI wallet conformance plan passes
+        with it. Still to do: a GUI setting for the provider URL, a deployment.
       - Wallet provider, step B2: checks the TPM
         (EK certificate, `TPM2_Certify`) and issues wallet attestations and key attestations
         (OpenID4VCI Appendix D, OAuth attestation-based client authentication), for HAIP and

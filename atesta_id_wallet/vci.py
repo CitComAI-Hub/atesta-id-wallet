@@ -95,11 +95,13 @@ class DPoP:
             self.nonces[self._htu(url)] = nonce
 
     def post(self, session: requests.Session, url: str, *, access_token: str | None = None,
-             headers: dict[str, str] | None = None, **kwargs: Any) -> requests.Response:
-        """POST with a fresh proof; retries once if the server asks for a nonce (§8, §9)."""
+             headers: dict[str, str] | None = None, fresh: Callable[[], dict[str, str]] | None = None,
+             **kwargs: Any) -> requests.Response:
+        """POST with a fresh proof; retries once if the server asks for a nonce (§8, §9). fresh():
+        other headers made anew for each attempt (a proof can be used only once)."""
         for attempt in range(2):
-            response = session.post(url, headers={**(headers or {}), "DPoP": self.proof("POST", url, access_token)},
-                                    **kwargs)
+            response = session.post(url, headers={**(headers or {}), **(fresh() if fresh else {}),
+                                                  "DPoP": self.proof("POST", url, access_token)}, **kwargs)
             self.remember(url, response)
             asks_nonce = "use_dpop_nonce" in response.text or "use_dpop_nonce" in response.headers.get(
                 "WWW-Authenticate", "")
@@ -161,12 +163,13 @@ class _LoginReplay(Prompter):
 def _post(session: requests.Session, dpop: DPoP | None, url: str, *, access_token: str | None = None,
           attest: attestation.ClientAttestation | None = None, **kwargs: Any) -> requests.Response:
     """POST with DPoP and the wallet attestation when they are in use (each with fresh proofs)."""
+    fresh = attest.headers if attest is not None else None
     for attempt in range(2):
-        call = dict(kwargs)
-        if attest is not None:
-            call["headers"] = {**(kwargs.get("headers") or {}), **attest.headers()}
-        response = (session.post(url, **call) if dpop is None
-                    else dpop.post(session, url, access_token=access_token, **call))
+        if dpop is None:
+            response = session.post(url, **{**kwargs, "headers": {**(kwargs.get("headers") or {}),
+                                                                   **(fresh() if fresh else {})}})
+        else:
+            response = dpop.post(session, url, access_token=access_token, fresh=fresh, **kwargs)
         if attest is None or attempt or not attest.asks_challenge(response):
             return response
     return response
@@ -193,11 +196,18 @@ def supports_dpop(as_meta: dict[str, Any]) -> bool:
 
 
 def _well_known(base: str, suffix: str) -> list[str]:
-    """RFC 8414 form (inserted after the host) and Keycloak's 'append' form."""
-    parts = urlsplit(base.rstrip("/"))
-    inserted = f"{parts.scheme}://{parts.netloc}/.well-known/{suffix}{parts.path}"
+    """
+    The well-known form (inserted after the host) and Keycloak's 'append' form. An authorization
+    server's terminating '/' is removed before inserting (RFC 8414 §3.1); a credential issuer's is
+    kept (OpenID4VCI 1.0 §12.2.2), and tried without it after.
+    """
+    parts = urlsplit(base)
+    path = parts.path if parts.path != "/" else ""
+    stripped = f"{parts.scheme}://{parts.netloc}/.well-known/{suffix}{path.rstrip('/')}"
+    exact = f"{parts.scheme}://{parts.netloc}/.well-known/{suffix}{path}"
     appended = f"{base.rstrip('/')}/.well-known/{suffix}"
-    return [inserted, appended] if inserted != appended else [inserted]
+    first = [exact, stripped] if suffix == "openid-credential-issuer" else [stripped]
+    return list(dict.fromkeys([*first, appended]))
 
 
 def _get_first_json(session: requests.Session, urls: list[str]) -> dict[str, Any]:
@@ -510,7 +520,7 @@ def _authorize(
         "response_type": "code",
         "client_id": client_id,
         "redirect_uri": redirect_uri,
-        "scope": " ".join(["openid", *scopes]),
+        "scope": " ".join([*(["openid"] if _wants_openid(as_meta, attest) else []), *scopes]),
         "state": state,
         "nonce": b64u(secrets.token_bytes(16)),
         "code_challenge": challenge,
@@ -555,6 +565,18 @@ def _authorize(
     return callback_url, username, verifier, state
 
 
+def _wants_openid(as_meta: dict[str, Any], attest: attestation.ClientAttestation | None) -> bool:
+    """
+    The openid scope (an id_token, to show which account signed in) where the server offers it: in
+    scopes_supported, or, when it lists no scopes, as before for servers like Keycloak, unless the
+    wallet authenticates with an attestation (HAIP servers are plain OAuth and refuse openid).
+    """
+    scopes = as_meta.get("scopes_supported")
+    if isinstance(scopes, list):
+        return "openid" in scopes
+    return attest is None
+
+
 def _push_authorization_request(session: requests.Session, endpoint: str, params: dict[str, str],
                                 dpop: DPoP | None, attest: attestation.ClientAttestation | None = None) -> str:
     """Pushed Authorization Request (RFC 9126); returns its request_uri. With DPoP, the code is bound
@@ -585,6 +607,10 @@ def _redeem_code(session: requests.Session, as_meta: dict[str, Any], callback_ur
         if "iss" in cb and as_meta.get("issuer") and cb["iss"][0].rstrip("/") != as_meta["issuer"].rstrip("/"):
             raise WalletError(tr("The authorization response comes from {iss}, not from {expected}.",
                                  iss=cb["iss"][0], expected=as_meta["issuer"]))
+        # RFC 9207 §2.4: a server that says it always sends iss, and did not, may not be the one asked.
+        if "iss" not in cb and as_meta.get("authorization_response_iss_parameter_supported") is True:
+            raise WalletError(tr("The authorization response does not say which server sent it (iss), although "
+                                 "the server always sends it; aborting for safety."))
         code = (cb.get("code") or [""])[0]
     else:
         code = callback_url
@@ -1168,10 +1194,14 @@ def _catalog(meta: dict[str, Any], issuer: str) -> dict[str, Any]:
 def issue_from_issuer(session: requests.Session, issuer: str, config_ids: list[str], options: IssueOptions,
                       ui: Prompter) -> list[IssuedCredential]:
     """Wallet-initiated issuance (OpenID4VCI 1.0 §3.3.3): no offer, just the issuer and the credential."""
-    issuer = issuer.strip().rstrip("/")
+    issuer = issuer.strip()
     require_https(issuer, "credential_issuer")
+    meta = _get_first_json(session, _well_known(issuer, "openid-credential-issuer"))
+    # The identifier the issuer gives itself: with or without a trailing slash, whatever was typed.
+    published = meta.get("credential_issuer")
+    issuer = published if isinstance(published, str) and published.rstrip("/") == issuer.rstrip("/") \
+        else issuer.rstrip("/")
     if not config_ids:
-        meta = _get_first_json(session, _well_known(issuer, "openid-credential-issuer"))
         available = sorted((meta.get("credential_configurations_supported") or {}).keys())
         if len(available) != 1:
             raise WalletError(tr("Choose a credential with --credential: {ids}",

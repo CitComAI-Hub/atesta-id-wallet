@@ -442,6 +442,7 @@
     "The address": "Adressen",
     "The address did not give a trusted list the wallet can check. Make sure it is the list's own address (an XML file signed by its operator) and try again.": "Adressen gav ikke en tillidsliste, som tegnebogen kan kontrollere. Sørg for, at det er listens egen adresse (en XML-fil underskrevet af dens operatør), og prøv igen.",
     "The authorization response comes from {iss}, not from {expected}.": "Autorisationssvaret kommer fra {iss}, ikke fra {expected}.",
+    "The authorization response does not say which server sent it (iss), although the server always sends it; aborting for safety.": "Autorisationssvaret siger ikke, hvilken server der sendte det (iss), selv om serveren altid sender det; afbrudt af sikkerhedshensyn.",
     "The authorization server accepts wallet attestations, but no wallet provider is set up; going on without one.": "Autorisationsserveren accepterer wallet-attesteringer, men ingen wallet-udbyder er sat op; der fortsættes uden.",
     "The authorization server did not return a request_uri for the pushed request.": "Autorisationsserveren returnerede ikke en request_uri for den sendte anmodning.",
     "The authorization server metadata belongs to {other}, not to {server}.": "Autorisationsserverens metadata tilhører {other}, ikke {server}.",

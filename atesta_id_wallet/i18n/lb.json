@@ -442,6 +442,7 @@
     "The address": "D'Adress",
     "The address did not give a trusted list the wallet can check. Make sure it is the list's own address (an XML file signed by its operator) and try again.": "Op der Adress war keng Vertrauenslëscht, déi de Portmonni iwwerpréiwe kann. Kuck no, datt et d'Adress vun der Lëscht selwer ass (eng XML-Datei, vun hirem Bedreiwer ënnerschriwwen), a prob nach eng Kéier.",
     "The authorization response comes from {iss}, not from {expected}.": "D'Autorisatiounsäntwert kënnt vun {iss}, net vun {expected}.",
+    "The authorization response does not say which server sent it (iss), although the server always sends it; aborting for safety.": "D'Autorisatiounsäntwert seet net, wéi ee Server se geschéckt huet (iss), obwuel de Server dat ëmmer schéckt; aus Sécherheetsgrënn ofgebrach.",
     "The authorization server accepts wallet attestations, but no wallet provider is set up; going on without one.": "De Autorisatiounsserver akzeptéiert Wallet-Attestatiounen, mä et ass kee Wallet-Ubidder agestallt; et geet ouni weider.",
     "The authorization server did not return a request_uri for the pushed request.": "Den Autorisatiounsserver huet fir déi geschéckten Ufro keng request_uri zréckginn.",
     "The authorization server metadata belongs to {other}, not to {server}.": "D'Metadate vum Autorisatiounsserver gehéieren zu {other}, net zu {server}.",

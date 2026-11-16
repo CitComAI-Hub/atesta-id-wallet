@@ -369,9 +369,11 @@ ATESTA_KEYCLOAK_URL=https://localhost:8443 REQUESTS_CA_BUNDLE=/tmp/kc-certs/cert
 docker rm -f atesta-keycloak-it
 ```
 
-`tests/conformance` runs the OpenID Foundation conformance suite's OID4VP 1.0 Final/HAIP wallet plan
-(the suite plays the verifier) against the wallet, with a credential from that Keycloak, every
-night in CI. The suite runs in Docker from images pinned by digest (`tests/conformance/compose.yml`):
+`tests/conformance` runs two plans of the OpenID Foundation conformance suite against the wallet
+every night in CI: the OID4VP 1.0 Final/HAIP wallet plan (the suite plays the verifier; an SD-JWT
+VC from that Keycloak and an mDL issued by the test), and the OID4VCI 1.0 Final/HAIP wallet plan
+(the suite plays the issuer: PAR, DPoP, wallet attestation, key attestation in the JWT proof and
+the `attestation` proof type, with the wallet provider of `provider/` running in the test). The suite runs in Docker from images pinned by digest (`tests/conformance/compose.yml`):
 
 ```bash
 tests/conformance/run_suite.sh /tmp/suite-certs
