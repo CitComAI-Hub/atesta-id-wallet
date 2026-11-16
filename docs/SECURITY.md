@@ -235,6 +235,20 @@ Names published by issuers are reduced to one short line of text before they are
   credentials are listed as having to be requested again, and presenting one says why. No
   user verification (Windows Hello) yet, and no key attestation (planned with the wallet
   provider). Linux and smart cards (PKCS#11) come next; there keys stay in software.
+- **Wallet and key attestation** (`attestation.py`, service in `provider/`). With a wallet
+  provider set up (`provider URL`), an authorization server that lists `attest_jwt_client_auth`
+  gets a Client Attestation JWT and a fresh proof of possession (`OAuth-Client-Attestation`,
+  `-PoP`, with `aud`, `jti`, `iat` and the server's challenge when it has a `challenge_endpoint`
+  or answers `use_attestation_challenge`) at PAR and token; its `sub` becomes the `client_id`.
+  The attestation is for a key made for that issuance only, so it links neither two issuances
+  nor the holder keys. A key attestation (one for the whole batch, with the issuer's `c_nonce`)
+  is asked for only when the credential configuration requires it. The wallet checks that what
+  the provider returns is about its own keys. The provider stores nothing and only receives
+  public keys and signatures over its nonces. In this step the attestations prove only that a
+  running Atesta ID Wallet holds the keys; the wallet is open source, so they do not prove the
+  computer or the key storage, and no `key_storage` is stated (TPM evidence is the next step).
+  Without a provider the wallet stays a public client and says so where an issuer requires
+  key attestation.
 - **DPoP** (RFC 9449): when the authorization server advertises ES256 in
   `dpop_signing_alg_values_supported`, the access token is bound to a key made for that issuance
   only (not the holder key, so the issuer cannot link it to the credentials). Every request

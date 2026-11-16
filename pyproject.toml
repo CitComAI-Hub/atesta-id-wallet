@@ -48,7 +48,7 @@ select = ["E9", "F", "B"]
 # CI (checks.yml) runs it on the whole package, the GUI included: Qt enums by their scoped names
 # (Qt.AlignmentFlag.AlignCenter), the only ones PySide6's stubs know.
 python_version = "3.12"
-files = ["atesta_id_wallet"]
+files = ["atesta_id_wallet", "provider"]
 exclude = ["\\.venv/"]
 warn_unused_ignores = true
 warn_redundant_casts = true

@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 import requests
 from cryptography.hazmat.primitives import serialization
 
-from . import cose, i18n, mdoc, trustlist
+from . import attestation, cose, i18n, mdoc, trustlist
 from .common import (
     OFFER_SCHEMES,
     SD_JWT_FORMATS,
@@ -159,10 +159,32 @@ class _LoginReplay(Prompter):
 
 
 def _post(session: requests.Session, dpop: DPoP | None, url: str, *, access_token: str | None = None,
-          **kwargs: Any) -> requests.Response:
-    if dpop is None:
-        return session.post(url, **kwargs)
-    return dpop.post(session, url, access_token=access_token, **kwargs)
+          attest: attestation.ClientAttestation | None = None, **kwargs: Any) -> requests.Response:
+    """POST with DPoP and the wallet attestation when they are in use (each with fresh proofs)."""
+    for attempt in range(2):
+        call = dict(kwargs)
+        if attest is not None:
+            call["headers"] = {**(kwargs.get("headers") or {}), **attest.headers()}
+        response = (session.post(url, **call) if dpop is None
+                    else dpop.post(session, url, access_token=access_token, **call))
+        if attest is None or attempt or not attest.asks_challenge(response):
+            return response
+    return response
+
+
+def client_attestation(session: requests.Session, as_meta: dict[str, Any]) -> attestation.ClientAttestation | None:
+    """
+    A wallet attestation when the authorization server takes it as client authentication and a
+    wallet provider is set up. Without a provider the wallet goes on as a public client: servers
+    such as Keycloak list methods they do not require, and one that does require it says so.
+    """
+    if not attestation.required_by(as_meta):
+        return None
+    if attestation.provider_url():
+        return attestation.ClientAttestation(session, as_meta)
+    log(tr("The authorization server accepts wallet attestations, but no wallet provider is set up; going on "
+           "without one."))
+    return None
 
 
 def supports_dpop(as_meta: dict[str, Any]) -> bool:
@@ -436,6 +458,7 @@ def authorization_code_flow(
     ui: Prompter | None = None,
     suggested_username: str | None = None,
     dpop: DPoP | None = None,
+    attest: attestation.ClientAttestation | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """Returns the token and the username used to log in (if the login was done by the wallet)."""
     ui = ui or TerminalPrompter()
@@ -453,13 +476,13 @@ def authorization_code_flow(
             session, as_meta, client_id=client_id, redirect_uri=redirect_uri, scopes=scopes,
             issuer_state=issuer_state, authorization_details=authorization_details, open_browser=open_browser,
             browser_login=browser_login, username=username, ui=ui, suggested_username=suggested_username,
-            loopback=loopback, dpop=dpop,
+            loopback=loopback, dpop=dpop, attest=attest,
         )
     finally:
         if loopback:
             loopback.close()
     return _redeem_code(session, as_meta, callback_url, state=state, verifier=verifier, client_id=client_id,
-                        redirect_uri=redirect_uri, username=username, dpop=dpop)
+                        redirect_uri=redirect_uri, username=username, dpop=dpop, attest=attest)
 
 
 def _authorize(
@@ -478,6 +501,7 @@ def _authorize(
     suggested_username: str | None,
     loopback: _Loopback | None,
     dpop: DPoP | None = None,
+    attest: attestation.ClientAttestation | None = None,
 ) -> tuple[str, str | None, str, str]:
     """Authorization request; returns (callback URL or code, username, PKCE verifier, state)."""
     verifier, challenge = _pkce_pair()
@@ -501,7 +525,7 @@ def _authorize(
     if isinstance(par_endpoint, str) and par_endpoint:
         # RFC 9126 (HAIP 1.0 §4.3): the request goes to the server directly; the browser only carries
         # its reference, so nothing in it can be read or changed on the way.
-        request_uri = _push_authorization_request(session, par_endpoint, params, dpop)
+        request_uri = _push_authorization_request(session, par_endpoint, params, dpop, attest)
         params = {"client_id": client_id, "request_uri": request_uri}
     auth_url = as_meta["authorization_endpoint"] + "?" + urlencode(params, quote_via=quote)
     debug(f"Authorization URL: {auth_url}")
@@ -532,10 +556,10 @@ def _authorize(
 
 
 def _push_authorization_request(session: requests.Session, endpoint: str, params: dict[str, str],
-                                dpop: DPoP | None) -> str:
+                                dpop: DPoP | None, attest: attestation.ClientAttestation | None = None) -> str:
     """Pushed Authorization Request (RFC 9126); returns its request_uri. With DPoP, the code is bound
     to the same key as the token (RFC 9449 §10.1)."""
-    response = _post(session, dpop, endpoint, data=params, timeout=20)
+    response = _post(session, dpop, endpoint, data=params, timeout=20, attest=attest)
     request_uri = _json(response, "POST", endpoint).get("request_uri")
     if not isinstance(request_uri, str) or not request_uri:
         raise WalletError(tr("The authorization server did not return a request_uri for the pushed request."))
@@ -544,7 +568,8 @@ def _push_authorization_request(session: requests.Session, endpoint: str, params
 
 def _redeem_code(session: requests.Session, as_meta: dict[str, Any], callback_url: str, *, state: str,
                  verifier: str, client_id: str, redirect_uri: str, username: str | None,
-                 dpop: DPoP | None) -> tuple[dict[str, Any], str | None]:
+                 dpop: DPoP | None, attest: attestation.ClientAttestation | None = None
+                 ) -> tuple[dict[str, Any], str | None]:
     """Checks the authorization response and exchanges its code for the token."""
     if "?" in callback_url or "#" in callback_url or "code=" in callback_url:
         parts = split_url(callback_url, "redirect_uri")
@@ -579,6 +604,7 @@ def _redeem_code(session: requests.Session, as_meta: dict[str, Any], callback_ur
             "code_verifier": verifier,
         },
         timeout=20,
+        attest=attest,
     )
     try:
         return _json(response, "POST", token_url), username
@@ -628,6 +654,7 @@ def pre_authorized_flow(
     tx_code: str | None,
     ui: Prompter | None = None,
     dpop: DPoP | None = None,
+    attest: attestation.ClientAttestation | None = None,
 ) -> dict[str, Any]:
     if not isinstance(grant, dict) or not grant.get("pre-authorized_code"):
         raise WalletError(tr("The offer has no pre-authorized_code."))
@@ -644,7 +671,7 @@ def pre_authorized_flow(
     if client_id:
         data["client_id"] = client_id
     token_url = as_meta["token_endpoint"]
-    response = _post(session, dpop, token_url, data=data, timeout=20)
+    response = _post(session, dpop, token_url, data=data, timeout=20, attest=attest)
     return _json(response, "POST", token_url)
 
 
@@ -699,27 +726,38 @@ def request_credential(
                 and identifiers and isinstance(identifiers[0], str):
             identifier = identifiers[0]
 
+    configs = issuer_meta.get("credential_configurations_supported")
+    config = configs.get(configuration_id) if isinstance(configs, dict) else None
+    attested, only_attestation = attestation.key_attestation_needed(config if isinstance(config, dict) else {})
     nonce = _fetch_nonce(session, issuer_meta, token, dpop)
     legacy_proof = False
     for attempt in range(3):
-        claims: dict[str, Any] = {"aud": issuer, "iat": int(time.time())}
-        if nonce:
-            claims["nonce"] = nonce
-        if proof_iss:
-            claims["iss"] = proof_iss
-        # One proof per key: the issuer gives one copy bound to each (OpenID4VCI 1.0 §8.2).
-        proofs = [key.sign_jwt({"typ": "openid4vci-proof+jwt", "jwk": key.public_jwk}, claims)
-                  for key in (keys[:1] if legacy_proof else keys)]
-
         body: dict[str, Any] = (
             {"credential_identifier": identifier}
             if identifier
             else {"credential_configuration_id": configuration_id}
         )
-        if legacy_proof:
-            body["proof"] = {"proof_type": "jwt", "jwt": proofs[0]}
+        # Asked for only when the issuer requires it: one attestation covers every key of the batch
+        # (HAIP 1.0 §4.5.1), with the issuer's nonce, so it is asked for again with each new nonce.
+        key_attestation = attestation.key_attestation(session, keys, nonce) if attested else None
+        if key_attestation and only_attestation:
+            body["proofs"] = {"attestation": [key_attestation]}  # Appendix F.3
         else:
-            body["proofs"] = {"jwt": proofs}
+            claims: dict[str, Any] = {"aud": issuer, "iat": int(time.time())}
+            if nonce:
+                claims["nonce"] = nonce
+            if proof_iss:
+                claims["iss"] = proof_iss
+            header: dict[str, Any] = {"typ": "openid4vci-proof+jwt"}
+            if key_attestation:
+                header["key_attestation"] = key_attestation  # Appendix F.1
+            # One proof per key: the issuer gives one copy bound to each (OpenID4VCI 1.0 §8.2).
+            proofs = [key.sign_jwt({**header, "jwk": key.public_jwk}, claims)
+                      for key in (keys[:1] if legacy_proof else keys)]
+            if legacy_proof:
+                body["proof"] = {"proof_type": "jwt", "jwt": proofs[0]}
+            else:
+                body["proofs"] = {"jwt": proofs}
 
         debug(f"POST {endpoint} {json.dumps(body)[:200]}")
         response = _post(session, dpop, endpoint, access_token=token["access_token"], headers=headers, json=body,
@@ -778,6 +816,7 @@ class IssueOptions:
     open_browser: bool = True
     in_app_login: bool = False  # never the browser login with the wallet's own client
     dpop: bool = True  # only if the authorization server advertises it
+    attestation: bool = True  # wallet attestation, if the server takes it and a wallet provider is set up
     copies: int = MAX_COPIES  # at most, if the issuer supports batch issuance
 
 
@@ -879,16 +918,18 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     dpop = DPoP() if options.dpop and supports_dpop(as_meta) else None
     if dpop:
         debug("DPoP: the access token will be bound to a key of this issuance.")
+    attest = client_attestation(session, as_meta) if options.attestation else None
 
     grants = offer.get("grants")
     grants = grants if isinstance(grants, dict) else {}
     if PRE_AUTH_GRANT in grants and not options.force_auth_code:
         log(tr("Pre-authorized code flow."))
+        client_id_pre = options.client_id_pre or (attest.client_id if attest else None)
         token = pre_authorized_flow(
-            session, as_meta, grants[PRE_AUTH_GRANT], client_id=options.client_id_pre, tx_code=options.tx_code,
-            ui=ui, dpop=dpop,
+            session, as_meta, grants[PRE_AUTH_GRANT], client_id=client_id_pre, tx_code=options.tx_code,
+            ui=ui, dpop=dpop, attest=attest,
         )
-        proof_iss = options.client_id_pre
+        proof_iss = client_id_pre
     else:
         issuer_config = load_config().get("issuers", {}).get(issuer, {})
         # A client chosen by the user (option or remembered) is kept; otherwise the wallet's own client
@@ -897,7 +938,10 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
         automatic = (None, DEFAULT_CLIENT_ID) + ((WALLET_CLIENT_ID,) if options.in_app_login else ())
         client_id = options.client_id or (remembered if remembered not in automatic else None)
         redirect_uri = options.redirect_uri or (issuer_config.get("redirect_uri") if client_id else None)
-        if not client_id and not options.in_app_login and wallet_client_available(session, as_meta):
+        if attest and not options.client_id:
+            # The attestation's subject is the client: the same for every installation of this wallet.
+            client_id, redirect_uri = attest.client_id, options.redirect_uri or LOOPBACK_REDIRECT
+        elif not client_id and not options.in_app_login and wallet_client_available(session, as_meta):
             client_id, redirect_uri = WALLET_CLIENT_ID, LOOPBACK_REDIRECT
         client_id = client_id or DEFAULT_CLIENT_ID
         redirect_uri = redirect_uri or f"{as_base.rstrip('/')}/account/oid4vci-callback"
@@ -927,6 +971,7 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
                 ui=replay,
                 suggested_username=suggested or issuer_config.get("username"),
                 dpop=dpop,
+                attest=attest,
             )
 
         code_grant = grants.get("authorization_code")

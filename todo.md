@@ -291,7 +291,11 @@ the full manual Windows test and the CITCOM verifier trust list.
       - Key attestation from the TPM: the first real step towards wallet attestation.
       - Decided (November 2026): on by default, with the setting to turn it off, because a
         hardware key cannot be exported; a new or broken laptop means asking the issuers again.
-      - Wallet provider (decided: a minimal service in this repository): checks the TPM
+      - [x] Wallet provider, step B1 (`provider/`, `attestation.py`): wallet attestation at PAR
+        and token (challenge included), key attestation in the proofs when required; no
+        evidence checked yet, so no `key_storage`. Still to do: the OID4VCI wallet conformance
+        plan (`client_attestation` variant), a GUI setting for the provider URL, a deployment.
+      - Wallet provider, step B2: checks the TPM
         (EK certificate, `TPM2_Certify`) and issues wallet attestations and key attestations
         (OpenID4VCI Appendix D, OAuth attestation-based client authentication), for HAIP and
         the OID4VCI conformance plan.

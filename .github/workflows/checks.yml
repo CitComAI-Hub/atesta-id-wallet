@@ -75,7 +75,7 @@ jobs:
       - name: Types (mypy, GUI included; see [tool.mypy] in pyproject.toml)
         run: mypy
       - name: Security patterns (bandit, medium and high)
-        run: bandit -q -r atesta_id_wallet -ll
+        run: bandit -q -r atesta_id_wallet provider -ll
       - name: Known vulnerabilities in the dependencies (pip-audit)
         run: |
           pip-audit --skip-editable --progress-spinner off

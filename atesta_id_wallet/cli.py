@@ -18,7 +18,7 @@ from typing import Any
 import requests
 from cryptography import x509
 
-from . import common, i18n, keys, status, storage, trustlist, updates, vault
+from . import attestation, common, i18n, keys, status, storage, trustlist, updates, vault
 from .common import Cancelled, WalletError, __version__, confirm, log, new_session, printable
 from .desktop import (
     FROZEN,
@@ -61,9 +61,10 @@ from .vp import build_response, prepare_presentation, record_declined, send_pres
 
 
 SUBCOMMANDS = ("issue", "present", "list", "history", "remove", "reset", "backup", "restore", "profiles",
-               "trust", "password", "keys", "update", "language", "install-handler", "uninstall-handler")
+               "trust", "password", "keys", "provider", "update", "language", "install-handler",
+               "uninstall-handler")
 # Commands that do not read the profile data, so they never ask for the wallet password.
-WITHOUT_UNLOCK = ("reset", "profiles", "keys", "update", "language", "install-handler", "uninstall-handler")
+WITHOUT_UNLOCK = ("reset", "profiles", "keys", "provider", "update", "language", "install-handler", "uninstall-handler")
 
 
 def cmd_issue(args: argparse.Namespace) -> int:
@@ -548,6 +549,11 @@ def build_parser() -> argparse.ArgumentParser:
     keys_.add_argument("where", nargs="?", choices=["hardware", "software"])
     keys_.set_defaults(func=cmd_keys)
 
+    provider = sub.add_parser("provider", help=tr("Show or set the wallet provider that vouches for this wallet to "
+                                                  "issuers that ask for it (URL, or 'none')"))
+    provider.add_argument("url", nargs="?")
+    provider.set_defaults(func=cmd_provider)
+
     language = sub.add_parser("language", help=tr("Show or change the language (auto, en, es, da, de, fr, lb)"))
     language.add_argument("code", nargs="?", choices=(i18n.AUTO, *i18n.LANGUAGES))
     language.set_defaults(func=cmd_language)
@@ -654,6 +660,14 @@ def cmd_keys(args: argparse.Namespace) -> int:
     else:
         print(tr("New credentials: keys in software: this computer has no security chip the wallet can use "
                  "(setting: hardware)."))
+    return 0
+
+
+def cmd_provider(args: argparse.Namespace) -> int:
+    if args.url:
+        attestation.set_provider_url(None if args.url == "none" else args.url)
+    url = attestation.provider_url()
+    print(tr("Wallet provider: {url}", url=url) if url else tr("Wallet provider: none."))
     return 0
 
 

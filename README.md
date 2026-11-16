@@ -198,6 +198,7 @@ atesta-id-wallet restore ~/wallet.bak   # into an empty profile
 atesta-id-wallet reset                  # delete credentials, keys and settings of the profile
 atesta-id-wallet password [set|remove]  # wallet password: app lock (see Data)
 atesta-id-wallet keys [hardware|software]  # new keys in the security chip (TPM, Windows) or in software
+atesta-id-wallet provider [URL|none]    # wallet provider for issuers that ask for attestations (provider/)
 ```
 
 **Profiles** keep separate identities, for example personal, work or testing. Each profile has
@@ -322,6 +323,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 | `mdoc` | ISO 18013-5 mdoc: IssuerSigned checked against its MSO, DeviceResponse for OpenID4VP |
 | `trustlist` | ETSI TS 119 612 trusted lists: signature by the pinned certificate (signxml), issuers they certify |
 | `sdjwt` | SD-JWT VC parsing (strict) and disclosure selection |
+| `attestation` | Wallet and key attestations from a wallet provider (`provider/`), for issuers that ask for them |
 | `keys` | Holder keys: in software, or in the security chip (`cng`: TPM 2.0 on Windows through CNG) |
 | `storage` | Profiles, holder keys, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
 | `vault` | Profile encryption: data key in the system keyring or wrapped with the wallet password |
