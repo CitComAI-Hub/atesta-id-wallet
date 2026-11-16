@@ -15,13 +15,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from . import mdoc, vault
-from .common import SD_JWT_FORMATS, WalletError, b64u, b64u_json, debug, host_of, humanize, log, site_of
+from . import keys, mdoc, vault
+from .common import SD_JWT_FORMATS, WalletError, debug, host_of, humanize, log, site_of
+from .keys import HolderKey  # noqa: F401  (imported from here by the rest of the wallet)
 from .i18n import tr
 from .sdjwt import SdJwt, parse_sd_jwt
 
@@ -53,46 +52,20 @@ PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 MAX_COPIES = 5
 
 
-class HolderKey:
-    """A P-256 key bound to one copy of a credential (cnf), or used for one DPoP run."""
+def hardware_keys_enabled() -> bool:
+    """New keys in this computer's security chip, when it has one; on by default (see keys.py)."""
+    return load_settings().get("hardware_keys") is not False
 
-    def __init__(self, private_key: ec.EllipticCurvePrivateKey):
-        self.private_key = private_key
 
-    @classmethod
-    def generate(cls) -> "HolderKey":
-        return cls(ec.generate_private_key(ec.SECP256R1()))
+def set_hardware_keys(enabled: bool) -> None:
+    settings = load_settings()
+    settings["hardware_keys"] = enabled
+    save_settings(settings)
 
-    @classmethod
-    def from_pem(cls, pem: str | bytes) -> "HolderKey":
-        key = serialization.load_pem_private_key(pem.encode("ascii") if isinstance(pem, str) else pem, password=None)
-        if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(key.curve, ec.SECP256R1):
-            raise WalletError(tr("The credential's key is not a P-256 key."))
-        return cls(key)
 
-    def pem(self) -> bytes:
-        return self.private_key.private_bytes(
-            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
-
-    @property
-    def public_jwk(self) -> dict[str, str]:
-        numbers = self.private_key.public_key().public_numbers()
-        return {
-            "kty": "EC",
-            "crv": "P-256",
-            "x": b64u(numbers.x.to_bytes(32, "big")),
-            "y": b64u(numbers.y.to_bytes(32, "big")),
-        }
-
-    def sign_raw(self, data: bytes) -> bytes:
-        """ES256 signature as r || s (JWS and COSE alike)."""
-        r, s = decode_dss_signature(self.private_key.sign(data, ec.ECDSA(hashes.SHA256())))
-        return r.to_bytes(32, "big") + s.to_bytes(32, "big")
-
-    def sign_jwt(self, header: dict[str, Any], payload: dict[str, Any]) -> str:
-        header = {"alg": "ES256", **header}
-        signing_input = f"{b64u_json(header)}.{b64u_json(payload)}".encode("ascii")
-        return f"{signing_input.decode('ascii')}.{b64u(self.sign_raw(signing_input))}"
+def new_holder_key() -> keys.Key:
+    """A key for one copy of a credential of the active profile."""
+    return keys.new_key(PROFILE, hardware_keys_enabled())
 
 
 def profile_dir(name: str) -> Path:
@@ -275,7 +248,7 @@ def save_config(config: dict[str, Any]) -> None:
     write_secret(CONFIG_FILE, json.dumps(config, indent=2, ensure_ascii=False).encode("utf-8"))
 
 
-def save_credential(copies: list[tuple[str, HolderKey | None]], *, fmt: str, issuer: str, configuration_id: str,
+def save_credential(copies: list[tuple[str, keys.Key | None]], *, fmt: str, issuer: str, configuration_id: str,
                     display: dict[str, Any] | None = None) -> Path:
     """Stores one credential: its copies, each with the key it is bound to (None: not bound to any)."""
     if not copies:
@@ -292,7 +265,7 @@ def save_credential(copies: list[tuple[str, HolderKey | None]], *, fmt: str, iss
         "issuer": issuer,
         "credential_configuration_id": configuration_id,
         "stored_at": int(time.time()),
-        "instances": [{"credential": raw, "key": key.pem().decode("ascii") if key else None, "uses": 0}
+        "instances": [{"credential": raw, "key": key.stored() if key else None, "uses": 0}
                       for raw, key in copies],
     }
     if display:
@@ -375,12 +348,19 @@ def refresh_state(record: dict[str, Any]) -> None:
     record["_sd"] = chosen.get("_sd")
 
 
-def holder_key(record: dict[str, Any]) -> HolderKey:
+def holder_key(record: dict[str, Any]) -> keys.Key:
     """The key of the copy to present next (the one record["_sd"] shows)."""
-    pem = record["instances"][record["_instance"]].get("key")
-    if not isinstance(pem, str):
-        raise WalletError(tr("The credential is not bound to any key of this wallet, so it cannot be presented."))
-    return HolderKey.from_pem(pem)
+    return keys.load(record["instances"][record["_instance"]].get("key"))
+
+
+def hardware_bound(record: dict[str, Any]) -> bool:
+    """Whether the credential's copies are bound to keys in a security chip (they stay on this computer)."""
+    return any(isinstance(i.get("key"), dict) for i in record["instances"])
+
+
+def bound_elsewhere(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The credentials none of whose keys are on this computer (e.g. restored from another one)."""
+    return [r for r in records if hardware_bound(r) and not any(keys.is_here(i.get("key")) for i in r["instances"])]
 
 
 def mark_used(record: dict[str, Any]) -> None:
@@ -406,9 +386,9 @@ def credential_holder(record: dict[str, Any]) -> str:
     """The value that best identifies the holder (email, username, name...), if any."""
     sd: SdJwt | None = record.get("_sd")
     claims = sd.display_claims if sd else {}
-    for keys in (("given_name", "family_name"), ("firstName", "lastName")):
-        if all(isinstance(claims.get(k), str) for k in keys):
-            return " ".join(claims[k] for k in keys)
+    for names in (("given_name", "family_name"), ("firstName", "lastName")):
+        if all(isinstance(claims.get(k), str) for k in names):
+            return " ".join(claims[k] for k in names)
     return next((str(claims[k]) for k in ("name", "email", "username", "preferred_username", "given_name",
                                           "firstName") if isinstance(claims.get(k), (str, int))), "")
 
@@ -441,6 +421,8 @@ def credential_label(record: dict[str, Any]) -> str:
 
 def delete_credential(record: dict[str, Any]) -> None:
     Path(record["_path"]).unlink(missing_ok=True)
+    for instance in record["instances"]:
+        keys.discard(instance.get("key"))
 
 
 def save_record(record: dict[str, Any]) -> bool:
@@ -538,6 +520,7 @@ def load_history() -> list[dict[str, Any]]:
 
 def _wipe_profile(path: Path) -> None:
     """Empties a profile, its encryption key included (also the way out of a forgotten password)."""
+    keys.discard_profile(path.name)
     vault.destroy(path)
     for item in PROFILE_ITEMS:
         target = path / item
@@ -734,5 +717,6 @@ def remove_profile(name: str) -> None:
     path = profile_dir(name)
     if not path.is_dir():
         raise WalletError(tr("The profile '{name}' does not exist.", name=name))
+    keys.discard_profile(name)
     vault.destroy(path)
     shutil.rmtree(path)

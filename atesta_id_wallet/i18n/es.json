@@ -45,6 +45,7 @@
     "Another application opens them now.": "Ahora los abre otra aplicación.",
     "Answer an openid4vp:// request": "Responder a una petición openid4vp://",
     "Ask the issuers whether the credentials have been revoked (their status lists).": "Preguntar a los emisores si las credenciales se han revocado (sus listas de estado).",
+    "Ask the organisation that gave it to you for the credential again, on this computer.": "Pídele otra vez la credencial a la organización que te la dio, desde este equipo.",
     "Ask the organisations that gave you your credentials whether they have cancelled them, before you use them and from time to time. The question carries nothing about you or about the credential.": "Pregunta a las organizaciones que te dieron tus credenciales si las han anulado, antes de usarlas y de vez en cuando. La pregunta no lleva nada sobre ti ni sobre la credencial.",
     "Ask this issuer for a credential without an offer (wallet-initiated).": "Pide una credencial a este emisor sin oferta (iniciado por la cartera).",
     "Asking GitHub for the latest version…": "Consultando a GitHub la última versión…",
@@ -207,6 +208,7 @@
     "It encrypts the backup. You will need this password to restore it; it cannot be recovered if you forget it.": "Cifra la copia. Necesitarás esta contraseña para restaurarla; no se puede recuperar si la olvidas.",
     "It encrypts the profile «{profile}» and is asked for whenever the wallet opens. It cannot be recovered: if you forget it, only a backup brings the credentials back.": "Cifra el perfil «{profile}» y se pide cada vez que se abre la cartera. No se puede recuperar: si la olvidas, solo una copia de seguridad devuelve las credenciales.",
     "It encrypts this profile and locks the wallet. It cannot be recovered: if you forget it, only a backup brings the credentials back.": "Cifra este perfil y bloquea la cartera. No se puede recuperar: si la olvidas, solo una copia de seguridad devuelve las credenciales.",
+    "It includes the credentials' keys, except those in the security chip, which never leave this computer. Keep it outside this computer.": "Incluye las claves de las credenciales, salvo las que están en el chip de seguridad, que nunca salen de este equipo. Guárdala fuera de este equipo.",
     "It includes the wallet key: without it the credentials are useless. Keep it outside this computer.": "Incluye la clave de la cartera: sin ella las credenciales no sirven. Guárdala fuera de este equipo.",
     "It is restored into the active profile, which must be empty.": "Se restaura en el perfil activo, que debe estar vacío.",
     "It may simply have renewed its certificate, or someone may be pretending to be it. Do not share unless you are sure.": "Puede que solo haya renovado su certificado, o que alguien se esté haciendo pasar por él. No compartas nada si no estás seguro.",
@@ -216,6 +218,7 @@
     "Keycloak shows a page the wallet cannot complete{error}. Try --browser-login.": "Keycloak muestra una pantalla que la cartera no sabe completar{error}. Prueba con --browser-login.",
     "Keycloak username (asked for if missing).": "Usuario de Keycloak (si falta, se pide).",
     "Keycloak username or email": "Usuario o email de Keycloak",
+    "Keys in the security chip": "Claves en el chip de seguridad",
     "Known service": "Servicio conocido",
     "Language": "Idioma",
     "Language: {language}": "Idioma: {language}",
@@ -243,6 +246,12 @@
     "NETWORK ERROR: {error}": "ERROR de red: {error}",
     "Name": "Nombre",
     "Nationality": "Nacionalidad",
+    "New credentials get their keys in {chip}: they cannot be copied out of this computer, not even by a program that reads your files. A backup cannot take them to another computer; there you ask for those credentials again.": "Las credenciales nuevas guardan sus claves en {chip}: no se pueden copiar fuera de este equipo, ni siquiera un programa que lea tus archivos. Una copia de seguridad no puede llevarlas a otro equipo; allí se piden de nuevo esas credenciales.",
+    "New credentials will keep their keys in software.": "Las credenciales nuevas guardarán sus claves en software.",
+    "New credentials will keep their keys in the security chip.": "Las credenciales nuevas guardarán sus claves en el chip de seguridad.",
+    "New credentials: keys in software (setting: software).": "Credenciales nuevas: claves en software (ajuste: software).",
+    "New credentials: keys in software: this computer has no security chip the wallet can use (setting: hardware).": "Credenciales nuevas: claves en software: este equipo no tiene un chip de seguridad que la cartera pueda usar (ajuste: hardware).",
+    "New credentials: keys in {chip} (setting: hardware).": "Credenciales nuevas: claves en {chip} (ajuste: hardware).",
     "New profile": "Nuevo perfil",
     "New versions": "Versiones nuevas",
     "New wallet password": "Nueva contraseña de la cartera",
@@ -398,6 +407,7 @@
     "Show all the data of each credential.": "Mostrar todos los datos de cada credencial.",
     "Show everything with {party}": "Ver todo con {party}",
     "Show or change the language (auto, en, es, da, de, fr, lb)": "Mostrar o cambiar el idioma (auto, en, es, da, de, fr, lb)",
+    "Show or change where new credential keys are made (hardware: this computer's security chip, if it has one; software)": "Muestra o cambia dónde se crean las claves de las credenciales nuevas (hardware: el chip de seguridad de este equipo, si lo tiene; software)",
     "Show password": "Mostrar contraseña",
     "Show protocol details.": "Mostrar detalles del protocolo.",
     "Show technical details": "Ver detalles técnicos",
@@ -461,6 +471,8 @@
     "The issuer metadata belongs to {other}, not to {issuer}.": "La metadata del emisor es de {other}, no de {issuer}.",
     "The issuer metadata has no credential_endpoint.": "La metadata del emisor no tiene credential_endpoint.",
     "The issuer rejected 'proofs'; retrying with 'proof' (older draft).": "El emisor rechazó 'proofs'; reintentando con 'proof' (borrador anterior).",
+    "The key could not be made in {chip} ({error}); it is kept in software instead.": "No se pudo crear la clave en {chip} ({error}); se guarda en software.",
+    "The key of this credential is in the security chip of another computer, so it cannot be presented here.": "La clave de esta credencial está en el chip de seguridad de otro equipo, así que aquí no se puede presentar.",
     "The key of this profile is not in the system keyring (was the folder copied from another computer?). Restore a backup into a new profile instead.": "La clave de este perfil no está en el llavero del sistema (¿se copió la carpeta de otro equipo?). Restaura una copia de seguridad en un perfil nuevo.",
     "The login form": "El formulario de login",
     "The login form would send the password to {target}, not to {host}. Aborting; if it is a legitimate external identity provider, use --browser-login.": "El formulario de login enviaría la contraseña a {target}, no a {host}. Se aborta; si es un proveedor de identidad externo legítimo, usa --browser-login.",
@@ -666,6 +678,7 @@
     "response_uri ({uri}) does not match the client_id ({client_id}).": "response_uri ({uri}) no coincide con el client_id ({client_id}).",
     "the clipboard": "el portapapeles",
     "the credential": "la credencial",
+    "this computer's security chip (TPM)": "el chip de seguridad de este equipo (TPM)",
     "today, {time}": "hoy, {time}",
     "trust {action} needs an argument": "trust {action} necesita un argumento",
     "tx_code/PIN for pre-authorized_code.": "tx_code/PIN para pre-authorized_code.",
@@ -722,9 +735,17 @@
       "Caduca en {n} día ({date})",
       "Caduca en {n} días ({date})"
     ],
+    "Note: {n} credential has its key in this computer's security chip. On another computer it will have to be requested again.": [
+      "Nota: {n} credencial tiene su clave en el chip de seguridad de este equipo. En otro equipo habrá que pedirla de nuevo.",
+      "Nota: {n} credenciales tienen su clave en el chip de seguridad de este equipo. En otro equipo habrá que pedirlas de nuevo."
+    ],
     "The wallet key, {n} credential and the settings of the profile '{profile}' ({path}) will be deleted.": [
       "Se borrarán la clave de la cartera, {n} credencial y la configuración del perfil '{profile}' ({path}).",
       "Se borrarán la clave de la cartera, {n} credenciales y la configuración del perfil '{profile}' ({path})."
+    ],
+    "This one has its key in the security chip of the computer the backup was made on. Ask the organisation that gave it to you for it again here:": [
+      "Esta tiene su clave en el chip de seguridad del equipo donde se hizo la copia. Pídesela otra vez desde aquí a la organización que te la dio:",
+      "Estas tienen su clave en el chip de seguridad del equipo donde se hizo la copia. Pídeselas otra vez desde aquí a las organizaciones que te las dieron:"
     ],
     "You shared {n} piece of data with <b>{verifier}</b>. Go back to the browser: the sign-in will complete by itself.": [
       "Has compartido {n} dato con <b>{verifier}</b>. Vuelve al navegador: el inicio de sesión se completará solo.",
@@ -749,6 +770,14 @@
     "{n} credential": [
       "{n} credencial",
       "{n} credenciales"
+    ],
+    "{n} credential has its key in the security chip of the computer the backup was made on: ask its issuer for it again on this one:": [
+      "{n} credencial tiene su clave en el chip de seguridad del equipo donde se hizo la copia: pídesela otra vez a su emisor desde este:",
+      "{n} credenciales tienen su clave en el chip de seguridad del equipo donde se hizo la copia: pídeselas otra vez a sus emisores desde este:"
+    ],
+    "{n} credential has its key in this computer's security chip. On another computer it will have to be requested again.": [
+      "{n} credencial tiene su clave en el chip de seguridad de este equipo. En otro equipo habrá que pedirla de nuevo.",
+      "{n} credenciales tienen su clave en el chip de seguridad de este equipo. En otro equipo habrá que pedirlas de nuevo."
     ],
     "{n} credential received": [
       "{n} credencial recibida",

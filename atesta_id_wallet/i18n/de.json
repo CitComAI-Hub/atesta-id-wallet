@@ -45,6 +45,7 @@
     "Another application opens them now.": "Im Moment öffnet sie eine andere Anwendung.",
     "Answer an openid4vp:// request": "Eine openid4vp://-Anfrage beantworten",
     "Ask the issuers whether the credentials have been revoked (their status lists).": "Die Aussteller fragen, ob die Nachweise widerrufen wurden (ihre Statuslisten).",
+    "Ask the organisation that gave it to you for the credential again, on this computer.": "Fordere den Nachweis bei der Organisation, die ihn dir gegeben hat, auf diesem Computer erneut an.",
     "Ask the organisations that gave you your credentials whether they have cancelled them, before you use them and from time to time. The question carries nothing about you or about the credential.": "Frag die Organisationen, die dir deine Nachweise gegeben haben, ob sie sie aufgehoben haben – vor der Verwendung und ab und zu. Die Anfrage enthält nichts über dich oder den Nachweis.",
     "Ask this issuer for a credential without an offer (wallet-initiated).": "Diesen Aussteller ohne Angebot um einen Nachweis bitten (von der Wallet ausgelöst).",
     "Asking GitHub for the latest version…": "Frage GitHub nach der neuesten Version…",
@@ -207,6 +208,7 @@
     "It encrypts the backup. You will need this password to restore it; it cannot be recovered if you forget it.": "Es verschlüsselt die Sicherung. Du brauchst dieses Passwort zum Wiederherstellen; wenn du es vergisst, lässt es sich nicht wiederherstellen.",
     "It encrypts the profile «{profile}» and is asked for whenever the wallet opens. It cannot be recovered: if you forget it, only a backup brings the credentials back.": "Es verschlüsselt das Profil «{profile}» und wird bei jedem Öffnen der Wallet abgefragt. Es lässt sich nicht wiederherstellen: Wenn du es vergisst, bringt nur eine Sicherung die Nachweise zurück.",
     "It encrypts this profile and locks the wallet. It cannot be recovered: if you forget it, only a backup brings the credentials back.": "Es verschlüsselt dieses Profil und sperrt die Wallet. Es lässt sich nicht wiederherstellen: Wenn du es vergisst, bringt nur eine Sicherung die Nachweise zurück.",
+    "It includes the credentials' keys, except those in the security chip, which never leave this computer. Keep it outside this computer.": "Sie enthält die Schlüssel der Nachweise, außer denen im Sicherheitschip, die diesen Computer nie verlassen. Bewahre sie außerhalb dieses Computers auf.",
     "It includes the wallet key: without it the credentials are useless. Keep it outside this computer.": "Sie enthält den Schlüssel der Wallet: Ohne ihn sind die Nachweise nutzlos. Bewahre sie außerhalb dieses Computers auf.",
     "It is restored into the active profile, which must be empty.": "Sie wird im aktiven Profil wiederhergestellt, das leer sein muss.",
     "It may simply have renewed its certificate, or someone may be pretending to be it. Do not share unless you are sure.": "Vielleicht hat er nur sein Zertifikat erneuert, oder jemand gibt sich als dieser Dienst aus. Teile nichts, wenn du nicht sicher bist.",
@@ -216,6 +218,7 @@
     "Keycloak shows a page the wallet cannot complete{error}. Try --browser-login.": "Keycloak zeigt eine Seite, die die Wallet nicht ausfüllen kann{error}. Versuche es mit --browser-login.",
     "Keycloak username (asked for if missing).": "Keycloak-Benutzername (wird abgefragt, falls er fehlt).",
     "Keycloak username or email": "Keycloak-Benutzername oder E-Mail",
+    "Keys in the security chip": "Schlüssel im Sicherheitschip",
     "Known service": "Bekannter Dienst",
     "Language": "Sprache",
     "Language: {language}": "Sprache: {language}",
@@ -243,6 +246,12 @@
     "NETWORK ERROR: {error}": "NETZWERKFEHLER: {error}",
     "Name": "Name",
     "Nationality": "Staatsangehörigkeit",
+    "New credentials get their keys in {chip}: they cannot be copied out of this computer, not even by a program that reads your files. A backup cannot take them to another computer; there you ask for those credentials again.": "Neue Nachweise bekommen ihre Schlüssel in {chip}: Sie lassen sich nicht aus diesem Computer kopieren, nicht einmal von einem Programm, das deine Dateien liest. Eine Sicherung kann sie nicht auf einen anderen Computer mitnehmen; dort forderst du diese Nachweise neu an.",
+    "New credentials will keep their keys in software.": "Neue Nachweise behalten ihre Schlüssel in der Software.",
+    "New credentials will keep their keys in the security chip.": "Neue Nachweise behalten ihre Schlüssel im Sicherheitschip.",
+    "New credentials: keys in software (setting: software).": "Neue Nachweise: Schlüssel in der Software (Einstellung: software).",
+    "New credentials: keys in software: this computer has no security chip the wallet can use (setting: hardware).": "Neue Nachweise: Schlüssel in der Software: Dieser Computer hat keinen Sicherheitschip, den die Wallet nutzen kann (Einstellung: hardware).",
+    "New credentials: keys in {chip} (setting: hardware).": "Neue Nachweise: Schlüssel in {chip} (Einstellung: hardware).",
     "New profile": "Neues Profil",
     "New versions": "Neue Versionen",
     "New wallet password": "Neues Wallet-Passwort",
@@ -398,6 +407,7 @@
     "Show all the data of each credential.": "Alle Daten jedes Nachweises anzeigen.",
     "Show everything with {party}": "Alles mit {party} anzeigen",
     "Show or change the language (auto, en, es, da, de, fr, lb)": "Die Sprache anzeigen oder ändern (auto, en, es, da, de, fr, lb)",
+    "Show or change where new credential keys are made (hardware: this computer's security chip, if it has one; software)": "Zeigen oder ändern, wo die Schlüssel neuer Nachweise erzeugt werden (hardware: der Sicherheitschip dieses Computers, falls vorhanden; software)",
     "Show password": "Passwort anzeigen",
     "Show protocol details.": "Protokolldetails anzeigen.",
     "Show technical details": "Technische Details anzeigen",
@@ -461,6 +471,8 @@
     "The issuer metadata belongs to {other}, not to {issuer}.": "Die Metadaten des Ausstellers gehören zu {other}, nicht zu {issuer}.",
     "The issuer metadata has no credential_endpoint.": "Die Metadaten des Ausstellers haben keinen credential_endpoint.",
     "The issuer rejected 'proofs'; retrying with 'proof' (older draft).": "Der Aussteller hat ‚proofs‘ abgelehnt; neuer Versuch mit ‚proof‘ (älterer Entwurf).",
+    "The key could not be made in {chip} ({error}); it is kept in software instead.": "Der Schlüssel konnte nicht in {chip} erzeugt werden ({error}); er wird stattdessen in der Software gehalten.",
+    "The key of this credential is in the security chip of another computer, so it cannot be presented here.": "Der Schlüssel dieses Nachweises liegt im Sicherheitschip eines anderen Computers, daher kann er hier nicht vorgelegt werden.",
     "The key of this profile is not in the system keyring (was the folder copied from another computer?). Restore a backup into a new profile instead.": "Der Schlüssel dieses Profils ist nicht im Schlüsselbund des Systems (wurde der Ordner von einem anderen Computer kopiert?). Stelle stattdessen eine Sicherung in einem neuen Profil wieder her.",
     "The login form": "Das Anmeldeformular",
     "The login form would send the password to {target}, not to {host}. Aborting; if it is a legitimate external identity provider, use --browser-login.": "Das Anmeldeformular würde das Passwort an {target} senden, nicht an {host}. Abbruch; wenn es ein legitimer externer Identitätsanbieter ist, verwende --browser-login.",
@@ -666,6 +678,7 @@
     "response_uri ({uri}) does not match the client_id ({client_id}).": "response_uri ({uri}) passt nicht zur client_id ({client_id}).",
     "the clipboard": "die Zwischenablage",
     "the credential": "den Nachweis",
+    "this computer's security chip (TPM)": "dem Sicherheitschip dieses Computers (TPM)",
     "today, {time}": "heute, {time}",
     "trust {action} needs an argument": "trust {action} braucht ein Argument",
     "tx_code/PIN for pre-authorized_code.": "tx_code/PIN für pre-authorized_code.",
@@ -722,9 +735,17 @@
       "Läuft in {n} Tag ab ({date})",
       "Läuft in {n} Tagen ab ({date})"
     ],
+    "Note: {n} credential has its key in this computer's security chip. On another computer it will have to be requested again.": [
+      "Hinweis: {n} Nachweis hat seinen Schlüssel im Sicherheitschip dieses Computers. Auf einem anderen Computer muss er neu angefordert werden.",
+      "Hinweis: {n} Nachweise haben ihren Schlüssel im Sicherheitschip dieses Computers. Auf einem anderen Computer müssen sie neu angefordert werden."
+    ],
     "The wallet key, {n} credential and the settings of the profile '{profile}' ({path}) will be deleted.": [
       "Der Schlüssel der Wallet, {n} Nachweis und die Einstellungen des Profils ‚{profile}‘ ({path}) werden gelöscht.",
       "Der Schlüssel der Wallet, {n} Nachweise und die Einstellungen des Profils ‚{profile}‘ ({path}) werden gelöscht."
+    ],
+    "This one has its key in the security chip of the computer the backup was made on. Ask the organisation that gave it to you for it again here:": [
+      "Dieser hat seinen Schlüssel im Sicherheitschip des Computers, auf dem die Sicherung erstellt wurde. Fordere ihn hier erneut bei der Organisation an, die ihn dir gegeben hat:",
+      "Diese haben ihren Schlüssel im Sicherheitschip des Computers, auf dem die Sicherung erstellt wurde. Fordere sie hier erneut bei den Organisationen an, die sie dir gegeben haben:"
     ],
     "You shared {n} piece of data with <b>{verifier}</b>. Go back to the browser: the sign-in will complete by itself.": [
       "Du hast {n} Angabe mit <b>{verifier}</b> geteilt. Geh zurück zum Browser: Die Anmeldung schließt sich von selbst ab.",
@@ -749,6 +770,14 @@
     "{n} credential": [
       "{n} Nachweis",
       "{n} Nachweise"
+    ],
+    "{n} credential has its key in the security chip of the computer the backup was made on: ask its issuer for it again on this one:": [
+      "{n} Nachweis hat seinen Schlüssel im Sicherheitschip des Computers, auf dem die Sicherung erstellt wurde: Fordere ihn auf diesem erneut bei seinem Aussteller an:",
+      "{n} Nachweise haben ihren Schlüssel im Sicherheitschip des Computers, auf dem die Sicherung erstellt wurde: Fordere sie auf diesem erneut bei ihren Ausstellern an:"
+    ],
+    "{n} credential has its key in this computer's security chip. On another computer it will have to be requested again.": [
+      "{n} Nachweis hat seinen Schlüssel im Sicherheitschip dieses Computers. Auf einem anderen Computer muss er neu angefordert werden.",
+      "{n} Nachweise haben ihren Schlüssel im Sicherheitschip dieses Computers. Auf einem anderen Computer müssen sie neu angefordert werden."
     ],
     "{n} credential received": [
       "{n} Nachweis erhalten",

@@ -446,6 +446,11 @@ class MainWindow(QMainWindow):
         elif manual:
             self.toast.show_message(tr("No credential has been revoked or suspended."))
 
+    def set_hardware_keys(self, enabled: bool) -> None:
+        storage.set_hardware_keys(enabled)
+        self.toast.show_message(tr("New credentials will keep their keys in the security chip.") if enabled
+                                else tr("New credentials will keep their keys in software."))
+
     def set_status_check(self, enabled: bool) -> None:
         status.set_automatic(enabled)
         if enabled:
@@ -975,9 +980,15 @@ class MainWindow(QMainWindow):
                 write_backup(Path(path), password)
             except (WalletError, OSError) as exc:
                 return self._result(False, tr("Could not create the backup"), esc(exc))
-            self._result(True, tr("Backup created"), tr("Saved in {path}. Keep it outside this computer: it "
-                                                        "cannot be opened without the password.", path=esc(path)),
-                         icon="archive")
+            body = tr("Saved in {path}. Keep it outside this computer: it cannot be opened without the password.",
+                      path=esc(path))
+            bound = sum(storage.hardware_bound(r) for r in storage.load_credentials())
+            if bound:
+                body += "<br><br>" + tr_n(
+                    "{n} credential has its key in this computer's security chip. On another computer it will have "
+                    "to be requested again.", "{n} credentials have their key in this computer's security chip. On "
+                    "another computer they will have to be requested again.", bound)
+            self._result(True, tr("Backup created"), body, icon="archive")
         self._choose_password(tr("Backup password"), tr("It encrypts the backup. You will need this password to "
                                                         "restore it; it cannot be recovered if you forget it."), write)
 
@@ -1014,8 +1025,16 @@ class MainWindow(QMainWindow):
             except (WalletError, OSError) as exc:
                 return self._result(False, tr("Could not restore"), esc(exc))
             self.reload()
-            self._result(True, tr("Backup restored"), tr_n("{n} credential recovered.", "{n} credentials recovered.",
-                                                           count), icon="archive-restore")
+            body = tr_n("{n} credential recovered.", "{n} credentials recovered.", count)
+            elsewhere = storage.bound_elsewhere(storage.load_credentials())
+            if elsewhere:
+                names = "".join(f"<br>• {esc(storage.credential_name(r))}" for r in elsewhere)
+                body += "<br><br>" + tr_n(
+                    "This one has its key in the security chip of the computer the backup was made on. Ask the "
+                    "organisation that gave it to you for it again here:", "These have their key in the security "
+                    "chip of the computer the backup was made on. Ask the organisations that gave them to you for "
+                    "them again here:", len(elsewhere)) + names
+            self._result(True, tr("Backup restored"), body, icon="archive-restore")
         self._ask_text_then(tr("Backup password"), "", restore_with, secret=True, icon="lock",
                             confirm_text=tr("Restore"))
 

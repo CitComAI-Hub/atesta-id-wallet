@@ -67,6 +67,27 @@ Firefox if pilot users have it).
 - [ ] After 5 minutes without touching the wallet it locks by itself (not in the middle of a flow).
 - [ ] *Remove* the password: the wallet opens again without asking.
 
+## 5c. Keys in the security chip (TPM)
+
+On a computer with a TPM 2.0 (every Windows 11; `tpm.msc` shows it). CI only checks that
+`ncrypt.dll` has the functions the wallet calls; unless its runner has a TPM (`test_windows_tpm`
+not skipped), this is the only check of the CNG code against a real chip.
+
+- [ ] *Settings → Security* shows *Keys in the security chip*, ticked.
+- [ ] Receive a credential: no warning in *Protocol details* ("could not be made in…"); the
+      PowerShell command `certutil -user -csp "Microsoft Platform Crypto Provider" -key` lists keys named
+      `atesta-id-wallet:default:…` (one per copy).
+- [ ] Present it to a verifier: accepted.
+- [ ] `.\atesta-id-wallet.exe keys` says the keys are made in the security chip.
+- [ ] Delete the credential: its keys are gone from the `certutil` list. Remove a profile with
+      credentials: its keys are gone too.
+- [ ] Back up, restore into a new profile: the credentials work. Restore the same backup on
+      another computer: the result lists them as having to be requested again, and presenting
+      one says so.
+- [ ] Untick the setting, receive a credential: no new key in the `certutil` list.
+- [ ] `python -m unittest tests.test_keys` from a source checkout: `test_windows_tpm` passes
+      (not skipped).
+
 ## 6. Command line
 
 From PowerShell, in the install folder (`cd "$env:LOCALAPPDATA\Programs\Atesta ID Wallet"`):

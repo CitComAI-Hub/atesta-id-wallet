@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, status, storage, trustlist, updates, vault
+from .. import common, i18n, keys, status, storage, trustlist, updates, vault
 from ..common import __version__, claim_label, host_of, site_of
 from ..i18n import N_, tr, tr_n
 from ..storage import (
@@ -693,10 +693,23 @@ class SettingsPage(Page):
             tr("Ask the organisations that gave you your credentials whether they have cancelled them, before you "
                "use them and from time to time. The question carries nothing about you or about the credential."),
             status_check, self._action(tr("Check now"), w.check_revocations)))
+        chip = keys.hardware_backend()
+        if chip is not None:
+            hardware = QCheckBox()
+            hardware.setChecked(storage.hardware_keys_enabled())
+            hardware.toggled.connect(w.set_hardware_keys)
+            security.append(_setting(
+                tr("Keys in the security chip"),
+                tr("New credentials get their keys in {chip}: they cannot be copied out of this computer, not even "
+                   "by a program that reads your files. A backup cannot take them to another computer; there you "
+                   "ask for those credentials again.", chip=chip.label), hardware))
         self._section(tr("Security"), security)
         self._section(tr("Backup"), [
-            _setting(tr("Create an encrypted backup"), tr("It includes the wallet key: without it the credentials are "
-                     "useless. Keep it outside this computer."), self._action(tr("Create…"), w.backup, "archive")),
+            _setting(tr("Create an encrypted backup"),
+                     tr("It includes the credentials' keys, except those in the security chip, which never leave "
+                        "this computer. Keep it outside this computer.") if chip is not None else
+                     tr("It includes the wallet key: without it the credentials are useless. Keep it outside this "
+                        "computer."), self._action(tr("Create…"), w.backup, "archive")),
             _setting(tr("Restore a backup"), tr("It is restored into the active profile, which must be empty."),
                      self._action(tr("Restore…"), w.restore, "archive-restore")),
         ])

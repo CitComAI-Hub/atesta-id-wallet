@@ -7,7 +7,7 @@ It describes version 0.13.1, which includes the security audit of November 2026.
 
 | Asset | Where | Protection |
 |---|---|---|
-| Credentials (personal data) and their holder keys | `credentials/*.enc` | Encrypted with the profile data key (see below), `0600`. Each copy of a credential is stored with the P-256 private key it is bound to. |
+| Credentials (personal data) and their holder keys | `credentials/*.enc` | Encrypted with the profile data key (see below), `0600`. Each copy of a credential is stored with the P-256 private key it is bound to, or, when the key is in the security chip, with the key's name only (see *Keys in the security chip*). |
 | Settings, pinned verifier certificates | `config.enc` | Encrypted, `0600`, written atomically (a crash cannot leave it empty and silently drop the pins). |
 | Activity history | `history.enc` | Encrypted, `0600`. Records who received what; it is personal data too. |
 | Profile data key | System keyring, or `vault.json` wrapped with the wallet password | See *Encryption at rest*. |
@@ -220,6 +220,21 @@ Names published by issuers are reduced to one short line of text before they are
   KB-JWT with that copy's key, so two presentations of different copies share neither the issuer
   signature nor the key. Revocation is checked per copy; the credential counts as revoked only
   when every copy is.
+- **Keys in the security chip** (`keys.py`, `cng.py`). On Windows with a TPM 2.0, each copy's
+  key is made in the TPM through CNG (*Microsoft Platform Crypto Provider*, per user, not
+  exportable), and the credential file only keeps its name (`atesta-id-wallet:PROFILE:RANDOM`).
+  A program that copies the data folder, or the keyring and the folder, gets no usable holder
+  key; malware running as the user can still ask the TPM to sign while it runs. On by default
+  where a TPM 2.0 answers (`keys hardware|software`, *Settings → Security*); without one, or if a
+  key cannot be made, the key is made in software and the issuance goes on. The first chip key
+  of each run signs once and is verified before a credential is bound to it; if that fails the
+  chip is not used again in that run. Keys left over by an issuance that failed or gave fewer
+  copies are deleted, and so are a credential's keys when it is deleted, and every key with the
+  profile's prefix when a profile is emptied or removed (also when its credentials can no
+  longer be read). A backup carries only the names: restored on another computer, those
+  credentials are listed as having to be requested again, and presenting one says why. No
+  user verification (Windows Hello) yet, and no key attestation (planned with the wallet
+  provider). Linux and smart cards (PKCS#11) come next; there keys stay in software.
 - **DPoP** (RFC 9449): when the authorization server advertises ES256 in
   `dpop_signing_alg_values_supported`, the access token is bound to a key made for that issuance
   only (not the holder key, so the issuer cannot link it to the credentials). Every request
@@ -371,7 +386,7 @@ Names published by issuers are reduced to one short line of text before they are
 
 | Gap | Impact | Planned mitigation |
 |---|---|---|
-| Keys are software keys | Without a wallet password, malware running as the user can ask the keyring for the data key. With one, it can still read the key from memory while the wallet is unlocked. There is no hardware-backed key (TPM, secure element). | Hardware-backed holder keys if the pilot needs them. |
+| Keys are software keys on Linux and macOS | Without a wallet password, malware running as the user can ask the keyring for the data key. With one, it can still read the key from memory while the wallet is unlocked. On Windows with a TPM 2.0 the holder keys are in the TPM, but the profile data key is still a software key, and malware running as the user can have the TPM sign. | PKCS#11 (TPM on Linux, smart cards); Windows Hello for each presentation. |
 | No default trust list | Most verifiers start as `new`. Users must judge the domain shown. | Ship the project's verifier CA or trust list. |
 | Issuer trust is not anchored | Any HTTPS issuer the user accepts can issue credentials; a trusted list the user adds only says which issuers it certifies. An `x5c` issuer certificate (an mdoc's `x5chain` alike: no IACA list) is not validated against a CA, only used to check the signature: for an `https` issuer, a certificate that names the issuer's host counts as the issuer's key even if it is self-signed. This also applies to status lists, so whoever controls the address of a status list (or the TLS connection to it) could sign one with such a certificate and make a credential look revoked or valid in the wallet (the verifier still checks for itself). | Issuer allow-list or trust list; validate `x5c` chains against it. |
 | Addresses are checked by name, not by where they resolve | A public host name that resolves to a private address (DNS rebinding) passes the "not this computer or the local network" checks for logos and status lists. Addresses written as numbers are recognised in every spelling (`127.1`, `2130706433`, `0x7f000001`, `localhost.`, IPv4-mapped IPv6), and every range that is not public counts as local (also `100.64.0.0/10`, reserved and multicast). Only HTTPS requests are made, and their answers are not shown. | — |

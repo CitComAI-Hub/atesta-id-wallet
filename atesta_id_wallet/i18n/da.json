@@ -45,6 +45,7 @@
     "Another application opens them now.": "Et andet program åbner dem nu.",
     "Answer an openid4vp:// request": "Besvar en openid4vp://-anmodning",
     "Ask the issuers whether the credentials have been revoked (their status lists).": "Spørg udstederne, om legitimationerne er blevet tilbagekaldt (deres statuslister).",
+    "Ask the organisation that gave it to you for the credential again, on this computer.": "Bed den organisation, der gav dig legitimationen, om den igen fra denne computer.",
     "Ask the organisations that gave you your credentials whether they have cancelled them, before you use them and from time to time. The question carries nothing about you or about the credential.": "Spørg de organisationer, der gav dig dine legitimationer, om de har annulleret dem, før du bruger dem og en gang imellem. Spørgsmålet indeholder intet om dig eller om legitimationen.",
     "Ask this issuer for a credential without an offer (wallet-initiated).": "Anmod denne udsteder om en legitimation uden tilbud (initieret af wallet'en).",
     "Asking GitHub for the latest version…": "Spørger GitHub om den nyeste version…",
@@ -207,6 +208,7 @@
     "It encrypts the backup. You will need this password to restore it; it cannot be recovered if you forget it.": "Den krypterer sikkerhedskopien. Du skal bruge adgangskoden for at gendanne den; den kan ikke genskabes, hvis du glemmer den.",
     "It encrypts the profile «{profile}» and is asked for whenever the wallet opens. It cannot be recovered: if you forget it, only a backup brings the credentials back.": "Den krypterer profilen «{profile}» og kræves, hver gang wallet'en åbnes. Den kan ikke gendannes: glemmer du den, kan kun en sikkerhedskopi bringe legitimationerne tilbage.",
     "It encrypts this profile and locks the wallet. It cannot be recovered: if you forget it, only a backup brings the credentials back.": "Den krypterer denne profil og låser wallet'en. Den kan ikke gendannes: glemmer du den, kan kun en sikkerhedskopi bringe legitimationerne tilbage.",
+    "It includes the credentials' keys, except those in the security chip, which never leave this computer. Keep it outside this computer.": "Den indeholder legitimationernes nøgler, undtagen dem i sikkerhedschippen, som aldrig forlader denne computer. Opbevar den uden for denne computer.",
     "It includes the wallet key: without it the credentials are useless. Keep it outside this computer.": "Den indeholder wallet-nøglen: uden den er legitimationerne ubrugelige. Opbevar den uden for denne computer.",
     "It is restored into the active profile, which must be empty.": "Den gendannes i den aktive profil, som skal være tom.",
     "It may simply have renewed its certificate, or someone may be pretending to be it. Do not share unless you are sure.": "Den har måske blot fornyet sit certifikat, eller nogen udgiver sig for at være den. Del ikke noget, medmindre du er sikker.",
@@ -216,6 +218,7 @@
     "Keycloak shows a page the wallet cannot complete{error}. Try --browser-login.": "Keycloak viser en side, som wallet'en ikke kan udfylde{error}. Prøv --browser-login.",
     "Keycloak username (asked for if missing).": "Keycloak-brugernavn (spørges der efter, hvis det mangler).",
     "Keycloak username or email": "Keycloak-brugernavn eller e-mail",
+    "Keys in the security chip": "Nøgler i sikkerhedschippen",
     "Known service": "Kendt tjeneste",
     "Language": "Sprog",
     "Language: {language}": "Sprog: {language}",
@@ -243,6 +246,12 @@
     "NETWORK ERROR: {error}": "NETVÆRKSFEJL: {error}",
     "Name": "Navn",
     "Nationality": "Nationalitet",
+    "New credentials get their keys in {chip}: they cannot be copied out of this computer, not even by a program that reads your files. A backup cannot take them to another computer; there you ask for those credentials again.": "Nye legitimationer får deres nøgler i {chip}: de kan ikke kopieres ud af denne computer, heller ikke af et program, der læser dine filer. En sikkerhedskopi kan ikke tage dem med til en anden computer; der beder du om de legitimationer igen.",
+    "New credentials will keep their keys in software.": "Nye legitimationer vil have deres nøgler i software.",
+    "New credentials will keep their keys in the security chip.": "Nye legitimationer vil have deres nøgler i sikkerhedschippen.",
+    "New credentials: keys in software (setting: software).": "Nye legitimationer: nøgler i software (indstilling: software).",
+    "New credentials: keys in software: this computer has no security chip the wallet can use (setting: hardware).": "Nye legitimationer: nøgler i software: denne computer har ingen sikkerhedschip, som wallet'en kan bruge (indstilling: hardware).",
+    "New credentials: keys in {chip} (setting: hardware).": "Nye legitimationer: nøgler i {chip} (indstilling: hardware).",
     "New profile": "Ny profil",
     "New versions": "Nye versioner",
     "New wallet password": "Ny adgangskode til wallet'en",
@@ -398,6 +407,7 @@
     "Show all the data of each credential.": "Vis alle data for hver legitimation.",
     "Show everything with {party}": "Vis alt med {party}",
     "Show or change the language (auto, en, es, da, de, fr, lb)": "Vis eller skift sprog (auto, en, es, da, de, fr, lb)",
+    "Show or change where new credential keys are made (hardware: this computer's security chip, if it has one; software)": "Vis eller ændr, hvor nøglerne til nye legitimationer laves (hardware: denne computers sikkerhedschip, hvis den har en; software)",
     "Show password": "Vis adgangskode",
     "Show protocol details.": "Vis protokoldetaljer.",
     "Show technical details": "Vis tekniske detaljer",
@@ -461,6 +471,8 @@
     "The issuer metadata belongs to {other}, not to {issuer}.": "Udstederens metadata tilhører {other}, ikke {issuer}.",
     "The issuer metadata has no credential_endpoint.": "Udstederens metadata har intet credential_endpoint.",
     "The issuer rejected 'proofs'; retrying with 'proof' (older draft).": "Udstederen afviste 'proofs'; prøver igen med 'proof' (ældre udkast).",
+    "The key could not be made in {chip} ({error}); it is kept in software instead.": "Nøglen kunne ikke laves i {chip} ({error}); den gemmes i software i stedet.",
+    "The key of this credential is in the security chip of another computer, so it cannot be presented here.": "Nøglen til denne legitimation ligger i sikkerhedschippen på en anden computer, så den kan ikke fremvises her.",
     "The key of this profile is not in the system keyring (was the folder copied from another computer?). Restore a backup into a new profile instead.": "Nøglen til denne profil er ikke i systemets nøglering (blev mappen kopieret fra en anden computer?). Gendan i stedet en sikkerhedskopi i en ny profil.",
     "The login form": "Loginformularen",
     "The login form would send the password to {target}, not to {host}. Aborting; if it is a legitimate external identity provider, use --browser-login.": "Login-formularen ville sende adgangskoden til {target}, ikke til {host}. Afbryder; hvis det er en legitim ekstern identitetsudbyder, så brug --browser-login.",
@@ -666,6 +678,7 @@
     "response_uri ({uri}) does not match the client_id ({client_id}).": "response_uri ({uri}) stemmer ikke med client_id ({client_id}).",
     "the clipboard": "udklipsholderen",
     "the credential": "legitimationen",
+    "this computer's security chip (TPM)": "denne computers sikkerhedschip (TPM)",
     "today, {time}": "i dag, {time}",
     "trust {action} needs an argument": "trust {action} kræver et argument",
     "tx_code/PIN for pre-authorized_code.": "tx_code/PIN til pre-authorized_code.",
@@ -722,9 +735,17 @@
       "Udløber om {n} dag ({date})",
       "Udløber om {n} dage ({date})"
     ],
+    "Note: {n} credential has its key in this computer's security chip. On another computer it will have to be requested again.": [
+      "Bemærk: {n} legitimation har sin nøgle i denne computers sikkerhedschip. På en anden computer skal den anmodes om igen.",
+      "Bemærk: {n} legitimationer har deres nøgle i denne computers sikkerhedschip. På en anden computer skal de anmodes om igen."
+    ],
     "The wallet key, {n} credential and the settings of the profile '{profile}' ({path}) will be deleted.": [
       "Wallet-nøglen, {n} legitimation og indstillingerne for profilen '{profile}' ({path}) slettes.",
       "Wallet-nøglen, {n} legitimationer og indstillingerne for profilen '{profile}' ({path}) slettes."
+    ],
+    "This one has its key in the security chip of the computer the backup was made on. Ask the organisation that gave it to you for it again here:": [
+      "Denne har sin nøgle i sikkerhedschippen på den computer, hvor sikkerhedskopien blev lavet. Bed den organisation, der gav dig den, om den igen her:",
+      "Disse har deres nøgle i sikkerhedschippen på den computer, hvor sikkerhedskopien blev lavet. Bed de organisationer, der gav dig dem, om dem igen her:"
     ],
     "You shared {n} piece of data with <b>{verifier}</b>. Go back to the browser: the sign-in will complete by itself.": [
       "Du har delt {n} oplysning med <b>{verifier}</b>. Gå tilbage til browseren: login fuldføres af sig selv.",
@@ -749,6 +770,14 @@
     "{n} credential": [
       "{n} legitimation",
       "{n} legitimationer"
+    ],
+    "{n} credential has its key in the security chip of the computer the backup was made on: ask its issuer for it again on this one:": [
+      "{n} legitimation har sin nøgle i sikkerhedschippen på den computer, hvor sikkerhedskopien blev lavet: bed dens udsteder om den igen på denne:",
+      "{n} legitimationer har deres nøgle i sikkerhedschippen på den computer, hvor sikkerhedskopien blev lavet: bed deres udstedere om dem igen på denne:"
+    ],
+    "{n} credential has its key in this computer's security chip. On another computer it will have to be requested again.": [
+      "{n} legitimation har sin nøgle i denne computers sikkerhedschip. På en anden computer skal den anmodes om igen.",
+      "{n} legitimationer har deres nøgle i denne computers sikkerhedschip. På en anden computer skal de anmodes om igen."
     ],
     "{n} credential received": [
       "{n} legitimation modtaget",

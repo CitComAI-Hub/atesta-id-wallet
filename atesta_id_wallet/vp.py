@@ -37,14 +37,15 @@ from .common import (
 from .i18n import tr
 from .jose import _x5c_chain, encrypt_response_jwe, jwk_thumbprint, response_encryption_jwk
 from .sdjwt import SdJwt, _claim_at, _sd_digest, select_disclosures
-from .storage import HolderKey, add_history, credential_name, holder_key, is_usable, mark_used
+from .keys import Key
+from .storage import add_history, credential_name, holder_key, is_usable, mark_used
 from .trust import VerifierIdentity, check_request_object, check_response_uri, remember_verifier, split_client_id
 from .ui import consent_items
 
 
 def build_sd_jwt_presentation(
     sd_jwt: SdJwt,
-    key: HolderKey,
+    key: Key,
     *,
     audience: str,
     nonce: str,

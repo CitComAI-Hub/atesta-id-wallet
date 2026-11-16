@@ -281,14 +281,20 @@ the full manual Windows test and the CITCOM verifier trust list.
 
 - [ ] **Hardware-backed holder keys** (WSCD-like); one key per copy and batch issuance are done
       (0.14), so a hardware key replaces the PEM stored with each copy:
-      - Windows: TPM 2.0 through CNG (*Microsoft Platform Crypto Provider*), optional Windows
-        Hello. Guaranteed on Windows 11, so the first target.
+      - [x] Windows: TPM 2.0 through CNG (*Microsoft Platform Crypto Provider*, `cng.py`), on by
+        default where there is one, software otherwise (`keys.py`). Backups carry only the key
+        names; a restore on another computer lists what has to be requested again. Needs the
+        manual check in docs/TESTING-WINDOWS.md §5c (CI has no TPM). Still to do: Windows Hello.
       - Linux: TPM 2.0 through `tpm2-pkcs11` as an option (often needs the `tss` group and extra
         packages: support cost with pilot users). macOS: Secure Enclave, if macOS is supported.
       - Smart cards / USB tokens (PKCS#11) as an alternative.
       - Key attestation from the TPM: the first real step towards wallet attestation.
-      - Decide first: a hardware key cannot be exported, so backups cannot restore credentials
-        on another computer; a new or broken laptop means asking the issuers again.
+      - Decided (November 2026): on by default, with the setting to turn it off, because a
+        hardware key cannot be exported; a new or broken laptop means asking the issuers again.
+      - Wallet provider (decided: a minimal service in this repository): checks the TPM
+        (EK certificate, `TPM2_Certify`) and issues wallet attestations and key attestations
+        (OpenID4VCI Appendix D, OAuth attestation-based client authentication), for HAIP and
+        the OID4VCI conformance plan.
 - [ ] Make "issuer key not found" an error once the pilot issuers are known
 - [x] Trusted lists (ETSI TS 119 612, `trustlist.py`): added by the user with the signer pinned;
       issuers they certify are shown as such; DCQL `etsi_tl`. Done November 2026.

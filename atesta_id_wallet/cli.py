@@ -18,7 +18,7 @@ from typing import Any
 import requests
 from cryptography import x509
 
-from . import common, i18n, status, storage, trustlist, updates, vault
+from . import common, i18n, keys, status, storage, trustlist, updates, vault
 from .common import Cancelled, WalletError, __version__, confirm, log, new_session, printable
 from .desktop import (
     FROZEN,
@@ -61,9 +61,9 @@ from .vp import build_response, prepare_presentation, record_declined, send_pres
 
 
 SUBCOMMANDS = ("issue", "present", "list", "history", "remove", "reset", "backup", "restore", "profiles",
-               "trust", "password", "update", "language", "install-handler", "uninstall-handler")
+               "trust", "password", "keys", "update", "language", "install-handler", "uninstall-handler")
 # Commands that do not read the profile data, so they never ask for the wallet password.
-WITHOUT_UNLOCK = ("reset", "profiles", "update", "language", "install-handler", "uninstall-handler")
+WITHOUT_UNLOCK = ("reset", "profiles", "keys", "update", "language", "install-handler", "uninstall-handler")
 
 
 def cmd_issue(args: argparse.Namespace) -> int:
@@ -220,6 +220,11 @@ def cmd_backup(args: argparse.Namespace) -> int:
     write_backup(out, password)
     print(tr("✔ Encrypted backup of the profile '{profile}' in {file}. Keep it outside this computer.",
              profile=storage.PROFILE, file=out))
+    bound = sum(storage.hardware_bound(r) for r in storage.load_credentials())
+    if bound:
+        print(tr_n("Note: {n} credential has its key in this computer's security chip. On another computer it will "
+                   "have to be requested again.", "Note: {n} credentials have their key in this computer's security "
+                   "chip. On another computer they will have to be requested again.", bound))
     return 0
 
 
@@ -232,6 +237,13 @@ def cmd_restore(args: argparse.Namespace) -> int:
     count = restore_backup(Path(args.file).expanduser(), getpass.getpass(tr("Backup password: ")))
     print(tr_n("✔ Restored into the profile '{profile}': {n} credential.",
                "✔ Restored into the profile '{profile}': {n} credentials.", count, profile=storage.PROFILE))
+    elsewhere = storage.bound_elsewhere(storage.load_credentials())
+    if elsewhere:
+        print(tr_n("{n} credential has its key in the security chip of the computer the backup was made on: ask its "
+                   "issuer for it again on this one:", "{n} credentials have their key in the security chip of the "
+                   "computer the backup was made on: ask their issuers for them again on this one:", len(elsewhere)))
+        for record in elsewhere:
+            print(f"  - {printable(storage.credential_name(record))}")
     return 0
 
 
@@ -531,6 +543,11 @@ def build_parser() -> argparse.ArgumentParser:
     password.add_argument("action", nargs="?", choices=["set", "remove"])
     password.set_defaults(func=cmd_password)
 
+    keys_ = sub.add_parser("keys", help=tr("Show or change where new credential keys are made (hardware: this "
+                                           "computer's security chip, if it has one; software)"))
+    keys_.add_argument("where", nargs="?", choices=["hardware", "software"])
+    keys_.set_defaults(func=cmd_keys)
+
     language = sub.add_parser("language", help=tr("Show or change the language (auto, en, es, da, de, fr, lb)"))
     language.add_argument("code", nargs="?", choices=(i18n.AUTO, *i18n.LANGUAGES))
     language.set_defaults(func=cmd_language)
@@ -624,6 +641,20 @@ def _run(argv: list[str]) -> int:
         if getattr(args, file_attr, None):
             setattr(args, attr, Path(getattr(args, file_attr)).read_text(encoding="utf-8"))
     return args.func(args)
+
+
+def cmd_keys(args: argparse.Namespace) -> int:
+    if args.where:
+        storage.set_hardware_keys(args.where == "hardware")
+    chip = keys.hardware_backend()
+    if not storage.hardware_keys_enabled():
+        print(tr("New credentials: keys in software (setting: software)."))
+    elif chip is not None:
+        print(tr("New credentials: keys in {chip} (setting: hardware).", chip=chip.label))
+    else:
+        print(tr("New credentials: keys in software: this computer has no security chip the wallet can use "
+                 "(setting: hardware)."))
+    return 0
 
 
 def cmd_language(args: argparse.Namespace) -> int:

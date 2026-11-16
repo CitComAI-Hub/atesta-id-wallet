@@ -193,9 +193,11 @@ atesta-id-wallet list [-d] [--check]    # stored credentials (-d: all claims; --
 atesta-id-wallet history                # what was received, shared or declined, and with whom
 atesta-id-wallet remove 2               # delete by number or id from 'list'
 atesta-id-wallet backup ~/wallet.bak    # encrypted backup of the profile, the credentials' keys included
+                                        # (not those in the security chip: see 'keys')
 atesta-id-wallet restore ~/wallet.bak   # into an empty profile
 atesta-id-wallet reset                  # delete credentials, keys and settings of the profile
 atesta-id-wallet password [set|remove]  # wallet password: app lock (see Data)
+atesta-id-wallet keys [hardware|software]  # new keys in the security chip (TPM, Windows) or in software
 ```
 
 **Profiles** keep separate identities, for example personal, work or testing. Each profile has
@@ -283,7 +285,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 
 | File in `profiles/<name>/` | Contents |
 |---|---|
-| `credentials/*.enc` | Received SD-JWT credentials, with the issuer's display name and colours. Each holds up to 5 copies, each with the private key (P-256) it is bound to: **back them up** (`backup`) and never share them. |
+| `credentials/*.enc` | Received SD-JWT credentials, with the issuer's display name and colours. Each holds up to 5 copies, each with the private key (P-256) it is bound to, or with its name in the security chip (TPM, Windows): **back them up** (`backup`) and never share them. A backup cannot take a key in the chip to another computer. |
 | `config.enc` | Per issuer: username, `client_id` and `redirect_uri` that worked. Pinned verifier certificates. |
 | `history.enc` | Activity: credentials received, data shared or declined, and with whom. |
 | `trusted_cas/*.pem` | CAs whose verifiers are trusted (public certificates, not encrypted). |
@@ -320,7 +322,8 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 | `mdoc` | ISO 18013-5 mdoc: IssuerSigned checked against its MSO, DeviceResponse for OpenID4VP |
 | `trustlist` | ETSI TS 119 612 trusted lists: signature by the pinned certificate (signxml), issuers they certify |
 | `sdjwt` | SD-JWT VC parsing (strict) and disclosure selection |
-| `storage` | Profiles, holder key, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
+| `keys` | Holder keys: in software, or in the security chip (`cng`: TPM 2.0 on Windows through CNG) |
+| `storage` | Profiles, holder keys, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
 | `vault` | Profile encryption: data key in the system keyring or wrapped with the wallet password |
 | `trust` | Verifier identity and trust (x509_san_dns, x509_hash, pinning, CAs) |
 | `status` | Revocation: the issuer's Token Status List, checked and stored with each credential |

@@ -50,7 +50,8 @@ from .common import (
 from .i18n import tr
 from .jose import _dns_names, _verify_jws, _x5c_chain, jwk_to_public_key
 from .sdjwt import parse_sd_jwt
-from .storage import MAX_COPIES, HolderKey, add_history, load_config, save_config, save_credential
+from .keys import Key
+from .storage import MAX_COPIES, HolderKey, add_history, load_config, new_holder_key, save_config, save_credential
 from .ui import OfferSummary, Prompter, TerminalPrompter
 
 PRE_AUTH_GRANT = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
@@ -669,7 +670,7 @@ def copies_for(issuer_meta: dict[str, Any], wanted: int) -> int:
 
 def request_credential(
     session: requests.Session,
-    keys: list[HolderKey],
+    keys: list[Key],
     issuer_meta: dict[str, Any],
     token: dict[str, Any],
     configuration_id: str,
@@ -991,20 +992,28 @@ def issue(session: requests.Session, raw_offer: str, options: IssueOptions, ui: 
     for config_id in config_ids:
         fmt = configs.get(config_id, {}).get("format", "unknown")
         log(tr("Requesting {credential} ({format})…", credential=config_id, format=fmt))
-        keys = [HolderKey.generate() for _ in range(copies_for(issuer_meta, options.copies))]
-        raws = request_credential(session, keys, issuer_meta, token, config_id, proof_iss=proof_iss, dpop=dpop)
-        if not raws:
-            continue
-        copies: list[tuple[str, HolderKey | None]] = []
-        for index, raw_credential in enumerate(raws):
-            key = keys[min(index, len(keys) - 1)]
-            if fmt in SD_JWT_FORMATS:
-                key = verify_issued_credential(session, raw_credential, keys, issuer, as_meta) or key
-            elif fmt == mdoc.FORMAT:
-                key = verify_issued_mdoc(session, raw_credential, keys, issuer, as_meta)
-            copies.append((raw_credential, key))
-        path = save_credential(copies, fmt=fmt, issuer=issuer, configuration_id=config_id,
-                               display=_stored_display(displays[config_id], logos.get(config_id)))
+        keys = [new_holder_key() for _ in range(copies_for(issuer_meta, options.copies))]
+        kept: list[Key] = []
+        try:
+            raws = request_credential(session, keys, issuer_meta, token, config_id, proof_iss=proof_iss, dpop=dpop)
+            if not raws:
+                continue
+            copies: list[tuple[str, Key | None]] = []
+            for index, raw_credential in enumerate(raws):
+                key: Key | None = keys[min(index, len(keys) - 1)]
+                if fmt in SD_JWT_FORMATS:
+                    key = verify_issued_credential(session, raw_credential, keys, issuer, as_meta) or key
+                elif fmt == mdoc.FORMAT:
+                    key = verify_issued_mdoc(session, raw_credential, keys, issuer, as_meta)
+                copies.append((raw_credential, key))
+            path = save_credential(copies, fmt=fmt, issuer=issuer, configuration_id=config_id,
+                                   display=_stored_display(displays[config_id], logos.get(config_id)))
+            kept = [key for _, key in copies if key is not None]
+        finally:
+            # Keys in the chip made for copies the issuer did not give, or for an issuance that failed.
+            for unused in keys:
+                if not any(unused is key for key in kept):
+                    unused.discard()
         debug(f"Credential stored in {path} ({len(copies)} copies)")
         parsed = (parse_sd_jwt(raws[0]) if fmt in SD_JWT_FORMATS
                   else mdoc.parse_mdoc(raws[0]) if fmt == mdoc.FORMAT else None)
@@ -1373,8 +1382,8 @@ def issuer_keys(
 
 
 def verify_issued_mdoc(
-    session: requests.Session, raw: str, holders: list[HolderKey], issuer: str, as_meta: dict[str, Any]
-) -> HolderKey:
+    session: requests.Session, raw: str, holders: list[Key], issuer: str, as_meta: dict[str, Any]
+) -> Key:
     """
     Before storing an mso_mdoc: items that match the MSO's digests, the issuer's signature over
     the MSO, and a device key that is one of this issuance's keys (returned).
@@ -1394,7 +1403,7 @@ def verify_issued_mdoc(
                "the verifier may reject it.", host=host_of(issuer), iss=issuer))
     device = document.device_key.public_numbers()
     for holder in holders:
-        if holder.private_key.public_key().public_numbers() == device:
+        if holder.public_key.public_numbers() == device:
             return holder
     raise WalletError(tr("The credential is bound to another key, not this wallet's; it is not stored."),
                       hint=tr("The credential received could not be checked, so it was not saved. Contact "
@@ -1402,8 +1411,8 @@ def verify_issued_mdoc(
 
 
 def verify_issued_credential(
-    session: requests.Session, raw: str, holders: list[HolderKey], issuer: str, as_meta: dict[str, Any]
-) -> HolderKey | None:
+    session: requests.Session, raw: str, holders: list[Key], issuer: str, as_meta: dict[str, Any]
+) -> Key | None:
     """
     Before storing: issuer signature and binding to one of the keys of this issuance, which is
     returned (None if the credential is not bound to any key). The issuer may answer the copies in
