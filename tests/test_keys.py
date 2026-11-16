@@ -269,7 +269,7 @@ class WindowsTpmTests(unittest.TestCase):
         from atesta_id_wallet import cng
 
         ncrypt = cng._NCrypt()
-        self.assertEqual(len(ncrypt._functions), 11)
+        self.assertEqual(len(ncrypt._functions), 14)
         try:
             print("TPM 2.0:", cng.PlatformTpm().available())
         except cng.CngError as exc:

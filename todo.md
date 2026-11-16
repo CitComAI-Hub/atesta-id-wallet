@@ -300,10 +300,13 @@ the full manual Windows test and the CITCOM verifier trust list.
         and token (challenge included), key attestation in the proofs when required; no
         evidence checked yet, so no `key_storage`. The OID4VCI wallet conformance plan passes
         with it. Still to do: a GUI setting for the provider URL, a deployment.
-      - Wallet provider, step B2: checks the TPM
-        (EK certificate, `TPM2_Certify`) and issues wallet attestations and key attestations
-        (OpenID4VCI Appendix D, OAuth attestation-based client authentication), for HAIP and
-        the OID4VCI conformance plan.
+      - [x] Wallet provider, step B2 (`provider/tpm2.py`, `cng.py`): EK certificate chained to
+        the manufacturer (`WP_TPM_ROOTS`), MakeCredential/ActivateCredential on an AIK, a
+        TPM2_Certify of each key; then `key_storage`. Checked against swtpm in CI (`tpm` job);
+        the CNG side (PCP blobs, AIK as a normal user, firmware TPMs' EK certificates) needs
+        docs/TESTING-WINDOWS.md §5c. RSA 2048 EKs only. Decide the `key_storage` value with the
+        pilot (default `iso_18045_moderate`). Still to do: ECC EKs, Windows Hello per use
+        (`user_authentication`), a TPM-bound wallet attestation key, Linux (PKCS#11).
 - [ ] Make "issuer key not found" an error once the pilot issuers are known
 - [x] Trusted lists (ETSI TS 119 612, `trustlist.py`): added by the user with the signer pinned;
       issuers they certify are shown as such; DCQL `etsi_tl`. Done November 2026.

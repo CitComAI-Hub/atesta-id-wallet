@@ -3,11 +3,18 @@
 Keys in the TPM 2.0 on Windows, through CNG and its Microsoft Platform Crypto Provider (ncrypt.dll,
 called with ctypes: nothing to install). Keys are per user, made in the TPM and not exportable:
 only their public part leaves it.
+
+TPM evidence for the wallet provider (attestation.py): the endorsement key certificate, an
+attestation key (AIK, an identity key of the PCP), ActivateCredential on it, and TPM2_Certify of a
+holder key by it (NCryptCreateClaim). The PCP wraps the TPM's structures in blobs of its own
+(PCP_KEY_ATTESTATION_BLOB, PCP_KEY_BLOB_WIN8); they are unwrapped here, so the provider only
+sees the TPM's.
 """
 
 from __future__ import annotations
 
 import ctypes
+import struct
 from ctypes import POINTER, Structure, byref, c_long, c_size_t, c_ulong, c_void_p, c_wchar_p, create_string_buffer
 from typing import Any
 
@@ -22,6 +29,15 @@ P256_PUBLIC_MAGIC = 0x31534345  # BCRYPT_ECDSA_PUBLIC_P256_MAGIC ("ECS1")
 NTE_BAD_KEYSET = 0x80090016  # no key with that name
 NTE_NO_MORE_ITEMS = 0x8009002A
 NCRYPT_SILENT_FLAG = 0x40  # never show a window: an operation that needs one fails instead
+AIK_NAME = "atesta-id-wallet-aik"  # one per user, shared by the profiles (not a holder key: no profile prefix)
+KEY_USAGE_POLICY = "PCP_KEY_USAGE_POLICY"
+PCP_IDENTITY_KEY = 0x00000008  # NCRYPT_PCP_IDENTITY_KEY: an AIK
+ID_BINDING = "PCP_TPM12_IDBINDING"  # for TPM 2.0: TPM2B_PUBLIC || TPM2B_CREATION_DATA || TPM2B_ATTEST || sig
+ID_ACTIVATION = "PCP_TPM12_IDACTIVATION"  # set: TPM2B_ID_OBJECT || TPM2B_ENCRYPTED_SECRET; get: the secret
+EK_CERTIFICATES = ("PCP_RSA_EKCERT", "PCP_EKCERT", "PCP_RSA_EKNVCERT", "PCP_EKNVCERT")
+CLAIM_AUTHORITY_AND_SUBJECT = 0x00000003  # NCRYPT_CLAIM_AUTHORITY_AND_SUBJECT
+BUFFER_KEYATTESTATION_NONCE = 41  # NCRYPTBUFFER_CLAIM_KEYATTESTATION_NONCE
+KEY_ATTESTATION_MAGIC = 0x5344414B  # PCP_KEY_ATTESTATION_BLOB ("KADS")
 
 HANDLE = c_size_t  # NCRYPT_HANDLE is a ULONG_PTR
 DWORD = c_ulong
@@ -29,6 +45,14 @@ DWORD = c_ulong
 
 class _KeyName(Structure):
     _fields_ = [("pszName", c_wchar_p), ("pszAlgid", c_wchar_p), ("dwLegacyKeySpec", DWORD), ("dwFlags", DWORD)]
+
+
+class _Buffer(Structure):
+    _fields_ = [("cbBuffer", c_ulong), ("BufferType", c_ulong), ("pvBuffer", c_void_p)]
+
+
+class _BufferDesc(Structure):
+    _fields_ = [("ulVersion", c_ulong), ("cBuffers", c_ulong), ("pBuffers", POINTER(_Buffer))]
 
 
 class CngError(Exception):
@@ -52,6 +76,10 @@ class _NCrypt:
             "NCryptFreeObject": (HANDLE,),
             "NCryptEnumKeys": (HANDLE, c_wchar_p, POINTER(POINTER(_KeyName)), POINTER(c_void_p), DWORD),
             "NCryptFreeBuffer": (c_void_p,),
+            "NCryptGetProperty": (HANDLE, c_wchar_p, c_void_p, DWORD, POINTER(DWORD), DWORD),
+            "NCryptSetProperty": (HANDLE, c_wchar_p, c_void_p, DWORD, DWORD),
+            "NCryptCreateClaim": (HANDLE, HANDLE, DWORD, POINTER(_BufferDesc), c_void_p, DWORD, POINTER(DWORD),
+                                  DWORD),
         }
         self._functions: dict[str, Any] = {}
         for name, args in signatures.items():
@@ -182,3 +210,116 @@ class PlatformTpm:
             if state:
                 ncrypt.status("NCryptFreeBuffer", state)
         return found
+
+    # TPM evidence (keys.TpmEvidence).
+
+    def _property(self, handle: HANDLE, name: str) -> bytes:
+        ncrypt, _ = self._open()
+        size = DWORD()
+        ncrypt.call("NCryptGetProperty", handle, name, None, 0, byref(size), NCRYPT_SILENT_FLAG)
+        out = create_string_buffer(size.value)
+        ncrypt.call("NCryptGetProperty", handle, name, out, size.value, byref(size), NCRYPT_SILENT_FLAG)
+        return out.raw[:size.value]
+
+    def endorsement_certificate(self) -> bytes:
+        """The EK certificate (DER): in the TPM's NV memory, or fetched by Windows for firmware TPMs."""
+        _, provider = self._open()
+        for name in EK_CERTIFICATES:
+            try:
+                data = self._property(provider, name)
+            except CngError:
+                continue
+            start = data.find(b"\x30\x82")  # a DER certificate, wherever the property puts it
+            if start >= 0:
+                length = int.from_bytes(data[start + 2:start + 4], "big") + 4
+                return data[start:start + length]
+        raise CngError("NCryptGetProperty (EK certificate)", NTE_BAD_KEYSET)
+
+    def _aik(self) -> HANDLE:
+        key = self._key(AIK_NAME)
+        if key is not None:
+            return key
+        ncrypt, provider = self._open()
+        key = HANDLE()
+        ncrypt.call("NCryptCreatePersistedKey", provider, byref(key), "RSA", AIK_NAME, 0, 0)
+        try:
+            usage = DWORD(PCP_IDENTITY_KEY)
+            ncrypt.call("NCryptSetProperty", key, KEY_USAGE_POLICY, byref(usage), 4, 0)
+            ncrypt.call("NCryptFinalizeKey", key, NCRYPT_SILENT_FLAG)
+        except CngError:
+            if ncrypt.status("NCryptDeleteKey", key, 0):
+                ncrypt.status("NCryptFreeObject", key)
+            raise
+        return key
+
+    def attestation_key(self) -> bytes:
+        """The AIK's TPMT_PUBLIC (made the first time), from the head of its identity binding."""
+        ncrypt, _ = self._open()
+        key = self._aik()
+        try:
+            binding = self._property(key, ID_BINDING)
+        finally:
+            ncrypt.status("NCryptFreeObject", key)
+        size = int.from_bytes(binding[:2], "big")
+        if size < 10 or 2 + size > len(binding):
+            raise CngError("NCryptGetProperty (identity binding)", NTE_BAD_KEYSET)
+        return binding[2:2 + size]
+
+    def activate(self, credential_blob: bytes, encrypted_secret: bytes) -> bytes:
+        """TPM2_ActivateCredential on the AIK: the secret, if the credential was made for this TPM."""
+        ncrypt, _ = self._open()
+        key = self._aik()
+        try:
+            data = credential_blob + encrypted_secret
+            ncrypt.call("NCryptSetProperty", key, ID_ACTIVATION, data, len(data), 0)
+            return self._property(key, ID_ACTIVATION)
+        finally:
+            ncrypt.status("NCryptFreeObject", key)
+
+    def certify(self, key_name: str, qualifying: bytes) -> tuple[bytes, bytes, bytes]:
+        """TPM2_Certify of a holder key by the AIK: (TPMS_ATTEST, signature, TPMT_PUBLIC of the key)."""
+        ncrypt, _ = self._open()
+        key, aik = self._key(key_name), None
+        if key is None:
+            raise CngError("NCryptOpenKey", NTE_BAD_KEYSET)
+        try:
+            aik = self._aik()
+            nonce = create_string_buffer(qualifying, len(qualifying))
+            buffer = _Buffer(len(qualifying), BUFFER_KEYATTESTATION_NONCE, ctypes.cast(nonce, c_void_p))
+            desc = _BufferDesc(0, 1, ctypes.pointer(buffer))
+            size = DWORD()
+            ncrypt.call("NCryptCreateClaim", key, aik, CLAIM_AUTHORITY_AND_SUBJECT, byref(desc), None, 0,
+                        byref(size), 0)
+            out = create_string_buffer(size.value)
+            ncrypt.call("NCryptCreateClaim", key, aik, CLAIM_AUTHORITY_AND_SUBJECT, byref(desc), out, size.value,
+                        byref(size), 0)
+            return unwrap_key_attestation(out.raw[:size.value])
+        finally:
+            ncrypt.status("NCryptFreeObject", key)
+            if aik is not None:
+                ncrypt.status("NCryptFreeObject", aik)
+
+
+def unwrap_key_attestation(blob: bytes) -> tuple[bytes, bytes, bytes]:
+    """
+    PCP_KEY_ATTESTATION_BLOB: {Magic "KADS", Platform, HeaderSize, cbKeyAttest, cbSignature,
+    cbKeyBlob} (little-endian), then the TPMS_ATTEST, the AIK's signature and the key's
+    PCP_KEY_BLOB_WIN8, whose public part (at its cbHeader, cbPublic bytes) is a TPM2B_PUBLIC.
+    """
+    if len(blob) < 24:
+        raise CngError("NCryptCreateClaim (short claim)", NTE_BAD_KEYSET)
+    magic, _platform, header, attest_size, signature_size, key_size = struct.unpack("<6I", blob[:24])
+    if magic != KEY_ATTESTATION_MAGIC or header + attest_size + signature_size + key_size > len(blob):
+        raise CngError("NCryptCreateClaim (not a key attestation)", NTE_BAD_KEYSET)
+    attest = blob[header:header + attest_size]
+    signature = blob[header + attest_size:header + attest_size + signature_size]
+    key_blob = blob[header + attest_size + signature_size:header + attest_size + signature_size + key_size]
+    if len(key_blob) < 20:
+        raise CngError("NCryptCreateClaim (short key blob)", NTE_BAD_KEYSET)
+    key_header, public_size = struct.unpack("<I", key_blob[4:8])[0], struct.unpack("<I", key_blob[16:20])[0]
+    public = key_blob[key_header:key_header + public_size]
+    if len(public) != public_size or public_size < 4:
+        raise CngError("NCryptCreateClaim (no public part)", NTE_BAD_KEYSET)
+    if int.from_bytes(public[:2], "big") == len(public) - 2:
+        public = public[2:]  # TPM2B_PUBLIC -> TPMT_PUBLIC
+    return attest, signature, public

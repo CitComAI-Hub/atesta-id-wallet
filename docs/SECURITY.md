@@ -244,9 +244,15 @@ Names published by issuers are reduced to one short line of text before they are
   nor the holder keys. A key attestation (one for the whole batch, with the issuer's `c_nonce`)
   is asked for only when the credential configuration requires it. The wallet checks that what
   the provider returns is about its own keys. The provider stores nothing and only receives
-  public keys and signatures over its nonces. In this step the attestations prove only that a
-  running Atesta ID Wallet holds the keys; the wallet is open source, so they do not prove the
-  computer or the key storage, and no `key_storage` is stated (TPM evidence is the next step).
+  public keys and signatures over its nonces. Without TPM evidence the attestations prove only
+  that a running Atesta ID Wallet holds the keys (the wallet is open source), and no
+  `key_storage` is stated. With keys in the TPM, the wallet enrols the TPM once with the
+  provider (EK certificate chained to the manufacturer, MakeCredential/ActivateCredential on an
+  attestation key it made in the TPM) and adds a TPM2_Certify of each key, qualified with the
+  provider's nonce; the provider then states `key_storage` (provider/README.md). The EK
+  certificate, which identifies the TPM, goes only to the provider at enrolment and is not kept
+  by it; issuers see only the provider's attestation. Any failure of the evidence falls back to
+  the attestation without it.
   Without a provider the wallet stays a public client and says so where an issuer requires
   key attestation.
 - **DPoP** (RFC 9449): when the authorization server advertises ES256 in

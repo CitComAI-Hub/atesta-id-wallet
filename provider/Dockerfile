@@ -2,7 +2,7 @@
 FROM python:3.12-slim
 RUN pip install --no-cache-dir "cryptography==50.0.2" "gunicorn==23.0.0" \
     && useradd --system --no-create-home provider
-COPY wallet_provider.py /app/wallet_provider.py
+COPY wallet_provider.py tpm2.py /app/
 WORKDIR /app
 USER provider
 EXPOSE 8080

@@ -61,6 +61,24 @@ jobs:
           python .github/scripts/annotate_unittest.py test-output.txt "$code"
           exit $code
 
+  # The wallet provider's TPM checks (provider/tpm2.py) against a real TPM 2.0 implementation:
+  # swtpm, driven with tpm2-pytss (tests/test_tpm_swtpm.py, skipped where they are missing).
+  tpm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - name: swtpm and the TSS2 libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv python3-dev swtpm libtss2-dev pkg-config
+          /usr/bin/python3 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - run: pip install . "tpm2-pytss==3.0.0"
+      - name: Tests against swtpm
+        run: |
+          python -m unittest tests.test_tpm_swtpm -v 2>&1 | tee test-output.txt
+          grep -q "OK" test-output.txt && ! grep -q "skipped" test-output.txt  # skipped here is a failure
+
   static:
     runs-on: ubuntu-latest
     steps:

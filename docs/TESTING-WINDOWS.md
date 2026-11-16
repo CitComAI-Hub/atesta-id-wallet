@@ -87,6 +87,15 @@ not skipped), this is the only check of the CNG code against a real chip.
 - [ ] Untick the setting, receive a credential: no new key in the `certutil` list.
 - [ ] `python -m unittest tests.test_keys` from a source checkout: `test_windows_tpm` passes
       (not skipped).
+- [ ] With a wallet provider that has the TPM manufacturers' roots (`WP_TPM_ROOTS`,
+      provider/README.md) and an issuer that asks for key attestation, receive a credential.
+      *Protocol details* says "This computer's security chip was enrolled with the wallet
+      provider" (the first time only) and "The wallet provider confirmed that the keys are in
+      this computer's security chip"; a warning about the chip's evidence means the CNG side
+      failed: copy it. Note whether the TPM is discrete or firmware (Intel PTT, AMD fTPM) and
+      whether it worked from a normal (non-admin) account.
+- [ ] `certutil -user -csp "Microsoft Platform Crypto Provider" -key` lists
+      `atesta-id-wallet-aik` once, whatever the number of profiles.
 
 ## 6. Command line
 

@@ -108,6 +108,20 @@ class Backend(Protocol):
     def names(self) -> list[str]: ...  # this application's keys
 
 
+class TpmEvidence(Protocol):
+    """A back-end that can prove to the wallet provider that its keys are in a TPM 2.0 (attestation.py)."""
+
+    def endorsement_certificate(self) -> bytes: ...  # DER
+    def attestation_key(self) -> bytes: ...  # TPMT_PUBLIC of the AIK, made the first time
+    def activate(self, credential_blob: bytes, encrypted_secret: bytes) -> bytes: ...  # ActivateCredential
+    def certify(self, key_name: str, qualifying: bytes) -> tuple[bytes, bytes, bytes]: ...  # attest, sig, public
+
+
+def tpm_evidence(backend: Any) -> TpmEvidence | None:
+    return backend if all(callable(getattr(backend, name, None)) for name in
+                          ("endorsement_certificate", "attestation_key", "activate", "certify")) else None
+
+
 class HardwareKey(Key):
     hardware = True
 
@@ -126,6 +140,11 @@ class HardwareKey(Key):
 
     def discard(self) -> None:
         self.backend.delete(self.key_name)
+
+    def certify(self, qualifying: bytes) -> tuple[bytes, bytes, bytes] | None:
+        """TPM2_Certify of this key by the back-end's attestation key, if it can give one."""
+        evidence = tpm_evidence(self.backend)
+        return evidence.certify(self.key_name, qualifying) if evidence else None
 
 
 def _platform_backends() -> list[Backend]:
