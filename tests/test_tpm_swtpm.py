@@ -3,7 +3,7 @@
 What tests/test_tpm.py emulates is done here by a TPM: ActivateCredential of the provider's
 MakeCredential, TPM2_Certify of a holder key by an AIK, and the wallet's key attestation with keys
 that live in the TPM. The EK certificate is issued by a test manufacturer (swtpm's own is not
-needed). Skipped without swtpm and tpm2-pytss (CI: the tpm job of checks.yml).
+needed). Skipped without swtpm and tpm2-pytss (CI: the hardware-keys job of checks.yml).
 
 Run:  python -m unittest tests.test_tpm_swtpm
 """

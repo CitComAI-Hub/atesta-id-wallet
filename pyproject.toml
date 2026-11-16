@@ -17,6 +17,7 @@ dependencies = [
     "cbor2>=5.6",  # CWT status lists, mso_mdoc (CBOR, COSE)
     "signxml>=5.1",  # trusted lists (ETSI TS 119 612): XMLDSig/XAdES
     "lxml>=5.2.1",
+    "python-pkcs11>=0.7",  # keys on a security token (PKCS#11): TPM on Linux, smart cards, YubiKey
 ]
 
 [project.optional-dependencies]

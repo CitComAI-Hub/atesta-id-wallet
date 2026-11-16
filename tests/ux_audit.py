@@ -63,6 +63,17 @@ TECHNICAL = {
     "Images (*.png *.jpg *.jpeg)", "Backups (*.bak);;All files (*)", "Data: {path}",
     "Paste the <b>openid4vp://</b> or <b>openid-credential-offer://</b> link the website gave you.",
     "Technical type", "Show technical details",
+    # Settings → Keys (security tokens, PKCS#11)
+    "Keys", "Security token", "Choose…", "PKCS#11 module", "PKCS#11 modules ({suffix});;All files (*)",
+    "Keep the keys of new credentials on a smart card, a USB token or, on Linux, this computer's TPM "
+    "(tpm2-pkcs11). Choose the token's PKCS#11 module.",
+    "New credentials get their keys on «{token}» ({module}). Its PIN is asked for the first time a key is used, "
+    "and forgotten when the wallet locks.",
+    "Stop using the security token?", "Security token removed", "No security token", "Which token?",
+    "Connect the token (it must be initialised, with a PIN) and choose the module again.",
+    "New credentials will keep their keys in this computer. Credentials already on the token can only be "
+    "presented while it is chosen and connected.",
+    "This is not a PKCS#11 module", "New credentials will keep their keys on «{token}».",
 }
 
 # Words that mean nothing to most people, per language (whole words, case-insensitive).

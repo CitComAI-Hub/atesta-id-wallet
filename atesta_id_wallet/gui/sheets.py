@@ -596,6 +596,8 @@ THIRD_PARTY = (
     ("cbor2", "MIT", "https://github.com/agronholm/cbor2"),
     ("signxml", "Apache-2.0", "https://github.com/XML-Security/signxml"),
     ("lxml (with libxml2 and libxslt)", "BSD-3-Clause, MIT", "https://lxml.de"),
+    ("python-pkcs11", "MIT", "https://github.com/pyauth/python-pkcs11"),
+    ("asn1crypto", "MIT", "https://github.com/wbond/asn1crypto"),
     ("Lucide icons", "ISC", "https://lucide.dev"),
     ("Python", "PSF-2.0", "https://www.python.org"),
 )

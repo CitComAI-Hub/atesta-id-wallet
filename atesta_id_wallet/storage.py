@@ -52,6 +52,9 @@ PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 MAX_COPIES = 5
 
 
+keys.settings = lambda: load_settings()  # a PKCS#11 token chosen in the settings (keys.backends)
+
+
 def hardware_keys_enabled() -> bool:
     """New keys in this computer's security chip, when it has one; on by default (see keys.py)."""
     return load_settings().get("hardware_keys") is not False
@@ -60,6 +63,16 @@ def hardware_keys_enabled() -> bool:
 def set_hardware_keys(enabled: bool) -> None:
     settings = load_settings()
     settings["hardware_keys"] = enabled
+    save_settings(settings)
+
+
+def set_pkcs11(module: str | None, token: str | None = None) -> None:
+    """The PKCS#11 token where new keys go (before this computer's chip), or none."""
+    settings = load_settings()
+    if module:
+        settings["pkcs11"] = {"module": module, **({"token": token} if token else {})}
+    else:
+        settings.pop("pkcs11", None)
     save_settings(settings)
 
 

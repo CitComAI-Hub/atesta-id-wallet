@@ -290,9 +290,13 @@ the full manual Windows test and the CITCOM verifier trust list.
         default where there is one, software otherwise (`keys.py`). Backups carry only the key
         names; a restore on another computer lists what has to be requested again. Needs the
         manual check in docs/TESTING-WINDOWS.md §5c (CI has no TPM). Still to do: Windows Hello.
-      - Linux: TPM 2.0 through `tpm2-pkcs11` as an option (often needs the `tss` group and extra
-        packages: support cost with pilot users). macOS: Secure Enclave, if macOS is supported.
-      - Smart cards / USB tokens (PKCS#11) as an alternative.
+      - [x] PKCS#11 tokens (`p11.py`, python-pkcs11): the TPM on Linux through `tpm2-pkcs11`,
+        smart cards, YubiKey (ykcs11, OpenSC). Chosen by the user (`keys --pkcs11`, Settings →
+        Keys); PIN asked once, kept in memory until the wallet locks. Checked against SoftHSM2
+        in CI. Still to do: try it with tpm2-pkcs11 on a real TPM (needs the user in the `tss`
+        group and a token made with `tpm2_ptool`; swtpm without a resource manager cannot run
+        tpm2_ptool) and with a YubiKey and an eID card; attestation from tokens (YubiKey PIV
+        attestation) for `key_storage`. macOS: Secure Enclave, if macOS is supported.
       - Key attestation from the TPM: the first real step towards wallet attestation.
       - Decided (November 2026): on by default, with the setting to turn it off, because a
         hardware key cannot be exported; a new or broken laptop means asking the issuers again.
@@ -302,7 +306,7 @@ the full manual Windows test and the CITCOM verifier trust list.
         with it. Still to do: a GUI setting for the provider URL, a deployment.
       - [x] Wallet provider, step B2 (`provider/tpm2.py`, `cng.py`): EK certificate chained to
         the manufacturer (`WP_TPM_ROOTS`), MakeCredential/ActivateCredential on an AIK, a
-        TPM2_Certify of each key; then `key_storage`. Checked against swtpm in CI (`tpm` job);
+        TPM2_Certify of each key; then `key_storage`. Checked against swtpm in CI (`hardware-keys` job);
         the CNG side (PCP blobs, AIK as a normal user, firmware TPMs' EK certificates) needs
         docs/TESTING-WINDOWS.md §5c. RSA 2048 EKs only. Decide the `key_storage` value with the
         pilot (default `iso_18045_moderate`). Still to do: ECC EKs, Windows Hello per use

@@ -33,6 +33,8 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
+    QLineEdit,
     QMainWindow,
     QPushButton,
     QStackedWidget,
@@ -40,7 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, status, storage, trustlist, updates, vault
+from .. import common, i18n, keys, p11, status, storage, trustlist, updates, vault
 from ..common import Cancelled, WalletError, __version__, humanize, new_session
 from ..desktop import (
     APP_ICON,
@@ -209,6 +211,7 @@ class MainWindow(QMainWindow):
         self._status_started = 0.0  # last background revocation check (at most one every few minutes)
         self._status_running = False
         self.prompter = GuiPrompter(self.bridge)
+        keys.ask_pin = self._ask_pin  # a PKCS#11 token's PIN, when a key on it is first used
         self.busy = False
         self.advanced_settings_open = False  # Settings' technical sections, folded at start
         self._instance_server: QLocalServer | None = None  # set by main(): links from later launches
@@ -1084,6 +1087,41 @@ class MainWindow(QMainWindow):
         self._ask_text_then(tr("Add a trusted list"), tr("Address of the trusted list (ETSI TS 119 612, XML)."), fetch,
                             placeholder="https://…", icon="shield-check")
 
+    def choose_pkcs11(self) -> None:
+        start = next(iter(p11.known_modules()), str(Path.home()))
+        path, _ = QFileDialog.getOpenFileName(self, tr("PKCS#11 module"), start,
+                                              tr("PKCS#11 modules ({suffix});;All files (*)",
+                                                 suffix=p11.module_suffix()))
+        if not path:
+            return
+        try:
+            found = p11.tokens(path)
+        except Exception as exc:
+            return self._result(False, tr("This is not a PKCS#11 module"), esc(exc))
+        if not found:
+            return self._result(False, tr("No security token"), tr("Connect the token (it must be initialised, with "
+                                                                   "a PIN) and choose the module again."),
+                                icon="info", tone="accent")
+        token = found[0]
+        if len(found) > 1:
+            token, ok = QInputDialog.getItem(self, tr("Security token"), tr("Which token?"), found, 0, False)
+            if not ok:
+                return
+        storage.set_pkcs11(path, token)
+        self.reload()
+        self.toast.show_message(tr("New credentials will keep their keys on «{token}».", token=token))
+
+    def remove_pkcs11(self) -> None:
+        def remove() -> None:
+            storage.set_pkcs11(None)
+            p11.forget_pins()
+            self.reload()
+            self.toast.show_message(tr("Security token removed"))
+        self._confirm(tr("Stop using the security token?"),
+                      tr("New credentials will keep their keys in this computer. Credentials already on the token "
+                         "can only be presented while it is chosen and connected."), remove,
+                      confirm_text=tr("Remove"), danger=True)
+
     def remove_trusted_list(self, url: str) -> None:
         def remove() -> None:
             trustlist.remove(url)
@@ -1192,6 +1230,15 @@ class MainWindow(QMainWindow):
         if entry:
             self.process(entry)
 
+    def _ask_pin(self, prompt: str) -> str:
+        """The token's PIN: a panel during a flow (worker thread), a dialog otherwise (e.g. deleting)."""
+        if threading.current_thread() is not threading.main_thread():
+            return self.prompter.secret(prompt)
+        text, ok = QInputDialog.getText(self, tr("Security token"), prompt, QLineEdit.EchoMode.Password)
+        if not ok:
+            raise Cancelled()
+        return text
+
     def lock_now(self) -> None:
         if self.busy:
             self.toast.show_message(tr("Finish the current step first"))
@@ -1199,6 +1246,7 @@ class MainWindow(QMainWindow):
         self._stop_watch()
         self.overlay.close_sheet()
         vault.lock(storage.DATA_DIR)
+        p11.forget_pins()
         self._restart_idle()
         self._build()
         self.toast.show_message(tr("Wallet locked"))
@@ -1589,7 +1637,7 @@ def release_widgets() -> None:
 
 
 def _smoke_test_formats() -> None:
-    """CBOR (cbor2) and a signed XML document (signxml, lxml and their schemas), as the wallet reads them."""
+    """CBOR (cbor2), a signed XML document (signxml, lxml and their schemas) and python-pkcs11, as the wallet uses them."""
     import datetime
 
     import cbor2
@@ -1612,6 +1660,12 @@ def _smoke_test_formats() -> None:
         etree.fromstring(b"<list><item>1</item></list>"), key=key,
         cert=[cert.public_bytes(serialization.Encoding.PEM).decode()])
     XMLVerifier().verify(etree.tostring(signed), x509_cert=cert)
+    # Security tokens (p11): the compiled extension and the modules it imports by itself.
+    from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass  # noqa: F401
+    from pkcs11.util.ec import encode_named_curve_parameters
+
+    if not encode_named_curve_parameters("secp256r1"):
+        raise RuntimeError("python-pkcs11")
 
 
 def smoke_test() -> int:

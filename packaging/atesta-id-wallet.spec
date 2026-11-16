@@ -21,14 +21,16 @@ KEYRING = collect_submodules("keyring.backends")
 # are read as package resources, which PyInstaller does not see.
 DATAS += collect_data_files("signxml", includes=["schemas/*"])
 SIGNXML = ["signxml.schemas"]
+# python-pkcs11 (security tokens) is a compiled extension whose own imports PyInstaller cannot see.
+PKCS11 = collect_submodules("pkcs11") + ["atesta_id_wallet.p11"]
 # Qt parts the wallet does not use (saves space; QtNetwork is used: single window).
 EXCLUDES = ["tkinter", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtPdf", "PySide6.QtOpenGL",
             "PySide6.QtSql", "PySide6.QtTest", "PySide6.QtDBus", "PySide6.QtConcurrent"]
 
 gui = Analysis([str(ROOT / "packaging" / "launch_gui.py")], pathex=[str(ROOT)], datas=DATAS,
-               hiddenimports=["PySide6.QtSvg", *KEYRING, *SIGNXML], excludes=EXCLUDES)
+               hiddenimports=["PySide6.QtSvg", *KEYRING, *SIGNXML, *PKCS11], excludes=EXCLUDES)
 cli = Analysis([str(ROOT / "packaging" / "launch_cli.py")], pathex=[str(ROOT)], datas=DATAS,
-               hiddenimports=[*KEYRING, *SIGNXML], excludes=EXCLUDES + ["PySide6", "shiboken6"])
+               hiddenimports=[*KEYRING, *SIGNXML, *PKCS11], excludes=EXCLUDES + ["PySide6", "shiboken6"])
 
 # Qt's GTK theme would pull in a copy of GTK 3 that may not match the system one; Qt then uses
 # its own style (Fusion, the one the app uses) and the xdg-desktop-portal dialogs.

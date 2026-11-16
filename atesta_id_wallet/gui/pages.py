@@ -6,6 +6,7 @@ from __future__ import annotations
 import functools
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from PySide6.QtCore import QLocale, Qt
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import common, i18n, keys, status, storage, trustlist, updates, vault
+from .. import common, i18n, keys, p11, status, storage, trustlist, updates, vault
 from ..common import __version__, claim_label, host_of, site_of
 from ..i18n import N_, tr, tr_n
 from ..storage import (
@@ -778,6 +779,20 @@ class SettingsPage(Page):
                        self._action(tr("Remove"), self._remover(str(entry.get("url", ""))), "trash-2"))
               for entry in trustlist.configured()],
         ])
+        if p11.library_installed():
+            chosen = storage.load_settings().get("pkcs11")
+            if isinstance(chosen, dict):
+                token = _setting(tr("Security token"), tr(
+                    "New credentials get their keys on «{token}» ({module}). Its PIN is asked for the first time "
+                    "a key is used, and forgotten when the wallet locks.",
+                    token=chosen.get("token") or "-", module=Path(str(chosen.get("module"))).name),
+                    self._action(tr("Remove"), w.remove_pkcs11, "trash-2"))
+            else:
+                token = _setting(tr("Security token"), tr(
+                    "Keep the keys of new credentials on a smart card, a USB token or, on Linux, this computer's "
+                    "TPM (tpm2-pkcs11). Choose the token's PKCS#11 module."),
+                    self._action(tr("Choose…"), w.choose_pkcs11, "key-round"))
+            self._section(tr("Keys"), column=advanced, rows=[token])
         verbose = QCheckBox()
         verbose.setChecked(common.VERBOSE)
         verbose.toggled.connect(lambda on: setattr(common, "VERBOSE", on))

@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import sys
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -158,23 +158,44 @@ def _platform_backends() -> list[Backend]:
 BACKENDS: list[Backend] = _platform_backends()
 _available: dict[str, bool] = {}
 
+# Set by storage: the application settings (a PKCS#11 token chosen there comes before the TPM).
+settings: Callable[[], dict[str, Any]] = dict
+# Set by the CLI or the window: asks for a token's PIN (p11), with the prompt to show.
+ask_pin: Callable[[str], str] | None = None
+
+
+def backends() -> list[Backend]:
+    from . import p11
+
+    return [*p11.configured(settings(), ask_pin), *BACKENDS]  # type: ignore[list-item]
+
+
+def _is_available(backend: Backend) -> bool:
+    """Whether the back-end answers; checked once per run, except for those that come and go (tokens)."""
+    if not getattr(backend, "cache_availability", True):
+        try:
+            return backend.available()
+        except Exception as exc:
+            debug(f"{backend.name} not available: {exc}")
+            return False
+    if backend.name not in _available:
+        try:
+            _available[backend.name] = backend.available()
+        except Exception as exc:  # a driver that fails is the same as no chip
+            debug(f"{backend.name} not available: {exc}")
+            _available[backend.name] = False
+    return _available[backend.name]
+
 
 def hardware_backend() -> Backend | None:
-    """The first back-end this computer has (checked once per run), or None."""
-    for backend in BACKENDS:
-        if backend.name not in _available:
-            try:
-                _available[backend.name] = backend.available()
-            except Exception as exc:  # a driver that fails is the same as no chip
-                debug(f"{backend.name} not available: {exc}")
-                _available[backend.name] = False
-        if _available[backend.name]:
-            return backend
-    return None
+    """Where new keys go: the chosen token if it is plugged in, else this computer's chip, or None."""
+    return next((b for b in backends() if _is_available(b)), None)
 
 
 def _backend(name: Any) -> Backend | None:
-    return next((b for b in BACKENDS if b.name == name), None)
+    """The back-end a stored key names, if it is here now."""
+    found = next((b for b in backends() if b.name == name), None)
+    return found if found is not None and _is_available(found) else None
 
 
 def new_key(profile: str, hardware: bool) -> Key:
@@ -217,9 +238,12 @@ def load(stored: Any) -> Key:
     if not isinstance(stored, dict) or not isinstance(stored.get("name"), str):
         raise WalletError(tr("The credential is not bound to any key of this wallet, so it cannot be presented."))
     backend = _backend(stored.get("backend"))
-    public = None
-    if backend is not None and hardware_backend() is backend:
-        public = backend.public_key(stored["name"])
+    public = backend.public_key(stored["name"]) if backend is not None else None
+    if public is None and stored.get("backend") == "pkcs11":
+        raise WalletError(tr("The key of this credential is on a security device that is not connected, or not "
+                             "chosen in Settings."),
+                          hint=tr("Connect the device the credential was received with, or ask the organisation "
+                                  "that gave it to you for the credential again."))
     if public is None:
         raise WalletError(tr("The key of this credential is in the security chip of another computer, so it cannot "
                              "be presented here."),
@@ -244,7 +268,7 @@ def discard(stored: Any) -> None:
     if not isinstance(stored, dict):
         return
     backend = _backend(stored.get("backend"))
-    if backend is None or hardware_backend() is not backend or not isinstance(stored.get("name"), str):
+    if backend is None or not isinstance(stored.get("name"), str):
         return
     try:
         backend.delete(stored["name"])
@@ -255,13 +279,13 @@ def discard(stored: Any) -> None:
 def discard_profile(profile: str) -> None:
     """Deletes every hardware key of a profile (emptied or removed), readable credentials or not."""
     prefix = f"{KEY_PREFIX}:{profile}:"
-    backend = hardware_backend()
-    if backend is None:
-        return
-    try:
-        names = [n for n in backend.names() if n.startswith(prefix)]
-    except Exception as exc:
-        debug(f"Could not list the keys of {backend.name}: {exc}")
-        return
-    for name in names:
-        discard({"backend": backend.name, "name": name})
+    for backend in backends():
+        if not _is_available(backend):
+            continue
+        try:
+            names = [n for n in backend.names() if n.startswith(prefix)]
+        except Exception as exc:
+            debug(f"Could not list the keys of {backend.name}: {exc}")
+            continue
+        for name in names:
+            discard({"backend": backend.name, "name": name})

@@ -235,6 +235,15 @@ Names published by issuers are reduced to one short line of text before they are
   credentials are listed as having to be requested again, and presenting one says why. No
   user verification (Windows Hello) yet, and no key attestation (planned with the wallet
   provider). Linux and smart cards (PKCS#11) come next; there keys stay in software.
+- **Keys on a PKCS#11 token** (`p11.py`, python-pkcs11). The user can choose a PKCS#11 module
+  and token (`keys --pkcs11`, *Settings → Keys*): the TPM on Linux through tpm2-pkcs11, a smart
+  card or a USB token. New keys are made on it (P-256, `CKA_SENSITIVE`, not `CKA_EXTRACTABLE`,
+  `CKA_PRIVATE`) and found again by label; the token comes before the computer's chip, and a key
+  is always looked up on the back-end that made it. The user PIN is asked for the first time a
+  key is used, kept in memory only while the wallet is open (forgotten when it locks, or when
+  the token refuses it) and never written; a wrong PIN is asked again once. There is no
+  attestation from a token yet, so the wallet provider states no `key_storage` for them.
+  Checked against SoftHSM2 in CI; tpm2-pkcs11 and real cards need a manual check.
 - **Wallet and key attestation** (`attestation.py`, service in `provider/`). With a wallet
   provider set up (`provider URL`), an authorization server that lists `attest_jwt_client_auth`
   gets a Client Attestation JWT and a fresh proof of possession (`OAuth-Client-Attestation`,

@@ -41,7 +41,7 @@ where the keys are, and only then states `key_storage` (`WP_TPM_KEY_STORAGE`, by
 
 If any of this fails, the wallet asks again without evidence: the issuance goes on, with no
 `key_storage`. The checks are tested against a real TPM 2.0 implementation (swtpm,
-`tests/test_tpm_swtpm.py`, the `tpm` job in CI); the Windows side (CNG's PCP blobs) needs the
+`tests/test_tpm_swtpm.py`, the `hardware-keys` job in CI); the Windows side (CNG's PCP blobs) needs the
 manual check in `docs/TESTING-WINDOWS.md` §5c.
 
 **Which `key_storage`**: a TPM 2.0 with an EK certificate from its manufacturer, keys made in it

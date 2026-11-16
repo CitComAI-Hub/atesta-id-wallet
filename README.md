@@ -198,6 +198,8 @@ atesta-id-wallet restore ~/wallet.bak   # into an empty profile
 atesta-id-wallet reset                  # delete credentials, keys and settings of the profile
 atesta-id-wallet password [set|remove]  # wallet password: app lock (see Data)
 atesta-id-wallet keys [hardware|software]  # new keys in the security chip (TPM, Windows) or in software
+atesta-id-wallet keys --pkcs11 MODULE [--token LABEL]  # ...or on a PKCS#11 token: the TPM on Linux
+                                        # (tpm2-pkcs11), a smart card, a YubiKey; '--pkcs11 none' to stop
 atesta-id-wallet provider [URL|none]    # wallet provider for issuers that ask for attestations (provider/)
 ```
 
@@ -324,7 +326,7 @@ cannot be recovered: keep a backup. Details in [docs/SECURITY.md](docs/SECURITY.
 | `trustlist` | ETSI TS 119 612 trusted lists: signature by the pinned certificate (signxml), issuers they certify |
 | `sdjwt` | SD-JWT VC parsing (strict) and disclosure selection |
 | `attestation` | Wallet and key attestations from a wallet provider (`provider/`), for issuers that ask for them |
-| `keys` | Holder keys: in software, or in the security chip (`cng`: TPM 2.0 on Windows through CNG) |
+| `keys` | Holder keys: in software, in the security chip (`cng`: TPM 2.0 on Windows through CNG) or on a PKCS#11 token (`p11`) |
 | `storage` | Profiles, holder keys, credentials, history, settings and trusted CAs on disk (encrypted, atomic writes) |
 | `vault` | Profile encryption: data key in the system keyring or wrapped with the wallet password |
 | `trust` | Verifier identity and trust (x509_san_dns, x509_hash, pinning, CAs) |

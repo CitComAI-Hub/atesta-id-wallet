@@ -18,7 +18,7 @@ from typing import Any
 import requests
 from cryptography import x509
 
-from . import attestation, common, i18n, keys, status, storage, trustlist, updates, vault
+from . import attestation, common, i18n, keys, p11, status, storage, trustlist, updates, vault
 from .common import Cancelled, WalletError, __version__, confirm, log, new_session, printable
 from .desktop import (
     FROZEN,
@@ -547,6 +547,10 @@ def build_parser() -> argparse.ArgumentParser:
     keys_ = sub.add_parser("keys", help=tr("Show or change where new credential keys are made (hardware: this "
                                            "computer's security chip, if it has one; software)"))
     keys_.add_argument("where", nargs="?", choices=["hardware", "software"])
+    keys_.add_argument("--pkcs11", metavar="MODULE", help=tr(
+        "A PKCS#11 module for keys on a security token (the TPM on Linux with tpm2-pkcs11, a smart card, a "
+        "YubiKey...), or 'none'"))
+    keys_.add_argument("--token", metavar="LABEL", help=tr("With --pkcs11: the token, if the module has several"))
     keys_.set_defaults(func=cmd_keys)
 
     provider = sub.add_parser("provider", help=tr("Show or set the wallet provider that vouches for this wallet to "
@@ -650,6 +654,21 @@ def _run(argv: list[str]) -> int:
 
 
 def cmd_keys(args: argparse.Namespace) -> int:
+    if args.pkcs11 == "none":
+        storage.set_pkcs11(None)
+    elif args.pkcs11:
+        module = str(Path(args.pkcs11).expanduser().resolve())
+        try:
+            found = p11.tokens(module) if p11.library_installed() and Path(module).is_file() else None
+        except Exception as exc:  # not a library, or not a PKCS#11 one
+            common.debug(f"PKCS#11 module {module}: {exc}")
+            found = None
+        if found is None:
+            raise WalletError(tr("{module} is not a PKCS#11 module this wallet can load.", module=args.pkcs11))
+        if args.token and args.token not in found or not found:
+            raise WalletError(tr("No token «{token}» in {module}. Tokens: {tokens}", token=args.token or "",
+                                 module=module, tokens=", ".join(found) or "-"))
+        storage.set_pkcs11(module, args.token)
     if args.where:
         storage.set_hardware_keys(args.where == "hardware")
     chip = keys.hardware_backend()
@@ -660,6 +679,11 @@ def cmd_keys(args: argparse.Namespace) -> int:
     else:
         print(tr("New credentials: keys in software: this computer has no security chip the wallet can use "
                  "(setting: hardware)."))
+    chosen = storage.load_settings().get("pkcs11")
+    if isinstance(chosen, dict):
+        print(tr("Security token: {module} {token}", module=chosen.get("module"), token=chosen.get("token") or ""))
+    elif p11.known_modules():
+        print(tr("PKCS#11 modules on this computer (--pkcs11): {modules}", modules=", ".join(p11.known_modules())))
     return 0
 
 
@@ -697,6 +721,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     _tolerant_output()
     i18n.set_language(i18n.resolve(load_settings().get("language")))
+    keys.ask_pin = lambda prompt: getpass.getpass(f"{prompt}: ")  # a PKCS#11 token's PIN, once per run
     try:
         code = _run(argv)
     except WalletError as exc:
